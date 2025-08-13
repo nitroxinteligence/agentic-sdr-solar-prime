@@ -32,7 +32,7 @@ class KnowledgeService:
         
         logger.info("✅ KnowledgeService inicializado (versão simplificada)")
     
-    async def search_knowledge_base(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
+    async def search_knowledge_base(self, query: str, max_results: int = 200) -> List[Dict[str, Any]]:
         """
         Busca na base de conhecimento do Supabase
         
@@ -52,11 +52,11 @@ class KnowledgeService:
             
             logger.info(f"📚 Carregando TODA a knowledge_base para enriquecer resposta...")
             
-            # MUDANÇA: Buscar TUDO da knowledge base, não filtrar
+            # 🔥 MUDANÇA: Buscar MÁXIMO de conhecimento disponível (200 documentos)
             # O objetivo é ter TODO o conhecimento disponível para o agente
             response = supabase_client.client.table("knowledge_base").select(
                 "id, question, answer, category, keywords, created_at"
-            ).limit(20).execute()  # Limitar a 20 para não sobrecarregar
+            ).limit(200).execute()  # 🔥 AUMENTADO: 200 documentos para máximo contexto
             
             if response.data:
                 # Cachear resultado

@@ -153,11 +153,10 @@ class ConversationMonitor:
                 followup_data = {
                     'lead_id': lead['id'],
                     'phone_number': phone,
-                    'type': followup_type,  # Campo obrigatório
+                    'follow_up_type': followup_type,  # 🔥 CORREÇÃO: Usar campo correto
                     'scheduled_at': datetime.now().isoformat(),
                     'status': 'pending',
                     'message': '',  # Vazio para usar IA na geração
-                    'follow_up_type': followup_type,  # Duplicado por compatibilidade
                     'priority': 'medium',
                     'attempt': 0,
                     'metadata': {

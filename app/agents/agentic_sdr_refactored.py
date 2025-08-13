@@ -75,7 +75,33 @@ class AgenticSDR:
             raise
     
     def _get_instructions(self) -> str:
-        """Instruções SIMPLES e DIRETAS para o agent"""
+        """Carrega o prompt completo do arquivo externo com fallback"""
+        import os
+        
+        try:
+            # Tentar carregar o prompt completo do arquivo
+            prompt_path = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), 
+                "prompts", 
+                "prompt-agente.md"
+            )
+            
+            if os.path.exists(prompt_path):
+                with open(prompt_path, "r", encoding="utf-8") as f:
+                    prompt_content = f.read()
+                    emoji_logger.system_event("✅ Prompt completo carregado de prompt-agente.md")
+                    return prompt_content
+            else:
+                emoji_logger.system_warning(f"⚠️ Arquivo de prompt não encontrado: {prompt_path}")
+                return self._get_fallback_instructions()
+                
+        except Exception as e:
+            emoji_logger.system_error(f"❌ Erro ao carregar prompt: {e}")
+            return self._get_fallback_instructions()
+    
+    def _get_fallback_instructions(self) -> str:
+        """Prompt simplificado de fallback caso o arquivo não seja carregado"""
+        emoji_logger.system_warning("⚠️ Usando prompt de fallback simplificado")
         return """
         Você é a Helen Vieira, consultora de energia solar da SolarPrime.
         
@@ -83,7 +109,7 @@ class AgenticSDR:
         
         💬 PERSONALIDADE:
         - Consultora profissional e empática
-        - Tom amigável e acolhedor
+        - Tom amigável e acolhedor  
         - Use emojis com moderação (sol ☀️, energia ⚡, economia 💰)
         - Seja natural e humanizada
         - Demonstre entusiasmo genuíno pela economia do cliente
@@ -150,6 +176,10 @@ class AgenticSDR:
         phone = metadata.get("phone") if metadata else None
         if phone:
             self.current_phone = phone
+            
+            # 🔥 RECUPERAR HISTÓRICO COMPLETO DE 200 MENSAGENS
+            await self._load_conversation_history(phone)
+            
             # Registrar mensagem do usuário no monitor de conversas
             await self.conversation_monitor.register_message(
                 phone=phone,
@@ -249,6 +279,9 @@ class AgenticSDR:
         Returns:
             Resposta gerada
         """
+        # 🔥 BUSCAR CONHECIMENTO RELEVANTE NA BASE
+        knowledge_context = await self._search_knowledge_base(message)
+        
         # Construir prompt com todas as informações
         prompt = self._build_prompt(
             message,
@@ -257,6 +290,10 @@ class AgenticSDR:
             service_results,
             media_context
         )
+        
+        # Adicionar contexto do knowledge base
+        if knowledge_context:
+            prompt += knowledge_context
         
         # Usar reasoning para casos complexos
         use_reasoning = (
@@ -276,6 +313,38 @@ class AgenticSDR:
         
         return response
     
+    async def _search_knowledge_base(self, query: str) -> str:
+        """
+        🔥 BUSCA CONHECIMENTO RELEVANTE NA BASE
+        
+        Args:
+            query: Consulta para buscar
+            
+        Returns:
+            Conhecimento relevante formatado
+        """
+        try:
+            from app.services.knowledge_service import KnowledgeService
+            
+            knowledge_service = KnowledgeService()
+            
+            # 🔥 Buscar MÁXIMO conhecimento disponível (200 documentos)
+            results = await knowledge_service.search_knowledge_base(query, max_results=200)
+            
+            if results:
+                knowledge_context = "\n\n📚 CONHECIMENTO RELEVANTE DA SOLARPRIME:\n"
+                # Incluir até 10 itens mais relevantes no contexto para não poluir a resposta
+                for item in results[:10]:  # Aumentado de 5 para 10 itens no contexto
+                    knowledge_context += f"- {item.get('question', '')}: {item.get('answer', '')}\n"
+                
+                emoji_logger.system_event(f"🧠 Knowledge base: {len(results)} itens encontrados")
+                return knowledge_context
+            
+        except Exception as e:
+            emoji_logger.system_warning(f"⚠️ Erro ao buscar knowledge base: {e}")
+        
+        return ""
+    
     def _build_prompt(self,
                      message: str,
                      context: Dict[str, Any],
@@ -288,9 +357,16 @@ class AgenticSDR:
             f"Mensagem do cliente: {message}"
         ]
         
-        # Adicionar contexto
-        if context.get("conversation_stage"):
-            prompt_parts.append(f"Estágio da conversa: {context['conversation_stage']}")
+        # Adicionar contexto com destaque para estágios especiais
+        stage = context.get("conversation_stage", "")
+        if stage == "estágio_0_coleta_nome":
+            prompt_parts.append("🔴 ESTÁGIO ATUAL: 0 - COLETAR NOME (Pergunte o nome antes de qualquer coisa!)")
+        elif stage == "estágio_1_apresentar_soluções":
+            prompt_parts.append("🔴 ESTÁGIO ATUAL: 1 - APRESENTAR 4 SOLUÇÕES (Nome coletado, agora apresente as 4 opções numeradas!)")
+        elif stage == "estágio_2_aguardando_escolha":
+            prompt_parts.append("🔴 ESTÁGIO ATUAL: 2 - AGUARDANDO ESCOLHA (Soluções apresentadas, aguarde a escolha)")
+        elif stage:
+            prompt_parts.append(f"Estágio da conversa: {stage}")
         
         if context.get("user_intent"):
             prompt_parts.append(f"Intenção detectada: {context['user_intent']}")
@@ -395,6 +471,62 @@ class AgenticSDR:
         
         return changes
     
+    async def _load_conversation_history(self, phone: str) -> None:
+        """
+        🔥 CARREGA HISTÓRICO COMPLETO DE 200 MENSAGENS
+        
+        Args:
+            phone: Número de telefone do lead
+        """
+        try:
+            from app.integrations.supabase_client import supabase_client
+            
+            # Buscar lead pelo telefone
+            lead = await supabase_client.get_lead_by_phone(phone)
+            
+            if lead:
+                # Buscar conversas do lead
+                conversations = supabase_client.client.table('conversations').select("*").eq(
+                    'lead_id', lead['id']
+                ).order('created_at', desc=True).limit(1).execute()
+                
+                if conversations.data:
+                    conversation_id = conversations.data[0]['id']
+                    
+                    # Recuperar últimas 200 mensagens
+                    messages = await supabase_client.get_conversation_messages(
+                        conversation_id, 
+                        limit=200  # 🔥 200 mensagens
+                    )
+                    
+                    # Converter para formato do histórico
+                    self.conversation_history = []
+                    for msg in messages:
+                        self.conversation_history.append({
+                            "role": "user" if msg.get('is_from_lead') else "assistant",
+                            "content": msg.get('content', ''),
+                            "timestamp": msg.get('created_at', datetime.now().isoformat())
+                        })
+                    
+                    emoji_logger.system_event(
+                        f"📚 Histórico carregado: {len(self.conversation_history)} mensagens"
+                    )
+                    
+                    # Atualizar informações do lead com dados do banco
+                    self.current_lead_info.update({
+                        "id": lead['id'],
+                        "name": lead.get('name'),
+                        "email": lead.get('email'),
+                        "bill_value": lead.get('bill_value'),
+                        "chosen_flow": lead.get('chosen_flow'),
+                        "qualification_score": lead.get('qualification_score', 0),
+                        "current_stage": lead.get('current_stage', 'novo')
+                    })
+                    
+        except Exception as e:
+            emoji_logger.system_warning(f"⚠️ Erro ao carregar histórico: {e}")
+            # Continuar sem histórico se falhar
+    
     async def _sync_lead_changes(self, changes: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         🚀 Sincroniza mudanças importantes com o CRM
@@ -433,6 +565,26 @@ class AgenticSDR:
                 
                 if result.get("success"):
                     emoji_logger.system_success("✅ Lead sincronizado com CRM")
+                    
+                    # 🔥 CORREÇÃO: Garantir atualização do nome quando detectado
+                    if 'name' in changes and result.get('crm_id'):
+                        from app.services.crm_service_100_real import CRMServiceReal
+                        crm = CRMServiceReal()
+                        await crm.initialize()
+                        
+                        # Garantir que o nome seja atualizado com retry
+                        name_result = await crm.ensure_lead_name_updated(
+                            result['crm_id'],
+                            changes['name']
+                        )
+                        
+                        if name_result.get("success"):
+                            emoji_logger.crm_event(f"✅ Nome garantido no Kommo: {changes['name']}")
+                        else:
+                            emoji_logger.service_warning(f"⚠️ Falha ao garantir nome no Kommo")
+                        
+                        await crm.close()
+                    
                     return result
                 else:
                     emoji_logger.service_warning(f"Sync parcial: {result.get('message')}")

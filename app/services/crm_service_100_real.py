@@ -328,12 +328,19 @@ class CRMServiceReal:
                 existing_lead = await self._find_lead_by_phone(phone)
             
             # Preparar dados do lead
+            # 🔥 CORREÇÃO: Nome padrão mais identificável
+            phone_suffix = lead_data.get("phone", "")[-4:] if lead_data.get("phone") else datetime.now().strftime("%H%M")
+            default_name = f"Lead WhatsApp {phone_suffix}"
+            
             kommo_lead = {
-                "name": lead_data.get("name", "Lead Solar"),
+                "name": lead_data.get("name") or default_name,  # Nome mais identificável
                 "price": int((lead_data.get("bill_value") or 0) * 12 * 5),  # Valor potencial 5 anos
                 "pipeline_id": self.pipeline_id,
                 "custom_fields_values": []
             }
+            
+            # 🔥 LOG: Rastrear nome sendo usado
+            emoji_logger.system_event(f"🏷️ Nome do lead para Kommo: '{kommo_lead['name']}'")
             
             # 🔥 FIX: Adicionar tags no _embedded se fornecidas
             if tags:
@@ -1141,6 +1148,60 @@ class CRMServiceReal:
                 
         except:
             return False
+    
+    async def ensure_lead_name_updated(self, lead_id: str, name: str, max_retries: int = 3) -> Dict[str, Any]:
+        """
+        🔥 CORREÇÃO: Garante que o nome do lead seja atualizado no Kommo
+        
+        Args:
+            lead_id: ID do lead no Kommo
+            name: Nome a ser atualizado
+            max_retries: Número máximo de tentativas
+            
+        Returns:
+            Dict com resultado da operação
+        """
+        if not name or name in ["Lead Solar", "NOVO LEAD", "Lead sem nome"]:
+            emoji_logger.service_warning(f"Nome inválido para atualização: '{name}'")
+            return {"success": False, "message": "Nome inválido"}
+        
+        for attempt in range(max_retries):
+            try:
+                emoji_logger.system_event(f"🔄 Tentativa {attempt + 1}/{max_retries} de atualizar nome para: {name}")
+                
+                # Atualizar nome diretamente
+                update_data = {"name": name}
+                
+                async with self.session.patch(
+                    f"{self.base_url}/api/v4/leads/{lead_id}",
+                    headers=self.headers,
+                    json=update_data
+                ) as response:
+                    if response.status in [200, 202]:
+                        emoji_logger.crm_event(f"✅ Nome atualizado com sucesso: {name} (Lead {lead_id})")
+                        return {
+                            "success": True,
+                            "message": f"Nome atualizado para: {name}",
+                            "lead_id": lead_id,
+                            "name": name
+                        }
+                    else:
+                        error = await response.text()
+                        emoji_logger.service_warning(f"Tentativa {attempt + 1} falhou: {error}")
+                        
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(2 ** attempt)  # Backoff exponencial
+                        
+            except Exception as e:
+                emoji_logger.service_error(f"Erro na tentativa {attempt + 1}: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+        
+        emoji_logger.service_error(f"❌ Falha ao atualizar nome após {max_retries} tentativas")
+        return {
+            "success": False,
+            "message": f"Falha ao atualizar nome após {max_retries} tentativas"
+        }
     
     async def close(self):
         """Fecha conexões de forma segura"""

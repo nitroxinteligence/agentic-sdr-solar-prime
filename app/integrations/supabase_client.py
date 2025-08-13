@@ -247,13 +247,18 @@ class SupabaseClient:
     async def get_conversation_messages(
         self,
         conversation_id: str,
-        limit: int = 50
+        limit: int = 200  # 🔥 CORREÇÃO: Aumentar para 200 mensagens
     ) -> List[Dict[str, Any]]:
-        """Retorna mensagens de uma conversa"""
+        """Retorna mensagens de uma conversa com contexto expandido"""
         try:
+            # 🔥 MELHORIA: Buscar mensagens mais recentes primeiro, depois reverter
             result = self.client.table('messages').select("*").eq(
                 'conversation_id', conversation_id
-            ).order('created_at', desc=False).limit(limit).execute()
+            ).order('created_at', desc=True).limit(limit).execute()
+            
+            # Reverter para ordem cronológica após buscar
+            if result.data:
+                result.data.reverse()
             
             return result.data or []
             

@@ -58,7 +58,7 @@ class ContextAnalyzer:
     
     def _determine_stage(self, messages: List[Dict[str, Any]]) -> str:
         """
-        Determina estágio da conversa
+        Determina estágio da conversa baseado no conteúdo
         
         Args:
             messages: Histórico
@@ -66,18 +66,56 @@ class ContextAnalyzer:
         Returns:
             Estágio atual
         """
-        msg_count = len(messages)
+        # Analisar conteúdo das mensagens para determinar estágio
+        has_name = False
+        has_solutions_presented = False
+        has_choice = False
         
-        if msg_count <= 2:
-            return "início"
-        elif msg_count <= 5:
-            return "exploração"
-        elif msg_count <= 10:
+        for msg in messages:
+            content = msg.get("content", "").lower()
+            role = msg.get("role", "")
+            
+            # Verificar se tem nome do lead
+            if role == "user":
+                # Padrões explícitos de nome
+                if any(word in content for word in ["meu nome é", "me chamo", "sou o", "sou a", "pode me chamar de"]):
+                    has_name = True
+                # Se a mensagem anterior perguntou o nome, a próxima resposta provavelmente é o nome
+                elif len(messages) > 1:
+                    prev_idx = messages.index(msg) - 1
+                    if prev_idx >= 0:
+                        prev_msg = messages[prev_idx]
+                        if prev_msg.get("role") == "assistant" and "como posso te chamar" in prev_msg.get("content", "").lower():
+                            # Esta mensagem é provavelmente um nome
+                            if len(content.split()) <= 3:  # Nomes geralmente são curtos
+                                has_name = True
+            
+            # Verificar se as 4 soluções foram apresentadas
+            if role == "assistant" and all(sol in content for sol in ["instalação", "aluguel", "compra", "investimento"]):
+                has_solutions_presented = True
+            
+            # Verificar se lead escolheu uma opção
+            if role == "user" and any(word in content for word in ["opção", "primeira", "segunda", "terceira", "quarta", "instalação", "aluguel", "compra", "investimento"]):
+                has_choice = True
+        
+        # Determinar estágio baseado no progresso
+        if not has_name:
+            return "estágio_0_coleta_nome"
+        elif has_name and not has_solutions_presented:
+            return "estágio_1_apresentar_soluções"
+        elif has_solutions_presented and not has_choice:
+            return "estágio_2_aguardando_escolha"
+        elif has_choice:
             return "qualificação"
-        elif msg_count <= 20:
-            return "negociação"
         else:
-            return "acompanhamento"
+            # Fallback para contagem de mensagens
+            msg_count = len(messages)
+            if msg_count <= 2:
+                return "início"
+            elif msg_count <= 10:
+                return "exploração"
+            else:
+                return "negociação"
     
     def _extract_intent(self, message: str) -> str:
         """

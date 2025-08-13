@@ -53,11 +53,26 @@ class LeadManager:
         }
         
         # Processar cada mensagem
-        for msg in messages:
+        for idx, msg in enumerate(messages):
             content = msg.get("content", "").lower()
+            role = msg.get("role", "")
             
-            # Extrair nome
-            if not lead_info["name"]:
+            # Extrair nome com detecção contextual melhorada
+            if not lead_info["name"] and role == "user":
+                # Verificar se a mensagem anterior perguntou o nome
+                if idx > 0:
+                    prev_msg = messages[idx - 1]
+                    if prev_msg.get("role") == "assistant" and "como posso te chamar" in prev_msg.get("content", "").lower():
+                        # A resposta atual provavelmente é um nome
+                        words = msg.get("content", "").strip().split()
+                        if 1 <= len(words) <= 3:  # Nome simples
+                            potential_name = msg.get("content", "").strip()
+                            # Filtrar palavras que claramente não são nomes
+                            if not any(word in potential_name.lower() for word in ["oi", "olá", "sim", "não", "ok", "tudo"]):
+                                lead_info["name"] = potential_name.title()
+                                continue
+                
+                # Tentar padrões tradicionais
                 name = self._extract_name(content)
                 if name:
                     lead_info["name"] = name
@@ -204,7 +219,9 @@ class LeadManager:
             "conta de luz", "conta", "luz", "eletricidade", "kwh",
             "instalação", "sistema", "painel", "placa", "telhado",
             "economia", "economizar", "reduzir", "diminuir",
-            "whatsapp", "mensagem", "conversa", "chat", "texto"
+            "whatsapp", "mensagem", "conversa", "chat", "texto",
+            "oi", "olá", "ola", "bom dia", "boa tarde", "boa noite",
+            "quero", "gostaria", "preciso", "queria", "desejo", "interesse"
         ]
         
         patterns = [
