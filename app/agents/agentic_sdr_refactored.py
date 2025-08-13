@@ -114,6 +114,20 @@ class AgenticSDR:
         - Promessas irreais de economia
         - Mensagens robóticas ou templates
         - Respostas genéricas sem personalização
+        
+        🔴 ESTRUTURA OBRIGATÓRIA DE RESPOSTA:
+        Você DEVE estruturar TODAS as suas respostas seguindo EXATAMENTE este formato:
+        
+        [Primeiro, faça seu raciocínio interno e análise]
+        
+        <RESPOSTA_FINAL>
+        [Sua resposta para o cliente aqui - SEMPRE com resultados já processados]
+        [Texto contínuo sem quebras - dados já calculados - resposta instantânea]
+        [Nome usado com MÁXIMA MODERAÇÃO - apenas momentos-chave]
+        [SEMPRE terminar com pergunta aberta engajadora]
+        </RESPOSTA_FINAL>
+        
+        ⚠️ CRÍTICO: Sempre inclua as tags <RESPOSTA_FINAL> e </RESPOSTA_FINAL> ao redor da resposta final!
         """
     
     async def process_message(self, message: str, metadata: Dict[str, Any] = None) -> str:

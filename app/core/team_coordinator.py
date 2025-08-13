@@ -600,8 +600,9 @@ class TeamCoordinator:
             
             emoji_logger.service_event("🔄 Iniciando sync imediato com Kommo CRM")
             
-            # Importar serviço de sync
-            from app.services.kommo_auto_sync import kommo_auto_sync_service
+            # Usar serviço CRM atual (kommo_auto_sync foi migrado para crm_service)
+            from app.services.crm_service_100_real import CRMServiceReal
+            kommo_auto_sync_service = CRMServiceReal()  # Compatibilidade com código legado
             
             # Primeiro, garantir que o lead existe no Supabase
             supabase_lead_id = await self._get_or_create_supabase_lead_id(lead_info)

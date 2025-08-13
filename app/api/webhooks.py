@@ -1706,7 +1706,12 @@ async def kommo_webhook(request: Request):
             form_data = await request.form()
             data = dict(form_data)
         
-        emoji_logger.log_with_emoji("INFO", "Webhook", f"ℹ️ Kommo recebido: {data.get('event', 'unknown')}")
+        # Log detalhado para debug (temporário)
+        if not data or not data.get("event"):
+            emoji_logger.log_with_emoji("DEBUG", "Webhook", f"📋 Kommo payload completo: {data}")
+            emoji_logger.log_with_emoji("INFO", "Webhook", f"ℹ️ Kommo recebido: sem evento específico")
+        else:
+            emoji_logger.log_with_emoji("INFO", "Webhook", f"ℹ️ Kommo recebido: {data.get('event', 'unknown')}")
         
         # Processar diferentes tipos de eventos
         event_type = data.get("event")
@@ -1717,8 +1722,12 @@ async def kommo_webhook(request: Request):
         elif event_type == "lead_status_changed":
             # Status do lead mudou - verificar se foi para estágio bloqueado
             await process_kommo_lead_status_changed(data)
-        else:
+        elif event_type:
+            # Evento reconhecido mas não tratado
             logger.info(f"Evento Kommo não processado: {event_type}")
+        else:
+            # Webhook de heartbeat ou sem evento específico - normal no Kommo
+            logger.debug(f"Webhook Kommo sem evento específico (heartbeat ou teste)")
         
         return {"status": "ok"}
         

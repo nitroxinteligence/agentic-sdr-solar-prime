@@ -6,7 +6,9 @@ from typing import Dict, Any, Optional
 from pydantic import BaseModel
 from loguru import logger
 
-from app.services.kommo_auto_sync import kommo_auto_sync_service
+# Usar serviço CRM atual (kommo_auto_sync foi migrado para crm_service)
+from app.services.crm_service_100_real import CRMServiceReal
+kommo_auto_sync_service = CRMServiceReal()  # Compatibilidade com código legado
 from app.integrations.supabase_client import supabase_client
 
 router = APIRouter(prefix="/test/kommo", tags=["test"])
