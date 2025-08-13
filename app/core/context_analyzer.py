@@ -71,6 +71,11 @@ class ContextAnalyzer:
         has_solutions_presented = False
         has_choice = False
         
+        # DEBUG: Contar mensagens por role
+        user_count = sum(1 for m in messages if m.get("role") == "user")
+        assistant_count = sum(1 for m in messages if m.get("role") == "assistant")
+        emoji_logger.conversation_event(f"📊 Analisando estágio - Msgs: {len(messages)} (👤 {user_count} user, 🤖 {assistant_count} assistant)")
+        
         for msg in messages:
             content = msg.get("content", "").lower()
             role = msg.get("role", "")

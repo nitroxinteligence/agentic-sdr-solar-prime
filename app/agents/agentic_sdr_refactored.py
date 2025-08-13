@@ -520,14 +520,20 @@ class AgenticSDR:
                     # Converter para formato do histórico
                     self.conversation_history = []
                     for msg in messages:
+                        # CORREÇÃO CRÍTICA: Usar campo 'role' que existe na tabela
+                        # Valores possíveis: 'user', 'assistant', 'system'
                         self.conversation_history.append({
-                            "role": "user" if msg.get('is_from_lead') else "assistant",
+                            "role": msg.get('role', 'user'),  # Usar campo correto 'role'
                             "content": msg.get('content', ''),
                             "timestamp": msg.get('created_at', datetime.now().isoformat())
                         })
                     
+                    # Debug: Contar mensagens por role
+                    user_msgs = sum(1 for m in self.conversation_history if m.get('role') == 'user')
+                    assistant_msgs = sum(1 for m in self.conversation_history if m.get('role') == 'assistant')
+                    
                     emoji_logger.system_event(
-                        f"📚 Histórico carregado: {len(self.conversation_history)} mensagens"
+                        f"📚 Histórico carregado: {len(self.conversation_history)} mensagens (👤 {user_msgs} user, 🤖 {assistant_msgs} assistant)"
                     )
                     
                     # Atualizar informações do lead com dados do banco
