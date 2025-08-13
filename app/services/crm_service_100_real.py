@@ -277,16 +277,34 @@ class CRMServiceReal:
                                 self.stage_map[stage_name_no_accents] = stage_id
                                 self.stage_map[stage_name_no_accents.replace(" ", "_")] = stage_id
                                 
-                                # Adicionar mapeamentos específicos conhecidos
+                                # Adicionar mapeamentos específicos conhecidos PT/EN
                                 if "não interessado" in stage_name:
                                     self.stage_map["nao_interessado"] = stage_id
                                     self.stage_map["NAO_INTERESSADO"] = stage_id
+                                    self.stage_map["NOT_INTERESTED"] = stage_id
                                 elif "reunião agendada" in stage_name:
                                     self.stage_map["reuniao_agendada"] = stage_id
                                     self.stage_map["REUNIAO_AGENDADA"] = stage_id
+                                    self.stage_map["MEETING_SCHEDULED"] = stage_id
                                 elif "em qualificação" in stage_name:
                                     self.stage_map["em_qualificacao"] = stage_id
                                     self.stage_map["EM_QUALIFICACAO"] = stage_id
+                                    self.stage_map["QUALIFYING"] = stage_id
+                                elif "qualificado" in stage_name:
+                                    self.stage_map["qualificado"] = stage_id
+                                    self.stage_map["QUALIFICADO"] = stage_id
+                                    self.stage_map["qualified"] = stage_id
+                                    self.stage_map["QUALIFIED"] = stage_id
+                                elif "proposta enviada" in stage_name:
+                                    self.stage_map["proposta enviada"] = stage_id
+                                    self.stage_map["PROPOSTA_ENVIADA"] = stage_id
+                                    self.stage_map["proposal_sent"] = stage_id
+                                    self.stage_map["PROPOSAL_SENT"] = stage_id
+                                elif "negociação" in stage_name or "negociacão" in stage_name:
+                                    self.stage_map["negociacao"] = stage_id
+                                    self.stage_map["NEGOCIACAO"] = stage_id
+                                    self.stage_map["negotiation"] = stage_id
+                                    self.stage_map["NEGOTIATION"] = stage_id
                                 
                             emoji_logger.service_info(f"📈 {len(self.stage_map)} estágios mapeados")
                             

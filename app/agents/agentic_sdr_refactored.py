@@ -311,6 +311,17 @@ class AgenticSDR:
         if not response:
             response = self._get_fallback_response(context)
         
+        # 🔥 GARANTIR TAGS <RESPOSTA_FINAL> NA RESPOSTA
+        from app.core.response_formatter import response_formatter
+        response = response_formatter.ensure_response_tags(response)
+        
+        # Validar conteúdo da resposta
+        if not response_formatter.validate_response_content(response):
+            emoji_logger.system_warning("⚠️ Resposta inválida detectada - usando fallback")
+            response = response_formatter.get_safe_fallback(
+                context.get("conversation_stage", "início")
+            )
+        
         return response
     
     async def _search_knowledge_base(self, query: str) -> str:
@@ -434,7 +445,9 @@ class AgenticSDR:
             "acompanhamento": "Fico à disposição para qualquer dúvida! Quando podemos conversar novamente?"
         }
         
-        return responses.get(stage, "Como posso ajudar você hoje? 😊")
+        # 🔥 GARANTIR TAGS NA RESPOSTA FALLBACK
+        response = responses.get(stage, "Como posso ajudar você hoje? 😊")
+        return f"<RESPOSTA_FINAL>{response}</RESPOSTA_FINAL>"
     
     def _detect_lead_changes(self, old_info: Dict[str, Any], new_info: Dict[str, Any]) -> Dict[str, Any]:
         """
