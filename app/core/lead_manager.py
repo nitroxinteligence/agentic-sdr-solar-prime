@@ -62,14 +62,33 @@ class LeadManager:
                 # Verificar se a mensagem anterior perguntou o nome
                 if idx > 0:
                     prev_msg = messages[idx - 1]
-                    if prev_msg.get("role") == "assistant" and "como posso te chamar" in prev_msg.get("content", "").lower():
+                    prev_content = prev_msg.get("content", "").lower()
+                    # Expandir detecção para mais variações de perguntas sobre nome
+                    if prev_msg.get("role") == "assistant" and any(phrase in prev_content for phrase in [
+                        "como posso te chamar",
+                        "como posso chamar",
+                        "qual seu nome",
+                        "qual é seu nome",
+                        "me diga seu nome",
+                        "pode me dizer seu nome"
+                    ]):
                         # A resposta atual provavelmente é um nome
-                        words = msg.get("content", "").strip().split()
-                        if 1 <= len(words) <= 3:  # Nome simples
-                            potential_name = msg.get("content", "").strip()
-                            # Filtrar palavras que claramente não são nomes
-                            if not any(word in potential_name.lower() for word in ["oi", "olá", "sim", "não", "ok", "tudo"]):
+                        potential_name = msg.get("content", "").strip()
+                        words = potential_name.split()
+                        
+                        # Aceitar respostas de 1-4 palavras como possível nome
+                        if 1 <= len(words) <= 4:
+                            # Lista expandida de palavras que NÃO são nomes
+                            blacklist = [
+                                "oi", "olá", "ola", "sim", "não", "nao", "ok", "tudo",
+                                "bom", "dia", "tarde", "noite", "boa", "legal", "bem",
+                                "quero", "gostaria", "preciso", "pode", "poderia"
+                            ]
+                            
+                            # Se não tem palavras da blacklist, aceitar como nome
+                            if not any(word.lower() in blacklist for word in words):
                                 lead_info["name"] = potential_name.title()
+                                emoji_logger.conversation_event(f"🎯 Nome detectado no contexto: {lead_info['name']}")
                                 continue
                 
                 # Tentar padrões tradicionais

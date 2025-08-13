@@ -476,6 +476,11 @@ class AgenticSDR:
             # Detectar mudança (novo valor ou alteração)
             if new_value is not None and old_value != new_value:
                 changes[field] = new_value
+                
+                # Log especial para nome detectado
+                if field == 'name':
+                    emoji_logger.conversation_event(f"🎯 NOME DETECTADO: {new_value} (anterior: {old_value})")
+                
                 emoji_logger.service_event(
                     f"🔄 Campo alterado: {field}",
                     old=old_value,

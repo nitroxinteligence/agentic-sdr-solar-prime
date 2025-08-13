@@ -792,20 +792,24 @@ class CRMServiceReal:
         Busca lead por ID (alias simplificado para get_lead_info)
         Retorna os dados do lead ou None se não encontrado
         """
-        result = await self.get_lead_info(lead_id)
-        if result.get("success"):
-            lead = result.get("lead", {})
-            # Retorna direto o lead com status_id no formato esperado
-            return {
-                "id": lead.get("id"),
-                "name": lead.get("name"),
-                "status_id": lead.get("status"),  # Renomeia status para status_id
-                "pipeline_id": lead.get("pipeline_id"),  # Adicionar se disponível
-                "phone": lead.get("phone"),
-                "email": lead.get("email"),
-                "bill_value": lead.get("bill_value"),
-                "created_at": lead.get("created_at")
-            }
+        try:
+            result = await self.get_lead_info(lead_id)
+            if result and result.get("success"):
+                lead = result.get("lead", {})
+                # Retorna direto o lead com status_id no formato esperado
+                if lead:
+                    return {
+                        "id": lead.get("id"),
+                        "name": lead.get("name"),
+                        "status_id": lead.get("status"),  # Renomeia status para status_id
+                        "pipeline_id": lead.get("pipeline_id"),  # Adicionar se disponível
+                        "phone": lead.get("phone"),
+                        "email": lead.get("email"),
+                        "bill_value": lead.get("bill_value"),
+                        "created_at": lead.get("created_at")
+                    }
+        except Exception as e:
+            emoji_logger.service_warning(f"Lead {lead_id} não encontrado ou erro ao buscar: {e}")
         return None
     
     @async_retry_with_backoff(max_retries=3, initial_delay=1.0)

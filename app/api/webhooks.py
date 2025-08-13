@@ -1044,7 +1044,8 @@ async def process_message_with_agent(
                 await crm.initialize()
                 
                 kommo_lead = await crm.get_lead_by_id(lead["kommo_lead_id"])
-                if kommo_lead and kommo_lead.get("status_id") in [s for s in blocked_stages if s]:
+                # Verificação mais robusta para evitar NoneType errors
+                if kommo_lead is not None and isinstance(kommo_lead, dict) and kommo_lead.get("status_id") in [s for s in blocked_stages if s]:
                     status_name = "bloqueado"
                     if kommo_lead.get("status_id") == settings.kommo_human_handoff_stage_id:
                         status_name = "ATENDIMENTO HUMANO"
