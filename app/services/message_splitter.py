@@ -80,6 +80,12 @@ class MessageSplitter:
         if not text:
             return []
         
+        # 🔥 VERIFICAR SE É A MENSAGEM DAS 4 SOLUÇÕES - NÃO DIVIDIR!
+        if self._is_four_solutions_message(text):
+            formatted_text = self._format_four_solutions_message(text)
+            # Retornar como lista única, sem dividir
+            return [formatted_text]
+        
         # Se cabe, retorna direto
         if len(text) <= self.max_length:
             return [text.strip()]
@@ -340,6 +346,80 @@ class MessageSplitter:
             result.append(indicator + chunk)
         
         return result
+    
+    def _is_four_solutions_message(self, text: str) -> bool:
+        """
+        Detecta se é a mensagem especial das 4 soluções da SolarPrime
+        
+        Args:
+            text: Texto para verificar
+            
+        Returns:
+            True se for a mensagem das 4 soluções
+        """
+        # Indicadores chave da mensagem das 4 soluções
+        indicators = [
+            "hoje na solarprime",
+            "quatro modelos de soluções",
+            "instalação de usina própria",
+            "aluguel de lote",
+            "compra de energia com desconto",
+            "usina de investimento"
+        ]
+        
+        text_lower = text.lower()
+        
+        # Verificar se tem pelo menos 3 indicadores (para evitar falsos positivos)
+        matches = sum(1 for indicator in indicators if indicator in text_lower)
+        
+        # Se tem pelo menos 3 indicadores E menciona as 4 opções, é a mensagem das soluções
+        has_options = all(f"{i})" in text for i in range(1, 5))
+        
+        return matches >= 3 or (matches >= 2 and has_options)
+    
+    def _format_four_solutions_message(self, text: str) -> str:
+        """
+        Formata a mensagem das 4 soluções com quebras de linha adequadas
+        
+        Args:
+            text: Texto original
+            
+        Returns:
+            Texto formatado com quebras de linha
+        """
+        # Padrões para adicionar quebra de linha
+        replacements = [
+            # Quebra após a introdução
+            ("quatro modelos de soluções energéticas:", "quatro modelos de soluções energéticas:\n"),
+            ("quatro modelos de soluções:", "quatro modelos de soluções:\n"),
+            # Quebra antes de cada opção numerada
+            (" 1)", "\n1)"),
+            (" 2)", "\n2)"),
+            (" 3)", "\n3)"),  
+            (" 4)", "\n4)"),
+            # Quebra antes da pergunta final
+            ("Qual desses modelos", "\n\nQual desses modelos"),
+            ("Qual te interessa", "\n\nQual te interessa"),
+        ]
+        
+        formatted_text = text
+        for old, new in replacements:
+            formatted_text = formatted_text.replace(old, new)
+        
+        # Limpar quebras duplas se houver
+        while "\n\n\n" in formatted_text:
+            formatted_text = formatted_text.replace("\n\n\n", "\n\n")
+        
+        # Garantir que não comece com quebra
+        formatted_text = formatted_text.strip()
+        
+        emoji_logger.system_info(
+            "📱 Mensagem das 4 soluções formatada com quebras de linha",
+            original_length=len(text),
+            formatted_length=len(formatted_text)
+        )
+        
+        return formatted_text
 
 # Instância global
 message_splitter: Optional[MessageSplitter] = None
