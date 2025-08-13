@@ -80,15 +80,34 @@ class ContextAnalyzer:
                 # Padrões explícitos de nome
                 if any(word in content for word in ["meu nome é", "me chamo", "sou o", "sou a", "pode me chamar de"]):
                     has_name = True
+                    # emoji_logger.info(f"✅ Nome detectado por padrão explícito em: '{content[:50]}...'")
                 # Se a mensagem anterior perguntou o nome, a próxima resposta provavelmente é o nome
                 elif len(messages) > 1:
                     prev_idx = messages.index(msg) - 1
                     if prev_idx >= 0:
                         prev_msg = messages[prev_idx]
-                        if prev_msg.get("role") == "assistant" and "como posso te chamar" in prev_msg.get("content", "").lower():
+                        prev_content = prev_msg.get("content", "").lower()
+                        
+                        # Lista de perguntas sobre nome
+                        name_questions = [
+                            "como posso te chamar",
+                            "como posso chamar", 
+                            "qual seu nome",
+                            "qual é seu nome",
+                            "posso saber seu nome"
+                        ]
+                        
+                        if prev_msg.get("role") == "assistant" and any(q in prev_content for q in name_questions):
                             # Esta mensagem é provavelmente um nome
-                            if len(content.split()) <= 3:  # Nomes geralmente são curtos
-                                has_name = True
+                            words = content.split()
+                            if 1 <= len(words) <= 4:  # Nomes geralmente são curtos
+                                # Verificar blacklist
+                                blacklist = ["oi", "olá", "sim", "não", "ok", "tudo", "bem", "bom", "dia"]
+                                if not any(w in blacklist for w in words):
+                                    has_name = True
+                                    # emoji_logger.info(f"✅ Nome detectado por contexto: '{content}'")
+                                # else:
+                                #     emoji_logger.info(f"❌ Potencial nome rejeitado (blacklist): '{content}'")
             
             # Verificar se as 4 soluções foram apresentadas
             if role == "assistant" and all(sol in content for sol in ["instalação", "aluguel", "compra", "investimento"]):

@@ -586,22 +586,21 @@ class AgenticSDR:
                     
                     # 🔥 CORREÇÃO: Garantir atualização do nome quando detectado
                     if 'name' in changes and result.get('crm_id'):
-                        from app.services.crm_service_100_real import CRMServiceReal
-                        crm = CRMServiceReal()
-                        await crm.initialize()
-                        
-                        # Garantir que o nome seja atualizado com retry
-                        name_result = await crm.ensure_lead_name_updated(
-                            result['crm_id'],
-                            changes['name']
-                        )
-                        
-                        if name_result.get("success"):
-                            emoji_logger.crm_event(f"✅ Nome garantido no Kommo: {changes['name']}")
+                        # Usar o serviço CRM existente do TeamCoordinator ao invés de criar nova instância
+                        crm_service = self.team_coordinator.services.get("crm")
+                        if crm_service:
+                            # Garantir que o nome seja atualizado com retry
+                            name_result = await crm_service.ensure_lead_name_updated(
+                                result['crm_id'],
+                                changes['name']
+                            )
+                            
+                            if name_result.get("success"):
+                                emoji_logger.crm_event(f"✅ Nome garantido no Kommo: {changes['name']}")
+                            else:
+                                emoji_logger.service_warning(f"⚠️ Falha ao garantir nome no Kommo")
                         else:
-                            emoji_logger.service_warning(f"⚠️ Falha ao garantir nome no Kommo")
-                        
-                        await crm.close()
+                            emoji_logger.service_warning("⚠️ CRM service não disponível no TeamCoordinator")
                     
                     return result
                 else:

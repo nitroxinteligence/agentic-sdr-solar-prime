@@ -64,17 +64,31 @@ class LeadManager:
                     prev_msg = messages[idx - 1]
                     prev_content = prev_msg.get("content", "").lower()
                     # Expandir detecção para mais variações de perguntas sobre nome
-                    if prev_msg.get("role") == "assistant" and any(phrase in prev_content for phrase in [
+                    name_questions = [
                         "como posso te chamar",
                         "como posso chamar",
                         "qual seu nome",
                         "qual é seu nome",
                         "me diga seu nome",
-                        "pode me dizer seu nome"
-                    ]):
+                        "pode me dizer seu nome",
+                        "posso saber seu nome",
+                        "me fala seu nome"
+                    ]
+                    
+                    # Log para entender o problema (usando info ao invés de debug)
+                    # if prev_msg.get("role") == "assistant":
+                    #     emoji_logger.info(f"🔍 Verificando contexto de nome - Msg anterior: '{prev_content[:50]}...'")
+                    #     for question in name_questions:
+                    #         if question in prev_content:
+                    #             emoji_logger.info(f"✅ Pergunta de nome detectada: '{question}'")
+                    #             break
+                    
+                    if prev_msg.get("role") == "assistant" and any(phrase in prev_content for phrase in name_questions):
                         # A resposta atual provavelmente é um nome
                         potential_name = msg.get("content", "").strip()
                         words = potential_name.split()
+                        
+                        # emoji_logger.info(f"🔍 Potencial nome detectado: '{potential_name}' ({len(words)} palavras)")
                         
                         # Aceitar respostas de 1-4 palavras como possível nome
                         if 1 <= len(words) <= 4:
@@ -82,14 +96,18 @@ class LeadManager:
                             blacklist = [
                                 "oi", "olá", "ola", "sim", "não", "nao", "ok", "tudo",
                                 "bom", "dia", "tarde", "noite", "boa", "legal", "bem",
-                                "quero", "gostaria", "preciso", "pode", "poderia"
+                                "quero", "gostaria", "preciso", "pode", "poderia",
+                                "claro", "certeza", "beleza", "blz", "tbm", "também"
                             ]
                             
                             # Se não tem palavras da blacklist, aceitar como nome
                             if not any(word.lower() in blacklist for word in words):
                                 lead_info["name"] = potential_name.title()
                                 emoji_logger.conversation_event(f"🎯 Nome detectado no contexto: {lead_info['name']}")
+                                # Log adicional removido para evitar erro
                                 continue
+                            # else:
+                            #     emoji_logger.info(f"❌ Potencial nome rejeitado (blacklist): '{potential_name}'")
                 
                 # Tentar padrões tradicionais
                 name = self._extract_name(content)
