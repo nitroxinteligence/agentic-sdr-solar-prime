@@ -150,18 +150,21 @@ class ConversationMonitor:
                 lead = lead_result.data[0]
                 
                 # Preparar dados do follow-up
+                # 🔥 CORREÇÃO COMPLETA: Banco tem 2 campos - 'type' (minúsculo) e 'follow_up_type' (maiúsculo)
                 followup_data = {
                     'lead_id': lead['id'],
                     'phone_number': phone,
-                    'follow_up_type': followup_type,  # 🔥 CORREÇÃO: Usar campo correto
+                    'type': 'reengagement',  # Campo obrigatório, usa valor minúsculo
+                    'follow_up_type': followup_type,  # Campo opcional, mantém valor original (IMMEDIATE_REENGAGEMENT ou DAILY_NURTURING)
                     'scheduled_at': datetime.now().isoformat(),
                     'status': 'pending',
-                    'message': '',  # Vazio para usar IA na geração
+                    'message': '',  # Campo obrigatório, mesmo que vazio
                     'priority': 'medium',
                     'attempt': 0,
                     'metadata': {
                         'source': 'conversation_monitor',
-                        'inactive_since': self.active_conversations.get(phone, datetime.now()).isoformat()
+                        'inactive_since': self.active_conversations.get(phone, datetime.now()).isoformat(),
+                        'original_type': followup_type  # Preservar tipo original para referência
                     }
                 }
                 
