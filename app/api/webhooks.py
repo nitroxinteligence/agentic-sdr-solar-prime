@@ -715,11 +715,16 @@ async def process_message_with_agent(
                     logger.warning(f"Erro na validação AGNO: {agno_error}")
                     emoji_logger.system_info(f"✅ Imagem pronta (sem validação AGNO): {len(image_base64)} chars")
                     
+            # 🔥 FIX: Adicionar prefixo data URL para o MultimodalProcessor
+            mimetype = img_msg.get("mimetype", "image/jpeg")
+            data_url = f"data:{mimetype};base64,{image_base64}" if image_base64 else ""
+            
             media_data = {
                 "type": "image",
-                "mimetype": img_msg.get("mimetype", "image/jpeg"),
+                "mimetype": mimetype,
                 "caption": img_msg.get("caption", ""),
-                "data": image_base64,  # Imagem completa (se >5KB) ou thumbnail
+                "data": data_url,  # Data URL completo com prefixo
+                "content": data_url,  # Adicionar campo content também para compatibilidade
                 "has_full_image": bool(image_base64 and len(image_base64) > 5000),  # True se é imagem completa
                 "file_size": img_msg.get("fileLength", 0)
             }
@@ -772,11 +777,16 @@ async def process_message_with_agent(
                 except Exception as download_error:
                     emoji_logger.system_warning(f"Erro ao baixar documento: {download_error}")
             
+            # 🔥 FIX: Adicionar prefixo data URL para o MultimodalProcessor
+            mimetype = doc_msg.get("mimetype", "application/pdf")
+            data_url = f"data:{mimetype};base64,{document_base64}" if document_base64 else ""
+            
             media_data = {
                 "type": "document",
-                "mimetype": doc_msg.get("mimetype", "application/pdf"),
+                "mimetype": mimetype,
                 "fileName": doc_msg.get("fileName", "documento"),
-                "data": document_base64 or "",  # Documento completo ou vazio
+                "data": data_url,  # Data URL completo com prefixo
+                "content": data_url,  # Adicionar campo content também para compatibilidade
                 "has_content": bool(document_base64),
                 "file_size": doc_msg.get("fileLength", 0)
             }
@@ -841,11 +851,16 @@ async def process_message_with_agent(
                 except Exception as download_error:
                     emoji_logger.system_warning(f"Erro ao baixar áudio: {download_error}")
             
+            # 🔥 FIX: Adicionar prefixo data URL para o MultimodalProcessor
+            mimetype = audio_msg.get("mimetype", "audio/ogg")
+            data_url = f"data:{mimetype};base64,{audio_base64}" if audio_base64 else ""
+            
             media_data = {
                 "type": "audio",
-                "mimetype": audio_msg.get("mimetype", "audio/ogg"),
+                "mimetype": mimetype,
                 "ptt": audio_msg.get("ptt", False),
-                "data": audio_base64 or "",  # Áudio completo ou vazio
+                "data": data_url,  # Data URL completo com prefixo
+                "content": data_url,  # Adicionar campo content também para compatibilidade
                 "has_content": bool(audio_base64),
                 "duration": audio_msg.get("seconds", 0)
             }
