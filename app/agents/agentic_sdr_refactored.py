@@ -41,6 +41,7 @@ class AgenticSDR:
         self.conversation_history = []
         self.current_lead_info = {}
         self.current_phone = None
+        self.conversation_id = None  # Para rastrear a conversa no banco
         
     async def initialize(self):
         """Inicialização assíncrona SIMPLES"""
@@ -197,11 +198,26 @@ class AgenticSDR:
                     emoji_logger.multimodal_event("📎 Mídia processada com sucesso")
             
             # 2. Atualizar histórico
-            self.conversation_history.append({
+            user_message = {
                 "role": "user",
                 "content": message,
                 "timestamp": datetime.now().isoformat()
-            })
+            }
+            self.conversation_history.append(user_message)
+            
+            # 2.1 SALVAR MENSAGEM DO USUÁRIO NO BANCO
+            if self.conversation_id and phone:
+                try:
+                    from app.integrations.supabase_client import supabase_client
+                    await supabase_client.save_message({
+                        "conversation_id": self.conversation_id,
+                        "role": "user",
+                        "content": message,
+                        "created_at": datetime.now().isoformat()
+                    })
+                    emoji_logger.system_event("💾 Mensagem do usuário salva no banco")
+                except Exception as e:
+                    emoji_logger.system_warning(f"⚠️ Erro ao salvar mensagem: {e}")
             
             # 3. Analisar contexto
             context = self.context_analyzer.analyze_context(
@@ -237,11 +253,26 @@ class AgenticSDR:
             )
             
             # 7. Atualizar histórico com resposta
-            self.conversation_history.append({
+            assistant_message = {
                 "role": "assistant",
                 "content": response,
                 "timestamp": datetime.now().isoformat()
-            })
+            }
+            self.conversation_history.append(assistant_message)
+            
+            # 7.1 SALVAR RESPOSTA DO ASSISTENTE NO BANCO
+            if self.conversation_id and self.current_phone:
+                try:
+                    from app.integrations.supabase_client import supabase_client
+                    await supabase_client.save_message({
+                        "conversation_id": self.conversation_id,
+                        "role": "assistant",
+                        "content": response,
+                        "created_at": datetime.now().isoformat()
+                    })
+                    emoji_logger.system_event("💾 Resposta do assistente salva no banco")
+                except Exception as e:
+                    emoji_logger.system_warning(f"⚠️ Erro ao salvar resposta: {e}")
             
             # 8. Registrar resposta do bot no monitor de conversas
             if self.current_phone:
@@ -282,14 +313,35 @@ class AgenticSDR:
         # 🔥 BUSCAR CONHECIMENTO RELEVANTE NA BASE
         knowledge_context = await self._search_knowledge_base(message)
         
-        # Construir prompt com todas as informações
-        prompt = self._build_prompt(
+        # 🔥 INCLUIR HISTÓRICO DA CONVERSA NO PROMPT
+        prompt_parts = []
+        
+        # Adicionar histórico resumido (últimas 10 mensagens para não ficar muito grande)
+        if len(self.conversation_history) > 1:
+            prompt_parts.append("📜 HISTÓRICO DA CONVERSA:")
+            # Pegar últimas 10 mensagens (excluindo a atual que já está no histórico)
+            recent_history = self.conversation_history[-11:-1] if len(self.conversation_history) > 11 else self.conversation_history[:-1]
+            for msg in recent_history:
+                role = "Cliente" if msg.get("role") == "user" else "Helen"
+                content = msg.get("content", "")
+                # Limitar conteúdo para não ficar muito grande
+                if len(content) > 200:
+                    content = content[:200] + "..."
+                prompt_parts.append(f"{role}: {content}")
+            prompt_parts.append("")  # Linha em branco
+        
+        # Adicionar informações atuais
+        current_prompt = self._build_prompt(
             message,
             context,
             lead_info,
             service_results,
             media_context
         )
+        prompt_parts.append(current_prompt)
+        
+        # Juntar todas as partes
+        prompt = "\n".join(prompt_parts)
         
         # Adicionar contexto do knowledge base
         if knowledge_context:
@@ -500,11 +552,11 @@ class AgenticSDR:
                 ).order('created_at', desc=True).limit(1).execute()
                 
                 if conversations.data:
-                    conversation_id = conversations.data[0]['id']
+                    self.conversation_id = conversations.data[0]['id']
                     
                     # Recuperar últimas 200 mensagens
                     messages = await supabase_client.get_conversation_messages(
-                        conversation_id, 
+                        self.conversation_id, 
                         limit=200  # 🔥 200 mensagens
                     )
                     
@@ -527,16 +579,59 @@ class AgenticSDR:
                         f"📚 Histórico carregado: {len(self.conversation_history)} mensagens (👤 {user_msgs} user, 🤖 {assistant_msgs} assistant)"
                     )
                     
-                    # Atualizar informações do lead com dados do banco
-                    self.current_lead_info.update({
-                        "id": lead['id'],
-                        "name": lead.get('name'),
-                        "email": lead.get('email'),
-                        "bill_value": lead.get('bill_value'),
-                        "chosen_flow": lead.get('chosen_flow'),
-                        "qualification_score": lead.get('qualification_score', 0),
-                        "current_stage": lead.get('current_stage', 'novo')
-                    })
+                else:
+                    # CRIAR NOVA CONVERSA SE NÃO EXISTIR
+                    emoji_logger.system_event("📝 Criando nova conversa...")
+                    import uuid
+                    conversation_data = {
+                        "lead_id": lead['id'],
+                        "session_id": f"session_{uuid.uuid4().hex[:8]}_{phone[-4:]}",
+                        "total_messages": 0,
+                        "phone_number": phone,
+                        "created_at": datetime.now().isoformat()
+                    }
+                    result = supabase_client.client.table('conversations').insert(conversation_data).execute()
+                    if result.data:
+                        self.conversation_id = result.data[0]['id']
+                        emoji_logger.system_event(f"✅ Conversa criada: {self.conversation_id}")
+                    
+                # Atualizar informações do lead com dados do banco
+                self.current_lead_info.update({
+                    "id": lead['id'],
+                    "name": lead.get('name'),
+                    "email": lead.get('email'),
+                    "bill_value": lead.get('bill_value'),
+                    "chosen_flow": lead.get('chosen_flow'),
+                    "qualification_score": lead.get('qualification_score', 0),
+                    "current_stage": lead.get('current_stage', 'novo')
+                })
+            else:
+                # CRIAR NOVO LEAD E CONVERSA
+                emoji_logger.system_event("👤 Criando novo lead...")
+                lead_data = {
+                    "phone": phone,
+                    "qualification_score": 0,
+                    "current_stage": "novo",
+                    "created_at": datetime.now().isoformat()
+                }
+                new_lead = await supabase_client.create_lead(lead_data)
+                
+                if new_lead:
+                    self.current_lead_info["id"] = new_lead['id']
+                    
+                    # Criar conversa para o novo lead
+                    import uuid
+                    conversation_data = {
+                        "lead_id": new_lead['id'],
+                        "session_id": f"session_{uuid.uuid4().hex[:8]}_{phone[-4:]}",
+                        "total_messages": 0,
+                        "phone_number": phone,
+                        "created_at": datetime.now().isoformat()
+                    }
+                    result = supabase_client.client.table('conversations').insert(conversation_data).execute()
+                    if result.data:
+                        self.conversation_id = result.data[0]['id']
+                        emoji_logger.system_event(f"✅ Lead e conversa criados")
                     
         except Exception as e:
             emoji_logger.system_warning(f"⚠️ Erro ao carregar histórico: {e}")

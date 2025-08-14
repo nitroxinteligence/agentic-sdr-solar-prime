@@ -429,13 +429,29 @@ class LeadManager:
         
         # Mapear os fluxos exatos do Kommo
         flow_mapping = {
+            # 🔥 FRASES COMPLETAS PRIMEIRO (mais específicas)
+            "compra de energia com desconto": "Compra com Desconto",
+            "compra energia com desconto": "Compra com Desconto",
+            "energia com desconto": "Compra com Desconto",
+            "compra com desconto": "Compra com Desconto",
+            
+            "instalação de usina própria": "Instalação Usina Própria",
+            "instalação usina própria": "Instalação Usina Própria",
+            "instalar usina própria": "Instalação Usina Própria",
+            "usina própria": "Instalação Usina Própria",
+            
+            "aluguel de lote": "Aluguel de Lote",
+            "alugar lote": "Aluguel de Lote",
+            
+            "usina de investimento": "Usina Investimento",
+            "usina investimento": "Usina Investimento",
+            
             # Opções numéricas
             "opção 1": "Instalação Usina Própria",
             "opcao 1": "Instalação Usina Própria",
             "1": "Instalação Usina Própria",
             "instalação própria": "Instalação Usina Própria",
             "instalacao propria": "Instalação Usina Própria",
-            "usina própria": "Instalação Usina Própria",
             
             "opção 2": "Aluguel de Lote",
             "opcao 2": "Aluguel de Lote",
@@ -452,8 +468,7 @@ class LeadManager:
             "opção 4": "Usina Investimento",
             "opcao 4": "Usina Investimento",
             "4": "Usina Investimento",
-            "investimento": "Usina Investimento",
-            "usina investimento": "Usina Investimento"
+            "investimento": "Usina Investimento"
         }
         
         # Padrões específicos para detectar escolha de fluxo
@@ -481,8 +496,11 @@ class LeadManager:
                     elif option_num == "4":
                         return "Usina Investimento"
         
-        # Depois verificar palavras-chave específicas
-        for key, flow in flow_mapping.items():
+        # 🔥 IMPORTANTE: Ordenar keys por tamanho (maiores primeiro) para evitar matches parciais
+        sorted_keys = sorted(flow_mapping.keys(), key=len, reverse=True)
+        
+        # Verificar palavras-chave específicas (maiores primeiro)
+        for key in sorted_keys:
             if key in text_lower:
                 # Evitar falsos positivos com números soltos
                 # Só aceitar números isolados se vierem com contexto de escolha
@@ -496,7 +514,7 @@ class LeadManager:
                 if key.isdigit() and ("r$" in text_lower or "reais" in text_lower or "conta" in text_lower):
                     continue
                     
-                return flow
+                return flow_mapping[key]
         
         # Não retornar nada se não for uma escolha clara de fluxo
         return None
