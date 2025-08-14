@@ -110,7 +110,11 @@ class LeadManager:
                                     "bom", "dia", "tarde", "noite", "boa", "legal", "bem",
                                     "quero", "gostaria", "preciso", "pode", "poderia",
                                     "claro", "certeza", "beleza", "blz", "tbm", "também",
-                                    "tá", "ta", "está", "estou", "to"
+                                    "tá", "ta", "está", "estou", "to",
+                                    # 🔥 ADICIONADO: Palavras comuns que estavam sendo detectadas como nome
+                                    "já", "tenho", "como", "funciona", "quanto", "vou",
+                                    "pago", "minha", "conta", "desconto", "economia",
+                                    "origo", "setta", "solar", "energia", "luz"
                                 ]
                                 
                                 # Se não tem palavras da blacklist, aceitar como nome
@@ -280,7 +284,8 @@ class LeadManager:
             r"sou o ([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2})(?:[,\.\!]|$)",
             r"sou a ([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2})(?:[,\.\!]|$)",
             r"eu sou ([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2})(?:[,\.\!]|$)",
-            r"(?:^|\s)([A-Z][a-zÀ-ÿ]+\s+[A-Z][a-zÀ-ÿ]+)(?:\s|$)"  # Nomes próprios capitalizados (mais restrito)
+            # 🔥 REMOVIDO: Pattern genérico que capturava qualquer palavra capitalizada como nome
+            # Isso estava causando detecção incorreta: "Já Tenho", "Como Funciona", etc.
         ]
         
         for pattern in patterns:

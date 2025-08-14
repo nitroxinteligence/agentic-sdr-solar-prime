@@ -362,53 +362,44 @@ class AgenticSDR:
                      lead_info: Dict[str, Any],
                      service_results: List[Dict[str, Any]],
                      media_context: str) -> str:
-        """Constrói prompt com contexto completo"""
+        """
+        Constrói prompt APENAS com informações factuais.
+        NÃO adiciona instruções que competem com o system prompt.
+        """
         
+        # 🔥 CORREÇÃO CRÍTICA: Apenas informações factuais, SEM instruções
         prompt_parts = [
             f"Mensagem do cliente: {message}"
         ]
         
-        # Adicionar contexto com destaque para estágios especiais
-        stage = context.get("conversation_stage", "")
-        if stage == "estágio_0_coleta_nome":
-            prompt_parts.append("🔴 ESTÁGIO ATUAL: 0 - COLETAR NOME (Pergunte o nome antes de qualquer coisa!)")
-        elif stage == "estágio_1_apresentar_soluções":
-            prompt_parts.append("🔴 ESTÁGIO ATUAL: 1 - APRESENTAR 4 SOLUÇÕES (Nome coletado, agora apresente as 4 opções numeradas!)")
-        elif stage == "estágio_2_aguardando_escolha":
-            prompt_parts.append("🔴 ESTÁGIO ATUAL: 2 - AGUARDANDO ESCOLHA (Soluções apresentadas, aguarde a escolha)")
-        elif stage:
-            prompt_parts.append(f"Estágio da conversa: {stage}")
+        # Adicionar APENAS informações factuais do lead (sem instruções)
+        if lead_info.get("name"):
+            prompt_parts.append(f"Nome do lead: {lead_info['name']}")
         
-        if context.get("user_intent"):
-            prompt_parts.append(f"Intenção detectada: {context['user_intent']}")
-        
-        if context.get("urgency_level"):
-            prompt_parts.append(f"Urgência: {context['urgency_level']}")
-        
-        # Adicionar informações do lead
         if lead_info.get("bill_value"):
-            prompt_parts.append(f"Valor da conta: R$ {lead_info['bill_value']}")
+            prompt_parts.append(f"Valor da conta informado: R$ {lead_info['bill_value']}")
         
-        if lead_info.get("qualification_score"):
-            prompt_parts.append(f"Score do lead: {lead_info['qualification_score']}/100")
+        if lead_info.get("chosen_flow"):
+            prompt_parts.append(f"Fluxo escolhido: {lead_info['chosen_flow']}")
         
-        # Adicionar resultados de serviços
+        # Adicionar resultados de serviços (apenas fatos, sem instruções)
         for result in service_results:
-            if result.get("service") == "calendar":
-                prompt_parts.append("✅ Reunião agendada com sucesso!")
-            elif result.get("service") == "crm":
-                prompt_parts.append("✅ Lead atualizado no CRM")
-            elif result.get("service") == "followup":
-                prompt_parts.append("✅ Follow-up agendado")
+            if result.get("service") == "calendar" and result.get("success"):
+                prompt_parts.append("Reunião agendada com sucesso")
+            elif result.get("service") == "crm" and result.get("success"):
+                prompt_parts.append("Lead atualizado no CRM")
+            elif result.get("service") == "followup" and result.get("success"):
+                prompt_parts.append("Follow-up agendado")
         
-        # Adicionar contexto de mídia
+        # Adicionar contexto de mídia se houver
         if media_context:
-            prompt_parts.append(f"Mídia recebida: {media_context}")
+            prompt_parts.append(f"Mídia: {media_context}")
         
-        # Adicionar instrução de ação
-        prompt_parts.append(f"\nAção recomendada: {context.get('action_needed', 'conversar')}")
-        prompt_parts.append("\nResponda de forma natural, amigável e profissional.")
+        # 🔥 REMOVIDO: "Ação recomendada" e outras instruções que competem com o prompt principal
+        # 🔥 REMOVIDO: Instruções de estágio que sobrescrevem o fluxo
+        # 🔥 REMOVIDO: "Responda de forma natural" - já está no system prompt
         
+        # Retornar APENAS informações factuais
         return "\n".join(prompt_parts)
     
     def _format_media_context(self, media_result: Dict[str, Any]) -> str:
