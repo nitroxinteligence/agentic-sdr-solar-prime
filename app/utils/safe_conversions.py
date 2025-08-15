@@ -42,11 +42,13 @@ def safe_int_conversion(value: Any, default: int = 0) -> int:
         if not value or value.lower() in ['none', 'null', 'nan']:
             return default
         
-        # Remove símbolos comuns
-        value = value.replace(',', '').replace('.', '')
+        # Remove vírgulas (separador de milhares)
+        value = value.replace(',', '')
         
         try:
-            return int(value)
+            # Tenta converter primeiro como float, depois para int
+            # Isso permite lidar com strings como "10.0" ou "10.5"
+            return int(float(value))
         except (ValueError, TypeError):
             logger.warning(f"Não foi possível converter '{value}' para int. Usando valor padrão {default}")
             return default

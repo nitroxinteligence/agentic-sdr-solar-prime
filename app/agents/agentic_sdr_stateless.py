@@ -514,6 +514,9 @@ class AgenticSDRStateless:
         Campos que vão para preferences JSONB:
         - location, property_type, interests, objections, has_bill_image
         """
+        # Importar função de conversão segura
+        from app.utils.safe_conversions import safe_int_conversion
+        
         # Mapeamento de campos diretos
         field_mapping = {
             'name': 'name',
@@ -535,6 +538,11 @@ class AgenticSDRStateless:
             if key in field_mapping and value is not None:
                 # Campo direto na tabela leads
                 supabase_field = field_mapping[key]
+                
+                # Converter qualification_score para int se necessário
+                if key == 'qualification_score':
+                    value = safe_int_conversion(value, 0)
+                
                 supabase_data[supabase_field] = value
             elif key == 'preferences' and isinstance(value, dict):
                 # Já é um objeto preferences completo
@@ -554,6 +562,9 @@ class AgenticSDRStateless:
         
         Separa campos diretos da tabela leads e campos que vão para preferences JSONB
         """
+        # Importar função de conversão segura
+        from app.utils.safe_conversions import safe_int_conversion
+        
         # Mesclar lead_info com mudanças
         complete_data = lead_info.copy()
         complete_data.update(changes)
@@ -572,7 +583,7 @@ class AgenticSDRStateless:
             'name': complete_data.get('name'),
             'email': complete_data.get('email'),
             'bill_value': complete_data.get('bill_value'),
-            'qualification_score': complete_data.get('qualification_score', 0),
+            'qualification_score': safe_int_conversion(complete_data.get('qualification_score', 0), 0),  # Converter para int
             'qualification_status': 'PENDING',  # Status inicial padrão do banco
             'current_stage': complete_data.get('current_stage', 'INITIAL_CONTACT'),  # Valor padrão do banco
             'chosen_flow': complete_data.get('chosen_flow'),
