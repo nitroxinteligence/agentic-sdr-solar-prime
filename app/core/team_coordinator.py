@@ -19,7 +19,8 @@ class TeamCoordinator:
     def __init__(self):
         self.is_initialized = False
         self.services = {}
-        self.decision_threshold = 0.3  # Threshold reduzido para ativação mais sensível
+        self.decision_threshold = 0.4  # Threshold otimizado para análise inteligente
+        self.dynamic_threshold = True  # Habilita threshold dinâmico por serviço
         
     async def initialize(self):
         """Inicialização assíncrona dos serviços"""
@@ -67,7 +68,7 @@ class TeamCoordinator:
     
     def analyze_service_need(self, message: str, context: Dict[str, Any]) -> Dict[str, float]:
         """
-        Analisa necessidade de serviços com threshold 0.6
+        Analisa necessidade de serviços com INTENÇÃO INTELIGENTE
         
         Args:
             message: Mensagem do usuário
@@ -84,45 +85,208 @@ class TeamCoordinator:
         
         message_lower = message.lower()
         
-        # Calendar - palavras-chave reduzidas (10 essenciais)
-        calendar_keywords = [
+        # 🎯 CALENDAR - Análise de Intenção Aprimorada
+        calendar_score = self._analyze_calendar_intent(message_lower, context)
+        scores["calendar"] = calendar_score
+        
+        # 📊 CRM - Análise de Intenção para Dados
+        crm_score = self._analyze_crm_intent(message_lower, context)
+        scores["crm"] = crm_score
+        
+        # 🔄 FOLLOWUP - Análise de Intenção para Reengajamento
+        followup_score = self._analyze_followup_intent(message_lower, context)
+        scores["followup"] = followup_score
+        
+        # 🚀 BOOST INTELIGENTE baseado em user_intent e conversation_stage
+        scores = self._apply_intelligent_boost(scores, context)
+        
+        # Normalizar scores e aplicar threshold dinâmico
+        for service in scores:
+            scores[service] = min(1.0, scores[service])
+        
+        # 📝 Log detalhado para debugging
+        emoji_logger.service_event(
+            "🎯 Análise de necessidade de serviços",
+            calendar=f"{scores['calendar']:.3f}",
+            crm=f"{scores['crm']:.3f}", 
+            followup=f"{scores['followup']:.3f}",
+            threshold=self.decision_threshold
+        )
+        
+        return scores
+    
+    def _get_dynamic_threshold(self, service_name: str, context: Dict[str, Any]) -> float:
+        """
+        🎯 Calcula threshold dinâmico baseado no serviço e contexto
+        """
+        if not self.dynamic_threshold:
+            return self.decision_threshold
+        
+        base_threshold = self.decision_threshold
+        
+        # Threshold específico por serviço
+        service_thresholds = {
+            "calendar": 0.35,  # Mais sensível para agendamentos
+            "crm": 0.45,       # Padrão para dados
+            "followup": 0.40   # Moderado para follow-ups
+        }
+        
+        threshold = service_thresholds.get(service_name, base_threshold)
+        
+        # Ajustes baseados no contexto
+        stage = context.get("conversation_stage", "").lower()
+        urgency = context.get("urgency_level", "normal").lower()
+        
+        # Reduzir threshold para estágios avançados
+        if stage in ["qualificação", "negociação", "fechamento"]:
+            threshold -= 0.1
+        
+        # Reduzir threshold para alta urgência
+        if urgency == "alta":
+            threshold -= 0.15
+        elif urgency == "média":
+            threshold -= 0.05
+        
+        return max(0.2, threshold)  # Mínimo de 0.2
+    
+    def _analyze_calendar_intent(self, message_lower: str, context: Dict[str, Any]) -> float:
+        """
+        🎯 Análise INTELIGENTE de intenção para Calendar Service
+        Considera palavras-chave + intenção + estágio da conversa
+        """
+        calendar_score = 0.0
+        
+        # 1. PALAVRAS-CHAVE BÁSICAS (peso 0.2)
+        basic_keywords = [
             "agendar", "marcar", "reunião", "conversar", "leonardo",
             "horário", "disponível", "data", "quando", "encontro"
         ]
+        keyword_matches = sum(1 for kw in basic_keywords if kw in message_lower)
+        calendar_score += min(0.4, keyword_matches * 0.2)  # Max 0.4 de keywords
         
-        calendar_score = sum(1 for kw in calendar_keywords if kw in message_lower)
-        scores["calendar"] = min(1.0, calendar_score * 0.15)  # Max 1.0
-        
-        # CRM - atualização de lead
-        crm_keywords = [
-            "nome", "telefone", "email", "empresa", "conta",
-            "valor", "consumo", "kwh", "endereço", "cpf"
+        # 2. INTENÇÕES FORTES (peso 0.4)
+        strong_intent_phrases = [
+            "quero agendar", "vamos marcar", "podemos conversar",
+            "falar com leonardo", "marcar reunião", "que horário",
+            "estou disponível", "quando posso", "vamos falar"
         ]
+        for phrase in strong_intent_phrases:
+            if phrase in message_lower:
+                calendar_score += 0.4
+                break
         
-        crm_score = sum(1 for kw in crm_keywords if kw in message_lower)
-        scores["crm"] = min(1.0, crm_score * 0.25)
+        # 3. INDICADORES DE URGÊNCIA (peso 0.3)
+        urgency_indicators = [
+            "hoje", "amanhã", "logo", "rápido", "urgente",
+            "já", "agora", "preciso", "importante"
+        ]
+        if any(indicator in message_lower for indicator in urgency_indicators):
+            calendar_score += 0.3
         
-        # FollowUp - reengajamento
+        # 4. INDICADORES DE TEMPO ESPECÍFICO (peso 0.5)
+        time_patterns = [
+            r"\d{1,2}h\d{0,2}", r"\d{1,2}:\d{2}", r"\d{1,2}/\d{1,2}",
+            "manhã", "tarde", "noite", "segunda", "terça", "quarta", 
+            "quinta", "sexta", "sábado", "domingo"
+        ]
+        import re
+        for pattern in time_patterns:
+            if re.search(pattern, message_lower):
+                calendar_score += 0.5
+                break
+        
+        return min(1.0, calendar_score)
+    
+    def _analyze_crm_intent(self, message_lower: str, context: Dict[str, Any]) -> float:
+        """
+        📊 Análise INTELIGENTE de intenção para CRM Service
+        """
+        crm_score = 0.0
+        
+        # Palavras-chave de dados pessoais/empresa
+        data_keywords = [
+            "nome", "telefone", "email", "empresa", "conta",
+            "valor", "consumo", "kwh", "endereço", "cpf", "cnpj"
+        ]
+        keyword_matches = sum(1 for kw in data_keywords if kw in message_lower)
+        crm_score += min(0.6, keyword_matches * 0.25)
+        
+        # Intenções de fornecer dados
+        data_providing_phrases = [
+            "meu nome é", "me chamo", "minha empresa", "nossa conta",
+            "pagamos", "gastamos", "consumimos", "nosso endereço"
+        ]
+        for phrase in data_providing_phrases:
+            if phrase in message_lower:
+                crm_score += 0.4
+                break
+        
+        return min(1.0, crm_score)
+    
+    def _analyze_followup_intent(self, message_lower: str, context: Dict[str, Any]) -> float:
+        """
+        🔄 Análise INTELIGENTE de intenção para FollowUp Service
+        """
+        followup_score = 0.0
+        
+        # Palavras-chave de adiamento/reengajamento
         followup_keywords = [
             "lembrar", "retornar", "voltar", "depois", "pensar",
-            "aguardar", "futuro", "próxima", "acompanhar", "followup",
-            "ligue", "ligar", "dias", "semana", "amanhã", "contato"
+            "aguardar", "futuro", "próxima", "acompanhar", "ligar"
         ]
+        keyword_matches = sum(1 for kw in followup_keywords if kw in message_lower)
+        followup_score += min(0.4, keyword_matches * 0.2)
         
-        followup_score = sum(1 for kw in followup_keywords if kw in message_lower)
-        scores["followup"] = min(1.0, followup_score * 0.20)  # Aumentado para ativar mais facilmente
+        # Intenções de adiamento
+        postpone_phrases = [
+            "vou pensar", "preciso conversar", "não posso agora",
+            "talvez depois", "outra hora", "me ligue", "entre em contato"
+        ]
+        for phrase in postpone_phrases:
+            if phrase in message_lower:
+                followup_score += 0.6
+                break
         
-        # Boost baseado no contexto
-        if context.get("action_needed") == "agendar":
-            scores["calendar"] += 0.3
-        elif context.get("action_needed") == "qualificar":
-            scores["crm"] += 0.3
-        elif context.get("action_needed") == "reengajar":
-            scores["followup"] += 0.3
+        return min(1.0, followup_score)
+    
+    def _apply_intelligent_boost(self, scores: Dict[str, float], context: Dict[str, Any]) -> Dict[str, float]:
+        """
+        🚀 Aplica boost inteligente baseado em user_intent e conversation_stage
+        """
+        # BOOST baseado em user_intent (do contexto analisado)
+        user_intent = context.get("user_intent", "").lower()
         
-        # Normalizar scores
-        for service in scores:
-            scores[service] = min(1.0, scores[service])
+        if "agendar" in user_intent or "reunião" in user_intent:
+            scores["calendar"] += 0.4
+            emoji_logger.service_event("🎯 BOOST Calendar por user_intent")
+            
+        elif "dados" in user_intent or "informações" in user_intent:
+            scores["crm"] += 0.4
+            emoji_logger.service_event("📊 BOOST CRM por user_intent")
+            
+        elif "depois" in user_intent or "adiado" in user_intent:
+            scores["followup"] += 0.4
+            emoji_logger.service_event("🔄 BOOST FollowUp por user_intent")
+        
+        # BOOST baseado em conversation_stage
+        stage = context.get("conversation_stage", "").lower()
+        
+        if stage in ["qualificação", "negociação", "fechamento"]:
+            scores["calendar"] += 0.3  # Estágios avançados = agendar reunião
+            emoji_logger.service_event("🎯 BOOST Calendar por conversation_stage avançado")
+            
+        elif stage in ["início", "descoberta"]:
+            scores["crm"] += 0.3  # Início = coletar dados
+            emoji_logger.service_event("📊 BOOST CRM por conversation_stage inicial")
+        
+        # BOOST baseado em action_needed (compatibilidade)
+        action_needed = context.get("action_needed", "")
+        if action_needed == "agendar":
+            scores["calendar"] += 0.4
+        elif action_needed == "qualificar":
+            scores["crm"] += 0.4
+        elif action_needed == "reengajar":
+            scores["followup"] += 0.4
         
         return scores
     
@@ -146,13 +310,17 @@ class TeamCoordinator:
         # Analisar necessidade
         scores = self.analyze_service_need(message, context)
         
-        # Executar serviços que passaram o threshold
+        # Executar serviços com threshold dinâmico
         for service_name, score in scores.items():
-            if score >= self.decision_threshold:
+            # Calcular threshold dinâmico para este serviço
+            dynamic_threshold = self._get_dynamic_threshold(service_name, context)
+            
+            if score >= dynamic_threshold:
                 emoji_logger.service_event(
                     f"🎯 Executando {service_name}",
-                    score=f"{score:.2f}",
-                    threshold=self.decision_threshold
+                    score=f"{score:.3f}",
+                    threshold=f"{dynamic_threshold:.3f}",
+                    reason="threshold_dinamico"
                 )
                 
                 result = await self._execute_single_service(

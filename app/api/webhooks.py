@@ -13,7 +13,7 @@ from app.utils.logger import emoji_logger
 from app.integrations.supabase_client import supabase_client
 from app.integrations.redis_client import redis_client
 from app.integrations.evolution import evolution_client
-from app.agents.agentic_sdr_refactored import get_agentic_agent as create_agentic_sdr  # Importa o AGENTIC SDR Refatorado
+from app.agents.agentic_sdr_stateless import create_stateless_agent  # Importa o AGENTIC SDR Stateless
 from app.config import settings
 from app.services.message_buffer import MessageBuffer, set_message_buffer
 from app.services.message_splitter import MessageSplitter, set_message_splitter
@@ -243,17 +243,52 @@ def extract_base64_from_data_url(data_url: str) -> str:
 # _cached_agent = None
 # _agent_lock = asyncio.Lock()
 
-async def get_agentic_agent():
-    """Cria NOVA instância do agente para cada requisição (evita deadlock)"""
-    # SEMPRE criar nova instância - evita problemas de estado compartilhado
-    # Isso resolve o problema de travamento após a primeira mensagem
-    emoji_logger.webhook_process("🚀 Criando nova instância do AgenticSDR...")
+async def create_agent_with_context(phone: str, conversation_id: str = None) -> tuple:
+    """
+    Cria agente stateless com contexto completo carregado
+    
+    Args:
+        phone: Número do telefone
+        conversation_id: ID da conversa (opcional)
+        
+    Returns:
+        Tupla (agent, execution_context)
+    """
+    emoji_logger.webhook_process("🏭 Criando agente stateless com contexto...")
+    
     try:
-        agent = await create_agentic_sdr()
-        emoji_logger.system_ready("✅ Nova instância do AgenticSDR criada!")
-        return agent
+        # Carregar histórico e informações em paralelo
+        from app.integrations.supabase_client import supabase_client
+        
+        # Carregar dados em paralelo
+        lead_data = await supabase_client.get_lead_by_phone(phone)
+        
+        conversation_history = []
+        if conversation_id:
+            conversation_history = await supabase_client.get_conversation_messages(conversation_id, limit=500)
+        
+        # Criar contexto de execução completo
+        execution_context = {
+            "phone": phone,
+            "lead_info": lead_data or {},
+            "conversation_id": conversation_id,
+            "conversation_history": conversation_history or [],
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Criar agente stateless
+        agent = await create_stateless_agent()
+        
+        emoji_logger.system_ready(
+            "✅ Agente stateless criado com contexto",
+            history_count=len(conversation_history),
+            lead_name=lead_data.get('name') if lead_data else 'Não identificado'
+        )
+        
+        return agent, execution_context
+        
     except Exception as e:
-        emoji_logger.system_error("Agent Creation", f"Erro ao criar AgenticSDR: {str(e)}")
+        emoji_logger.system_error("Webhook", f"Erro ao criar agente com contexto: {e}")
         raise
 
 def get_message_buffer_instance():
@@ -593,22 +628,18 @@ async def process_message_with_agent(
         # Executar tarefas em paralelo
         await asyncio.gather(*save_tasks, return_exceptions=True)
         
-        # OTIMIZAÇÃO: Agente já está sendo carregado em paralelo
-        emoji_logger.webhook_process("Aguardando AGENTIC SDR pré-carregado...")
+        # Criar agente stateless com contexto completo
+        emoji_logger.webhook_process("Criando AGENTIC SDR Stateless...")
         
-        # Verificar agente
-        if isinstance(agent_result, Exception):
-            emoji_logger.system_error("Agent Load", f"Erro ao carregar agente: {agent_result}")
-            # Tentar criar agente novamente (fallback)
-            try:
-                agentic = await get_agentic_agent()
-            except Exception as e:
-                emoji_logger.system_error("Agent Fallback", f"Falha no fallback do agente: {e}")
-                raise HTTPException(status_code=503, detail="Agente temporariamente indisponível")
-        else:
-            agentic = agent_result
-            
-        emoji_logger.webhook_process("AGENTIC SDR pronto para uso")
+        try:
+            agentic, execution_context = await create_agent_with_context(
+                phone=phone,
+                conversation_id=conversation_id
+            )
+            emoji_logger.webhook_process("AGENTIC SDR Stateless pronto para uso")
+        except Exception as e:
+            emoji_logger.system_error("Agent Creation", f"Erro ao criar agente: {e}")
+            raise HTTPException(status_code=503, detail="Agente temporariamente indisponível")
         
         # REMOVIDO: Não simular tempo de leitura quando usuário envia mensagem
         # Isso estava causando typing aparecer quando não deveria
@@ -1086,16 +1117,16 @@ async def process_message_with_agent(
         agent_error = None
         
         try:
+            # Adicionar dados adicionais ao contexto de execução
+            execution_context["media"] = media_data
+            execution_context["message_id"] = message_id
+            execution_context["emotional_state"] = current_emotional_state
+            execution_context["lead_info"] = lead
+            
+            # Processar mensagem com contexto completo
             response = await agentic.process_message(
                 message=message_content,
-                metadata={
-                    "phone": phone,
-                    "lead_data": lead,
-                    "conversation_id": conversation_id,
-                    "media": media_data,
-                    "message_id": message_id,
-                    "current_emotional_state": current_emotional_state
-                }
+                execution_context=execution_context
             )
             
             # Verificar se é estrutura enriquecida ou string simples (compatibilidade)

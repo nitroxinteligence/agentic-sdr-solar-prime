@@ -391,8 +391,8 @@ class AgenticSDR:
             
             knowledge_service = KnowledgeService()
             
-            # 🔥 Buscar MÁXIMO conhecimento disponível (200 documentos)
-            results = await knowledge_service.search_knowledge_base(query, max_results=200)
+            # 🔥 Buscar MÁXIMO conhecimento disponível (500 documentos)
+            results = await knowledge_service.search_knowledge_base(query, max_results=500)
             
             if results:
                 knowledge_context = "\n\n📚 CONHECIMENTO RELEVANTE DA SOLARPRIME:\n"
@@ -472,6 +472,15 @@ class AgenticSDR:
             return "Áudio recebido"
         
         elif media_result.get("type") == "document":
+            # 🔥 CORREÇÃO: Incluir valor detectado em PDFs/documentos
+            if media_result.get("analysis", {}).get("is_bill"):
+                value = media_result["analysis"].get("bill_value")
+                if value:
+                    return f"Conta/Boleto detectado com valor de R$ {value:.2f}"
+                return f"Documento de conta/boleto recebido"
+            # Se tiver texto extraído
+            elif media_result.get("text"):
+                return f"Documento com texto: {media_result['text'][:100]}..."
             return f"Documento {media_result.get('metadata', {}).get('doc_type', 'desconhecido')} recebido"
         
         return "Mídia recebida"
@@ -557,7 +566,7 @@ class AgenticSDR:
                     # Recuperar últimas 200 mensagens
                     messages = await supabase_client.get_conversation_messages(
                         self.conversation_id, 
-                        limit=200  # 🔥 200 mensagens
+                        limit=500  # 🔥 500 mensagens
                     )
                     
                     # Converter para formato do histórico
