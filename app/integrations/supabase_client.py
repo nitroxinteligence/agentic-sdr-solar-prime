@@ -130,8 +130,9 @@ class SupabaseClient:
                 'lead_id': lead_id,
                 'session_id': session_id,  # Campo obrigatório
                 'status': 'ACTIVE',
-                'channel': 'whatsapp',
-                'sentiment': 'neutro',
+                # Campos removidos na otimização do schema:
+                # 'channel': 'whatsapp',  # Removido - campo não existe mais
+                # 'sentiment': 'neutro',   # Removido - campo não existe mais
                 'is_active': True,
                 'total_messages': 0,
                 'created_at': datetime.now().isoformat(),
