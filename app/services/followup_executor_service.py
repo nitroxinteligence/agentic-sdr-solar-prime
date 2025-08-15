@@ -11,7 +11,7 @@ import json
 
 from app.integrations.supabase_client import SupabaseClient
 from app.integrations.evolution import evolution_client
-from app.integrations.google_calendar import google_calendar_client
+# Google Calendar será acessado via CalendarServiceReal quando necessário
 from app.config import settings, FOLLOW_UP_TYPES
 from app.utils.logger import emoji_logger
 from app.integrations.redis_client import redis_client
@@ -188,21 +188,14 @@ class FollowUpExecutorService:
                     hours_before = metadata.get('hours_before', 24)
                     google_event_id = metadata.get('google_event_id')
                     
-                    # Buscar evento no Google Calendar se tiver ID
-                    google_event = None
-                    if google_event_id:
-                        try:
-                            google_event = await google_calendar_client.get_event(google_event_id)
-                            if google_event and google_event.get('status') == 'cancelled':
-                                # Reunião cancelada, marcar lembrete como cancelado
-                                await self.db.client.table('follow_ups').update({
-                                    'status': 'cancelled',
-                                    'executed_at': now.isoformat(),
-                                    'response': json.dumps({'reason': 'meeting_cancelled'})
-                                }).eq('id', reminder['id']).execute()
-                                continue
-                        except Exception as cal_error:
-                            logger.error(f"Erro ao buscar evento no Google Calendar: {cal_error}")
+                    # Nota: Verificação de status cancelado removida para simplificação
+                    # O lembrete será enviado independente do status do evento no Google Calendar
+                    google_event = {
+                        'summary': metadata.get('event_title', 'Reunião sobre Energia Solar'),
+                        'start': {'dateTime': metadata.get('event_start')},
+                        'end': {'dateTime': metadata.get('event_end')},
+                        'hangoutLink': metadata.get('meet_link')
+                    } if google_event_id else None
                     
                     # Buscar qualificação do lead
                     qualification_result = self.db.client.table('leads_qualifications').select("*").eq(

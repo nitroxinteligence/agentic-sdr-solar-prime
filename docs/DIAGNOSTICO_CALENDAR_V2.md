@@ -17,7 +17,69 @@ Após uma análise completa do código-fonte, a causa principal para o serviço 
 | **P3** | **Complexidade e Redundância** | `google_calendar.py`, `calendar_service_100_real.py` | **Médio**. Existem múltiplos clientes de calendário, violando o princípio de "zero complexidade". Isso aumenta a dificuldade de manutenção e a chance de bugs. |
 | **P4** | **Falta de Sincronização Pós-Agendamento** | `agentic_sdr_stateless.py`, `supabase_client.py` | **Médio**. Após agendar, o sistema não armazena de forma robusta o `google_event_id` no lead correspondente no Supabase, dificultando o gerenciamento futuro (cancelar/reagendar). |
 
-## 3. Plano de Ação e Solução Proposta
+## 3. Estratégia de Interação com Ferramentas (A Prova de Alucinações)
+
+Para resolver a questão fundamental de "qual a melhor forma para o agente não alucinar?", é crucial definir a arquitetura correta para a interação entre o LLM e as ferramentas.
+
+### 3.1. Análise de Abordagens: Prompt vs. Orquestrador
+
+Uma abordagem intuitiva seria instruir o LLM diretamente no prompt para gerar o código exato da ferramenta a ser executada (ex: `calendar_service.check_availability()`).
+
+- **Vantagens:**
+    - **Simplicidade Aparente:** Parece uma forma direta de comandar o agente.
+    - **Flexibilidade:** O comportamento pode ser alterado rapidamente editando o texto do prompt.
+
+- **Desvantagens (Riscos Críticos):**
+    - **Risco de Alucinação de Código:** O LLM pode gerar chamadas de função com parâmetros errados, métodos inexistentes ou sintaxe inválida, quebrando o sistema.
+    - **Falta de Lógica Estruturada:** O prompt não consegue lidar com lógica complexa (condicionais, loops, tratamento de erros) de forma confiável.
+    - **Segurança:** Um input malicioso do usuário poderia enganar o LLM para gerar uma chamada de ferramenta perigosa.
+    - **Manutenção Difícil:** O prompt se tornaria um "código spaguetti" de instruções, difícil de depurar e escalar.
+
+### 3.2. A Melhor Estratégia (2025): O Modelo Híbrido - Orquestrador Inteligente
+
+A abordagem mais robusta, segura e que estamos implementando, trata o LLM como um **motor de raciocínio** e o código Python como um **executor de ações**.
+
+**Como Funciona:**
+
+1.  **O Prompt (Define o "Quê" e o "Porquê"):** Define os objetivos e a estratégia do agente. Ex: *"Seu objetivo após qualificar um lead é agendar uma reunião. Seja proativo e sugira isso."*
+2.  **O Agente/LLM (Faz a "Análise"):** Analisa a conversa e entende a **intenção**. A saída é uma resposta em linguagem natural que reflete essa intenção, não um código.
+3.  **O Orquestrador - `TeamCoordinator` (Decide o "Como" e o "Quando"):** Nosso código Python recebe a intenção do agente, e usa lógica estruturada (`if/else`) para decidir qual ferramenta chamar de forma segura e determinística.
+
+**Diagrama do Fluxo:**
+`Usuário -> Agente (LLM + Prompt) -> [Análise/Intenção] -> Orquestrador (TeamCoordinator) -> [Execução Segura da Ferramenta]`
+
+Esta abordagem híbrida nos dá o melhor dos dois mundos: a flexibilidade do LLM e a confiabilidade do código Python.
+
+## 4. Lógica de Acionamento Detalhada
+
+Com o modelo híbrido, o "momento ideal" para cada ação do calendário é determinado pelo estágio da conversa e pela intenção detectada.
+
+#### **Ação: Verificar Disponibilidade (`check_availability`)**
+- **Momento Ideal:** Quando o lead demonstra interesse em agendar, mas está incerto sobre o horário, ou pergunta abertamente sobre a agenda.
+- **Gatilho:** O `TeamCoordinator` detecta palavras-chave como "horários", "quando", "disponível", ou dias da semana na resposta do usuário ou do próprio agente.
+
+#### **Ação: Agendar Reunião (`schedule_meeting`)**
+- **Momento Ideal:** Assim que o lead atende aos critérios de qualificação. O agente deve ser **proativo**.
+- **Gatilho:**
+    1.  **Contexto:** O agente finaliza as perguntas de qualificação.
+    2.  **Lógica do Prompt:** O prompt instrui o agente a focar 100% em agendar a reunião.
+    3.  **Ação do Agente:** O agente proativamente oferece o agendamento.
+    4.  **Lógica do Orquestrador:** A resposta positiva do usuário, somada ao contexto de "agendamento", atinge o score necessário no `TeamCoordinator` para acionar o serviço.
+
+#### **Ação: Cancelar Reunião (`cancel_meeting`)**
+- **Momento Ideal:** Quando o usuário solicita explicitamente o cancelamento.
+- **Gatilho:**
+    1.  **Usuário:** "Preciso cancelar nossa reunião."
+    2.  **Lógica:** O agente primeiro consulta a tabela `leads_qualifications` para encontrar o `google_event_id` associado ao lead.
+    3.  **Ação do Agente:** Com o ID, aciona `calendar_service.cancel_meeting(event_id)`.
+
+#### **Ação: Reagendar Reunião (`reschedule_meeting`)**
+- **Momento Ideal:** Quando o usuário solicita uma mudança de horário.
+- **Gatilho:** É um processo de duas etapas:
+    1.  **Cancelar:** O agente executa a lógica de cancelamento para remover o evento antigo.
+    2.  **Agendar Novo:** Imediatamente inicia a lógica de "Verificar Disponibilidade" e "Agendar Reunião" para o novo horário.
+
+## 5. Plano de Ação e Solução Proposta
 
 A solução proposta é uma refatoração focada em **unificar, simplificar e tornar a lógica proativa**, seguindo seus princípios de arquitetura.
 
@@ -47,7 +109,6 @@ Garantiremos que o sistema se lembre do que fez e lide com erros de forma gracio
 
 1.  **Melhorar `team_coordinator.py`:**
     *   No método `_execute_post_scheduling_workflow`, garantir que o `google_event_id` e o `meet_link` retornados pelo `calendar_service` sejam salvos de volta na tabela `leads_qualifications` do Supabase. Isso associa o evento diretamente ao registro de qualificação, o que é arquiteturalmente mais correto.
-    *   Isso cria um vínculo claro entre o lead e o evento, essencial para cancelamentos e reagendamentos.
 
 2.  **Aprimorar `calendar_service_100_real.py`:**
     *   Envolver as chamadas de API em blocos `try...except` mais específicos para `HttpError`, tratando diferentes códigos de status (403 para permissão, 404 para não encontrado, etc.) e fornecendo logs mais claros.
@@ -57,13 +118,13 @@ Garantiremos que o sistema se lembre do que fez e lide com erros de forma gracio
 1.  **Remover Código Obsoleto:**
     *   O arquivo `app/integrations/google_calendar.py` se tornará obsoleto após a Fase 1. Ele deverá ser removido do projeto para eliminar a redundância e simplificar a base de código.
 
-## 4. Benefícios Esperados
+## 6. Benefícios Esperados
 
 - **Funcionalidade Completa:** Agendamentos criarão Google Meets e enviarão convites para os participantes de forma nativa e automática.
 - **Redução de "Alucinações":** Com um gatilho proativo e regras claras no prompt, o agente não deixará de agendar reuniões por falta de palavras-chave.
 - **Código Simplificado:** A remoção de código redundante e a unificação da autenticação tornarão o sistema mais fácil de manter e depurar.
 - **Maior Robustez:** Melhor tratamento de erros e sincronização de estado tornarão a integração mais confiável.
 
-## 5. Próximos Passos
+## 7. Próximos Passos
 
 Aguardo sua aprovação para iniciar a implementação deste plano de ação. Podemos começar pela **Fase 1**, que é a mais crítica e trará os maiores benefícios imediatos.

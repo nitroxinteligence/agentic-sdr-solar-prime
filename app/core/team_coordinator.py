@@ -152,7 +152,7 @@ class TeamCoordinator:
     def _analyze_calendar_intent(self, message_lower: str, context: Dict[str, Any]) -> float:
         """
         🎯 Análise INTELIGENTE de intenção para Calendar Service
-        Considera palavras-chave + intenção + estágio da conversa
+        Considera palavras-chave + intenção + estágio da conversa + BOOST PROATIVO
         """
         calendar_score = 0.0
         
@@ -194,6 +194,29 @@ class TeamCoordinator:
             if re.search(pattern, message_lower):
                 calendar_score += 0.5
                 break
+        
+        # 🚀 5. BOOST PROATIVO PARA CLOSING/AGENDAMENTO (peso 0.3)
+        conversation_stage = context.get("conversation_stage", "").lower()
+        qualification_score = context.get("qualification_score", 0)
+        
+        # Boost quando estágio indica necessidade de agendamento
+        if conversation_stage in ["closing", "agendamento_processo", "qualificação_completa"]:
+            calendar_score += 0.3
+            emoji_logger.service_event("🎯 BOOST Calendar por estágio de closing")
+        
+        # Boost quando score de qualificação é alto (≥7)
+        if qualification_score >= 7:
+            calendar_score += 0.3
+            emoji_logger.service_event(f"🎯 BOOST Calendar por score alto: {qualification_score}")
+        
+        # 🚀 6. BOOST POR INTERESSE DEMONSTRADO (peso 0.2)
+        interest_indicators = [
+            "interessante", "interessado", "faz sentido", "legal", "ótimo",
+            "perfeito", "quero", "preciso", "vou", "aceito"
+        ]
+        if any(indicator in message_lower for indicator in interest_indicators):
+            calendar_score += 0.2
+            emoji_logger.service_event("🎯 BOOST Calendar por interesse demonstrado")
         
         return min(1.0, calendar_score)
     
@@ -581,9 +604,18 @@ class TeamCoordinator:
             from datetime import datetime, timedelta
             from app.integrations.supabase_client import supabase_client
             
-            google_event_id = scheduling_result.get("google_event_id")
+            # 🚀 EXTRAIR DADOS ESSENCIAIS do resultado do agendamento
+            google_event_id = scheduling_result.get("google_event_id") or scheduling_result.get("meeting_id")
             start_time = scheduling_result.get("start_time")
+            meet_link = scheduling_result.get("meet_link")
             lead_id = lead_info.get("id")  # Agora estará definido pelo CRM
+            
+            emoji_logger.service_event(
+                "🎯 Iniciando workflow pós-agendamento",
+                google_event_id=google_event_id,
+                start_time=start_time,
+                meet_link=meet_link
+            )
             
             # Se não tiver lead_id, tentar criar no CRM primeiro
             if not lead_id and "crm" in self.services:
@@ -595,9 +627,7 @@ class TeamCoordinator:
                 except Exception as e:
                     emoji_logger.service_warning(f"Erro ao criar lead no CRM: {e}")
             
-            emoji_logger.service_event("🎯 Iniciando workflow pós-agendamento")
-            
-            # 1. CRIAR QUALIFICAÇÃO NO SUPABASE
+            # 1. SALVAR GOOGLE_EVENT_ID NO SUPABASE - ESSENCIAL PARA CANCELAMENTOS
             try:
                 # Buscar ou criar lead no Supabase usando UUID
                 supabase_lead_id = await self._get_or_create_supabase_lead_id(lead_info)
@@ -608,28 +638,47 @@ class TeamCoordinator:
                     'score': 85,
                     'notes': f'Reunião agendada com sucesso. Evento Google: {google_event_id}',
                     'qualified_at': datetime.now().isoformat(),
-                    'qualified_by': str(uuid4())  # Usar UUID válido ao invés de 'TeamCoordinator'
+                    'qualified_by': str(uuid4()),  # Usar UUID válido ao invés de 'TeamCoordinator'
+                    'google_event_id': google_event_id  # 🚀 SALVAR google_event_id para cancelamentos futuros
                 }
                 
-                await supabase_client.create_lead_qualification(qualification_data)
-                emoji_logger.system_success("✅ Qualificação criada no Supabase")
+                # Adicionar meet_link se disponível
+                if meet_link:
+                    qualification_data['notes'] += f' | Google Meet: {meet_link}'
+                
+                created_qualification = await supabase_client.create_lead_qualification(qualification_data)
+                emoji_logger.system_success(
+                    "✅ Qualificação criada no Supabase com google_event_id",
+                    google_event_id=google_event_id,
+                    qualification_id=created_qualification.get('id') if created_qualification else None
+                )
             except Exception as e:
                 emoji_logger.service_warning(f"Erro ao criar qualificação: {e}")
             
-            # 2. ATUALIZAR LEAD NO SUPABASE  
+            # 2. ATUALIZAR LEAD NO SUPABASE COM DADOS COMPLETOS DA REUNIÃO
             try:
                 # Usar o UUID do Supabase ao invés do ID do Kommo
                 supabase_lead_id = await self._get_or_create_supabase_lead_id(lead_info)
                 
                 update_data = {
-                    'google_event_id': google_event_id,
+                    'google_event_id': google_event_id,  # 🚀 PERSISTÊNCIA ESSENCIAL
                     'meeting_scheduled_at': start_time,
                     'qualification_status': 'QUALIFIED',
                     'current_stage': 'MEETING_SCHEDULED'
                 }
                 
-                await supabase_client.update_lead(supabase_lead_id, update_data)
-                emoji_logger.system_success("✅ Lead atualizado com dados da reunião")
+                # 🚀 ADICIONAR meet_link se disponível
+                if meet_link:
+                    update_data['google_event_link'] = meet_link  # Assumindo que existe este campo
+                    # ou se não existir, adicionamos um campo genérico
+                    update_data['meeting_link'] = meet_link
+                
+                updated_lead = await supabase_client.update_lead(supabase_lead_id, update_data)
+                emoji_logger.system_success(
+                    "✅ Lead atualizado com dados completos da reunião",
+                    google_event_id=google_event_id,
+                    meet_link=meet_link[:50] + '...' if meet_link and len(meet_link) > 50 else meet_link
+                )
             except Exception as e:
                 emoji_logger.service_warning(f"Erro ao atualizar lead: {e}")
             
@@ -663,11 +712,15 @@ class TeamCoordinator:
                         'scheduled_at': (meeting_datetime - timedelta(hours=24)).isoformat(),
                         'message': reminder_24h,
                         'metadata': {
-                            'google_event_id': google_event_id,
+                            'google_event_id': google_event_id,  # 🚀 PERSISTÊNCIA para cancelamentos
+                            'meet_link': meet_link,  # 🚀 ADICIONAR meet_link para lembretes
                             'hours_before': 24
                         }
                     })
-                    emoji_logger.system_success("✅ Lembrete 24h criado")
+                    emoji_logger.system_success(
+                        "✅ Lembrete 24h criado com google_event_id", 
+                        google_event_id=google_event_id
+                    )
                     
                     # Lembrete 2h antes
                     reminder_2h = await self._generate_personalized_reminder(
@@ -683,11 +736,15 @@ class TeamCoordinator:
                         'scheduled_at': (meeting_datetime - timedelta(hours=2)).isoformat(),
                         'message': reminder_2h,
                         'metadata': {
-                            'google_event_id': google_event_id,
+                            'google_event_id': google_event_id,  # 🚀 PERSISTÊNCIA para cancelamentos
+                            'meet_link': meet_link,  # 🚀 ADICIONAR meet_link para lembretes
                             'hours_before': 2
                         }
                     })
-                    emoji_logger.system_success("✅ Lembrete 2h criado")
+                    emoji_logger.system_success(
+                        "✅ Lembrete 2h criado com google_event_id",
+                        google_event_id=google_event_id
+                    )
                     
                 except Exception as e:
                     emoji_logger.service_warning(f"Erro ao criar lembretes: {e}")
@@ -718,7 +775,24 @@ class TeamCoordinator:
                 except Exception as e:
                     emoji_logger.service_warning(f"Erro ao atualizar CRM: {e}")
             
-            emoji_logger.service_event("🎊 Workflow pós-agendamento concluído!")
+            # 🚀 SUMMARY: Log de todos os dados persistidos
+            emoji_logger.system_success(
+                "🎊 Workflow pós-agendamento concluído com persistência!",
+                google_event_id=google_event_id,
+                meet_link=meet_link[:50] + '...' if meet_link and len(meet_link) > 50 else meet_link,
+                lead_id=lead_id,
+                start_time=start_time
+            )
+            
+            # 🚀 RETORNAR dados importantes para uso futuro
+            return {
+                'success': True,
+                'google_event_id': google_event_id,
+                'meet_link': meet_link,
+                'start_time': start_time,
+                'lead_id': lead_id,
+                'workflow_completed': True
+            }
             
         except Exception as e:
             emoji_logger.service_error(f"Erro no workflow pós-agendamento: {e}")
@@ -1025,3 +1099,153 @@ class TeamCoordinator:
                 emoji_logger.system_success(f"✅ Tags adicionadas: {tags_to_add}")
             except Exception as e:
                 emoji_logger.service_error(f"Erro ao adicionar tags: {e}")
+    
+    async def get_google_event_id_by_lead(self, lead_id: str) -> Optional[str]:
+        """
+        🔍 Busca google_event_id de um lead para cancelamentos futuros
+        
+        Args:
+            lead_id: ID do lead no Supabase ou Kommo
+            
+        Returns:
+            google_event_id se encontrado, None caso contrário
+        """
+        try:
+            from app.integrations.supabase_client import supabase_client
+            
+            # Tentar buscar primeiro na tabela leads_qualifications
+            result = supabase_client.client.table('leads_qualifications')\
+                .select('google_event_id')\
+                .eq('lead_id', lead_id)\
+                .order('created_at', desc=True)\
+                .limit(1)\
+                .execute()
+            
+            if result.data and result.data[0].get('google_event_id'):
+                google_event_id = result.data[0]['google_event_id']
+                emoji_logger.service_event(
+                    "🔍 Google Event ID encontrado na qualificação",
+                    google_event_id=google_event_id,
+                    lead_id=lead_id
+                )
+                return google_event_id
+            
+            # Se não encontrou na qualificação, tentar na tabela leads
+            lead_result = supabase_client.client.table('leads')\
+                .select('google_event_id')\
+                .eq('id', lead_id)\
+                .execute()
+            
+            if lead_result.data and lead_result.data[0].get('google_event_id'):
+                google_event_id = lead_result.data[0]['google_event_id']
+                emoji_logger.service_event(
+                    "🔍 Google Event ID encontrado no lead",
+                    google_event_id=google_event_id,
+                    lead_id=lead_id
+                )
+                return google_event_id
+            
+            emoji_logger.service_warning(f"Google Event ID não encontrado para lead: {lead_id}")
+            return None
+            
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao buscar google_event_id: {e}")
+            return None
+    
+    async def cancel_meeting_by_lead(self, lead_id: str, reason: str = "Cancelamento solicitado") -> Dict[str, Any]:
+        """
+        🚫 Cancela reunião usando lead_id (busca google_event_id automaticamente)
+        
+        Args:
+            lead_id: ID do lead
+            reason: Motivo do cancelamento
+            
+        Returns:
+            Resultado do cancelamento
+        """
+        try:
+            # Buscar google_event_id
+            google_event_id = await self.get_google_event_id_by_lead(lead_id)
+            
+            if not google_event_id:
+                return {
+                    "success": False,
+                    "message": "Reunião não encontrada para este lead",
+                    "reason": "google_event_id não encontrado"
+                }
+            
+            # Cancelar no Google Calendar se serviço estiver disponível
+            if "calendar" in self.services:
+                calendar_service = self.services["calendar"]
+                cancel_result = await calendar_service.cancel_meeting(google_event_id)
+                
+                if cancel_result.get("success"):
+                    # Atualizar status no Supabase
+                    await self._update_meeting_status_after_cancel(lead_id, google_event_id, reason)
+                    
+                    emoji_logger.system_success(
+                        "✅ Reunião cancelada com sucesso",
+                        lead_id=lead_id,
+                        google_event_id=google_event_id,
+                        reason=reason
+                    )
+                    
+                    return {
+                        "success": True,
+                        "message": "Reunião cancelada com sucesso",
+                        "google_event_id": google_event_id,
+                        "reason": reason
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "message": f"Erro ao cancelar no Google Calendar: {cancel_result.get('message')}",
+                        "google_event_id": google_event_id
+                    }
+            else:
+                return {
+                    "success": False,
+                    "message": "Serviço de calendário não disponível"
+                }
+            
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao cancelar reunião: {e}")
+            return {
+                "success": False,
+                "message": f"Erro interno: {e}"
+            }
+    
+    async def _update_meeting_status_after_cancel(self, lead_id: str, google_event_id: str, reason: str):
+        """
+        📝 Atualiza status da reunião após cancelamento
+        
+        Args:
+            lead_id: ID do lead
+            google_event_id: ID do evento Google
+            reason: Motivo do cancelamento
+        """
+        try:
+            from app.integrations.supabase_client import supabase_client
+            from datetime import datetime
+            
+            # Atualizar qualificação
+            supabase_client.client.table('leads_qualifications')\
+                .update({
+                    'notes': f'CANCELADO - {reason} em {datetime.now().strftime("%d/%m/%Y %H:%M")}',
+                    'qualification_status': 'NOT_QUALIFIED',  # ou manter como QUALIFIED mas marcar como cancelado
+                    'updated_at': datetime.now().isoformat()
+                })\
+                .eq('google_event_id', google_event_id)\
+                .execute()
+            
+            # Atualizar lead
+            await supabase_client.update_lead(lead_id, {
+                'current_stage': 'MEETING_CANCELLED',
+                'meeting_scheduled_at': None,  # Limpar data da reunião
+                'updated_at': datetime.now().isoformat()
+            })
+            
+            emoji_logger.service_event("📝 Status atualizado após cancelamento")
+            
+        except Exception as e:
+            emoji_logger.service_warning(f"Erro ao atualizar status após cancelamento: {e}")

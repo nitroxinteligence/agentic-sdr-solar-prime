@@ -432,8 +432,8 @@ class SupabaseClient:
                 'status', 'ACTIVE'
             ).execute()
             
-            # Reuniões agendadas hoje
-            meetings = self.client.table('leads').select("id", count='exact').gte(
+            # Reuniões agendadas hoje - campo agora está em leads_qualifications
+            meetings = self.client.table('leads_qualifications').select("id", count='exact').gte(
                 'meeting_scheduled_at', today_start
             ).execute()
             
@@ -457,65 +457,9 @@ class SupabaseClient:
     
     # ============= SESSION MANAGEMENT =============
     
-    async def get_agent_session(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Busca sessão do agente"""
-        try:
-            result = self.client.table('agent_sessions').select("*").eq(
-                'session_id', session_id
-            ).execute()
-            
-            if result.data:
-                return result.data[0]
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"Erro ao buscar sessão: {str(e)}")
-            return None
-    
-    async def save_agent_session(self, session_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Salva sessão do agente"""
-        try:
-            existing = await self.get_agent_session(session_data['session_id'])
-            
-            if existing:
-                # Atualiza sessão existente
-                session_data['updated_at'] = datetime.now().isoformat()
-                session_data['last_interaction'] = datetime.now().isoformat()
-                
-                result = self.client.table('agent_sessions').update(session_data).eq(
-                    'session_id', session_data['session_id']
-                ).execute()
-            else:
-                # Cria nova sessão
-                session_data['created_at'] = datetime.now().isoformat()
-                session_data['updated_at'] = datetime.now().isoformat()
-                session_data['last_interaction'] = datetime.now().isoformat()
-                
-                result = self.client.table('agent_sessions').insert(session_data).execute()
-            
-            if result.data:
-                return result.data[0]
-            
-            raise Exception("Erro ao salvar sessão")
-            
-        except Exception as e:
-            logger.error(f"Erro ao salvar sessão: {str(e)}")
-            raise
-    
-    async def cleanup_old_sessions(self, days: int = 30):
-        """Limpa sessões antigas"""
-        try:
-            cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
-            
-            result = self.client.table('agent_sessions').delete().lt(
-                'last_interaction', cutoff_date
-            ).execute()
-            
-            logger.info(f"Sessões antigas limpas: {len(result.data) if result.data else 0}")
-            
-        except Exception as e:
-            logger.error(f"Erro ao limpar sessões: {str(e)}")
+    # NOTA: Métodos agent_sessions removidos - arquitetura agora é stateless
+    # A tabela agent_sessions foi removida no schema otimizado
+    # Mantemos o sistema 100% stateless conforme design v0.3
     
     # ============= LEAD QUALIFICATIONS =============
     

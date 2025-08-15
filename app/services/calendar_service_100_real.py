@@ -1,60 +1,53 @@
 """
-Calendar Service 100% REAL - Google Calendar API
-ZERO simulação, MÁXIMA simplicidade
+Calendar Service - Google Calendar API com OAuth 2.0
+Funcionalidades habilitadas: Google Meet + Participantes + Convites
 """
 
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
-import asyncio
-import json
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from app.utils.logger import emoji_logger
 from app.config import settings
+from app.integrations.google_oauth_handler import get_oauth_handler
 
 class CalendarServiceReal:
     """
-    Serviço REAL de calendário - Google Calendar API
-    SIMPLES e FUNCIONAL - 100% real
+    Serviço REAL de calendário - Google Calendar API com OAuth 2.0
+    Funcionalidades habilitadas: Google Meet + Participantes + Convites
     """
     
     def __init__(self):
         self.is_initialized = False
         self.calendar_id = settings.google_calendar_id
         self.service = None
+        self.oauth_handler = get_oauth_handler()
         
     async def initialize(self):
-        """Inicializa conexão REAL com Google Calendar"""
+        """Inicializa conexão REAL com Google Calendar usando OAuth 2.0"""
         if self.is_initialized:
             return
         
         try:
-            # Criar credenciais do service account
-            credentials_info = {
-                "type": "service_account",
-                "project_id": settings.google_project_id,
-                "private_key_id": settings.google_private_key_id,
-                "private_key": settings.google_private_key.replace("\\n", "\n"),
-                "client_email": settings.google_service_account_email,
-                "client_id": settings.google_client_id,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{settings.google_service_account_email}"
-            }
+            # Usar OAuth handler para construir serviço
+            self.service = self.oauth_handler.build_calendar_service()
             
-            credentials = service_account.Credentials.from_service_account_info(
-                credentials_info,
-                scopes=['https://www.googleapis.com/auth/calendar']
-            )
-            
-            # Criar serviço do Google Calendar
-            self.service = build('calendar', 'v3', credentials=credentials)
+            if not self.service:
+                emoji_logger.service_error("❌ Não foi possível construir serviço - autorização OAuth necessária")
+                raise Exception("OAuth 2.0 não autorizado. Execute /google/auth para autorizar")
             
             # Testar conexão
-            calendar = self.service.calendars().get(calendarId=self.calendar_id).execute()
-            emoji_logger.service_ready(f"✅ Google Calendar conectado: {calendar.get('summary', 'Calendar')}")
+            if self.calendar_id:
+                calendar = self.service.calendars().get(calendarId=self.calendar_id).execute()
+                emoji_logger.service_ready(f"✅ Google Calendar conectado via OAuth: {calendar.get('summary', 'Calendar')}")
+            else:
+                # Usar calendário primário se ID não especificado
+                calendar_list = self.service.calendarList().list().execute()
+                primary_calendar = next((cal for cal in calendar_list.get('items', []) if cal.get('primary')), None)
+                if primary_calendar:
+                    self.calendar_id = primary_calendar.get('id')
+                    emoji_logger.service_ready(f"✅ Google Calendar conectado via OAuth: {primary_calendar.get('summary', 'Primary Calendar')}")
+                else:
+                    raise Exception("Nenhum calendário encontrado")
             
             self.is_initialized = True
             
@@ -150,21 +143,36 @@ class CalendarServiceReal:
             
             # Criar evento
             event = {
-                'summary': f'Reunião Solar - {lead_info.get("name", "Cliente")}',
+                'summary': f'☀️ Reunião SolarPrime com {lead_info.get("name", "Cliente")}',
                 'description': f"""
-🌞 Reunião de Apresentação SolarPrime
-                
-                👤 Cliente: {lead_info.get("name", "N/A")}
-                📱 Telefone: {lead_info.get("phone", "N/A")}
-                📧 Email: {lead_info.get("email", "N/A")}
-                💰 Valor da conta: R$ {lead_info.get("bill_value", 0):.2f}
-                📊 Score: {lead_info.get("qualification_score", 0)}/100
-                🏠 Tipo: {lead_info.get("property_type", "N/A")}
-                
-                Agendado automaticamente pelo SDR IA SolarPrime
-                
-                ⚠️ IMPORTANTE: Cliente deve ser contatado separadamente - 
-                convite automático desabilitado por limitações de permissão.
+☀️ REUNIÃO SOLARPRIME - ECONOMIA COM ENERGIA SOLAR
+
+Olá {lead_info.get("name", "")}!
+
+É com grande satisfação que confirmamos nossa reunião para apresentar como a SolarPrime pode transformar sua conta de energia em um investimento inteligente.
+
+Somos líderes no setor de energia solar em Pernambuco, com mais de 12 anos de experiência e milhares de clientes satisfeitos. Nossa missão é democratizar o acesso à energia limpa e proporcionar economia real de até 90% na conta de luz.
+
+✅ O QUE VAMOS APRESENTAR:
+• Análise personalizada da sua conta de energia
+• Simulação de economia com nossos 4 modelos de negócio
+• Opções de financiamento que cabem no seu bolso
+• Garantias e benefícios exclusivos SolarPrime
+• Retorno do investimento em média de 3 anos
+
+✅ NOSSOS DIFERENCIAIS:
+• Instalação própria de usina - economia de até 90%
+• Aluguel de lote - sua usina em nosso terreno
+• Compra com desconto - economia imediata de 20%
+• Usina de investimento - renda passiva com energia solar
+
+Agradecemos pela confiança em escolher a SolarPrime para cuidar da sua economia energética. Leonardo Ferraz, nosso especialista, está ansioso para mostrar como podemos proteger você dos constantes aumentos da energia elétrica.
+
+✨ Desejamos uma excelente reunião e estamos confiantes de que será o início de uma parceria de sucesso!
+
+Atenciosamente,
+Equipe SolarPrime
+☀️ Transformando Sol em Economia
                 """,
                 'start': {
                     'dateTime': meeting_datetime.isoformat(),
@@ -200,34 +208,28 @@ class CalendarServiceReal:
             # Remover duplicatas
             attendees = list(set(attendees))
             
-            # Adicionar participantes ao evento
+            # Adicionar participantes ao evento - Com OAuth sempre funciona!
             if attendees:
-                if settings.google_auth_method == "oauth":
-                    event['attendees'] = [{'email': email} for email in attendees]
-                    emoji_logger.service_info(f"👥 {len(attendees)} participantes serão convidados")
-                else:
-                    emoji_logger.service_warning("⚠️ Participantes não suportados com Service Account")
+                event['attendees'] = [{'email': email} for email in attendees]
+                emoji_logger.service_info(f"👥 {len(attendees)} participantes serão convidados")
             
-            # Adicionar Google Meet - Com OAuth funciona automaticamente!
-            if settings.google_auth_method == "oauth":
-                event['conferenceData'] = {
-                    'createRequest': {
-                        'requestId': f'meet-{datetime.now().timestamp()}',
-                        'conferenceSolutionKey': {
-                            'type': 'hangoutsMeet'
-                        }
+            # Adicionar Google Meet - Com OAuth sempre funciona!
+            event['conferenceData'] = {
+                'createRequest': {
+                    'requestId': f'meet-{datetime.now().timestamp()}',
+                    'conferenceSolutionKey': {
+                        'type': 'hangoutsMeet'
                     }
                 }
-                emoji_logger.service_info("📹 Google Meet será criado automaticamente")
+            }
+            emoji_logger.service_info("📹 Google Meet será criado automaticamente")
             
             # Criar evento no Google Calendar
-            # Com OAuth: conferenceDataVersion=1 para criar Google Meet
-            conference_version = 1 if settings.google_auth_method == "oauth" else 0
-            
+            # Com OAuth sempre usa conferenceDataVersion=1 para criar Google Meet
             created_event = self.service.events().insert(
                 calendarId=self.calendar_id,
                 body=event,
-                conferenceDataVersion=conference_version,
+                conferenceDataVersion=1,  # Sempre 1 para Google Meet com OAuth
                 sendUpdates='all' if attendees else 'none'  # Enviar convites se houver participantes
             ).execute()
             
@@ -254,6 +256,8 @@ class CalendarServiceReal:
             return {
                 "success": True,
                 "meeting_id": created_event.get('id'),
+                "google_event_id": created_event.get('id'),  # 🚀 CORREÇÃO: Adicionar google_event_id
+                "start_time": meeting_datetime.isoformat(),  # 🚀 CORREÇÃO: Adicionar start_time
                 "date": date,
                 "time": time,
                 "link": created_event.get('htmlLink'),
@@ -264,16 +268,49 @@ class CalendarServiceReal:
             }
             
         except HttpError as e:
-            emoji_logger.service_error(f"Erro ao agendar: {e}")
-            return {
-                "success": False,
-                "message": f"Erro ao agendar reunião: {e}"
-            }
+            # 🚀 ROBUSTEZ: Tratamento específico para HttpError
+            error_details = e.error_details if hasattr(e, 'error_details') else []
+            status_code = e.resp.status if hasattr(e, 'resp') else 'unknown'
+            
+            if status_code == 403:
+                emoji_logger.service_error("❌ Erro de permissão Google Calendar - Verificar OAuth")
+                return {
+                    "success": False,
+                    "error_code": 403,
+                    "message": "Erro de permissão. Necessário reautorizar OAuth",
+                    "details": "Verifique as permissões do Google Calendar"
+                }
+            elif status_code == 404:
+                emoji_logger.service_error("❌ Calendário não encontrado")
+                return {
+                    "success": False,
+                    "error_code": 404,
+                    "message": "Calendário não encontrado",
+                    "details": f"Calendar ID: {self.calendar_id}"
+                }
+            elif status_code == 409:
+                emoji_logger.service_error("⚠️ Conflito de horário detectado")
+                return {
+                    "success": False,
+                    "error_code": 409,
+                    "message": "Conflito de horário - Horário já ocupado",
+                    "details": "Tente outro horário disponível"
+                }
+            else:
+                emoji_logger.service_error(f"❌ Erro Google Calendar [{status_code}]: {e}")
+                return {
+                    "success": False,
+                    "error_code": status_code,
+                    "message": f"Erro Google Calendar: {e}",
+                    "details": str(error_details)
+                }
         except Exception as e:
-            emoji_logger.service_error(f"Erro inesperado: {e}")
+            emoji_logger.service_error(f"❌ Erro inesperado ao agendar: {e}")
             return {
                 "success": False,
-                "message": "Erro ao processar agendamento"
+                "error_code": "unknown",
+                "message": f"Erro inesperado: {e}",
+                "details": "Erro interno do sistema"
             }
     
     async def cancel_meeting(self, meeting_id: str) -> Dict[str, Any]:
@@ -292,13 +329,44 @@ class CalendarServiceReal:
             return {
                 "success": True,
                 "message": "Reunião cancelada com sucesso",
+                "meeting_id": meeting_id,
                 "real": True
             }
             
         except HttpError as e:
+            # 🚀 ROBUSTEZ: Tratamento específico para cancelamento
+            status_code = e.resp.status if hasattr(e, 'resp') else 'unknown'
+            
+            if status_code == 403:
+                emoji_logger.service_error("❌ Sem permissão para cancelar evento")
+                return {
+                    "success": False,
+                    "error_code": 403,
+                    "message": "Sem permissão para cancelar evento",
+                    "details": "Verificar permissões OAuth"
+                }
+            elif status_code == 404:
+                emoji_logger.service_warning("⚠️ Evento já foi cancelado ou não existe")
+                return {
+                    "success": True,  # Considerar sucesso se já não existe
+                    "message": "Evento já foi cancelado ou não existe",
+                    "details": f"Event ID: {meeting_id}"
+                }
+            else:
+                emoji_logger.service_error(f"❌ Erro ao cancelar [{status_code}]: {e}")
+                return {
+                    "success": False,
+                    "error_code": status_code,
+                    "message": f"Erro ao cancelar: {e}",
+                    "details": f"Event ID: {meeting_id}"
+                }
+        except Exception as e:
+            emoji_logger.service_error(f"❌ Erro inesperado ao cancelar: {e}")
             return {
                 "success": False,
-                "message": f"Erro ao cancelar: {e}"
+                "error_code": "unknown",
+                "message": f"Erro inesperado: {e}",
+                "details": f"Event ID: {meeting_id}"
             }
     
     async def suggest_times(self, lead_info: Dict[str, Any]) -> Dict[str, Any]:

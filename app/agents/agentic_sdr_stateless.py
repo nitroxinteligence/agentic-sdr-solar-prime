@@ -448,7 +448,7 @@ class AgenticSDRStateless:
         return changes
     
     async def _sync_lead_changes(self, changes: Dict[str, Any], phone: str, lead_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Sincroniza mudanças com o CRM"""
+        """Sincroniza mudanças com o CRM e Supabase"""
         if not changes or not phone:
             return None
         
@@ -461,10 +461,32 @@ class AgenticSDRStateless:
         
         if should_sync:
             emoji_logger.service_event(
-                "🔄 Sincronizando mudanças com CRM",
+                "🔄 Sincronizando mudanças com CRM e Supabase",
                 fields=list(changes.keys())
             )
             
+            # 1. Sincronizar com Supabase primeiro
+            try:
+                from app.integrations.supabase_client import supabase_client
+                
+                # Buscar lead existente no Supabase
+                existing_lead = await supabase_client.get_lead_by_phone(phone)
+                
+                if existing_lead:
+                    # Atualizar lead existente
+                    supabase_changes = self._map_to_supabase_fields(changes)
+                    await supabase_client.update_lead(existing_lead['id'], supabase_changes)
+                    emoji_logger.supabase_update("leads", 1, changes=list(changes.keys()))
+                else:
+                    # Criar novo lead no Supabase
+                    lead_data = self._prepare_lead_for_supabase(lead_info, phone, changes)
+                    await supabase_client.create_lead(lead_data)
+                    emoji_logger.supabase_create("leads", 1)
+                    
+            except Exception as e:
+                emoji_logger.service_error(f"Erro ao sincronizar com Supabase: {e}")
+            
+            # 2. Sincronizar com CRM (como antes)
             try:
                 sync_data = lead_info.copy()
                 sync_data['phone'] = phone
@@ -479,9 +501,90 @@ class AgenticSDRStateless:
                     emoji_logger.service_warning(f"Sync parcial: {result.get('message')}")
                     
             except Exception as e:
-                emoji_logger.service_error(f"Erro no sync: {e}")
+                emoji_logger.service_error(f"Erro no sync CRM: {e}")
         
         return None
+    
+    def _map_to_supabase_fields(self, changes: Dict[str, Any]) -> Dict[str, Any]:
+        """Mapeia campos do lead_info para campos do Supabase
+        
+        Campos que vão direto para tabela leads:
+        - name, email, bill_value, qualification_score, current_stage, chosen_flow
+        
+        Campos que vão para preferences JSONB:
+        - location, property_type, interests, objections, has_bill_image
+        """
+        # Mapeamento de campos diretos
+        field_mapping = {
+            'name': 'name',
+            'email': 'email',
+            'bill_value': 'bill_value',
+            'qualification_score': 'qualification_score',
+            'current_stage': 'current_stage',
+            'chosen_flow': 'chosen_flow',
+            'phone_number': 'phone_number'  # Corrigido: phone → phone_number
+        }
+        
+        # Campos que vão para preferences JSONB
+        preferences_fields = ['location', 'property_type', 'interests', 'objections', 'has_bill_image']
+        
+        supabase_data = {}
+        preferences_data = {}
+        
+        for key, value in changes.items():
+            if key in field_mapping and value is not None:
+                # Campo direto na tabela leads
+                supabase_field = field_mapping[key]
+                supabase_data[supabase_field] = value
+            elif key == 'preferences' and isinstance(value, dict):
+                # Já é um objeto preferences completo
+                preferences_data.update(value)
+            elif key in preferences_fields and value is not None:
+                # Campo individual que vai para preferences
+                preferences_data[key] = value
+        
+        # Adicionar preferences se houver dados
+        if preferences_data:
+            supabase_data['preferences'] = preferences_data
+        
+        return supabase_data
+    
+    def _prepare_lead_for_supabase(self, lead_info: Dict[str, Any], phone: str, changes: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepara dados completos do lead para criação no Supabase
+        
+        Separa campos diretos da tabela leads e campos que vão para preferences JSONB
+        """
+        # Mesclar lead_info com mudanças
+        complete_data = lead_info.copy()
+        complete_data.update(changes)
+        
+        # Preparar dados de preferences
+        preferences = complete_data.get('preferences', {})
+        
+        # Adicionar campos extras em preferences se existirem
+        for field in ['location', 'property_type', 'interests', 'objections', 'has_bill_image']:
+            if field in complete_data and complete_data[field] is not None:
+                preferences[field] = complete_data[field]
+        
+        # Mapear para campos do Supabase (apenas campos que existem na tabela)
+        lead_data = {
+            'phone_number': phone,
+            'name': complete_data.get('name'),
+            'email': complete_data.get('email'),
+            'bill_value': complete_data.get('bill_value'),
+            'qualification_score': complete_data.get('qualification_score', 0),
+            'qualification_status': 'PENDING',  # Status inicial padrão do banco
+            'current_stage': complete_data.get('current_stage', 'INITIAL_CONTACT'),  # Valor padrão do banco
+            'chosen_flow': complete_data.get('chosen_flow'),
+            'interested': True  # Valor padrão
+        }
+        
+        # Adicionar preferences se houver dados
+        if preferences:
+            lead_data['preferences'] = preferences
+        
+        # Remover campos None para não sobrescrever dados válidos
+        return {k: v for k, v in lead_data.items() if v is not None}
     
     async def _save_message_to_db(self, conversation_id: str, message: Dict[str, Any]):
         """Salva mensagem no banco de dados"""

@@ -4,8 +4,6 @@ create table public.analytics (
   event_type character varying(50) not null,
   event_data jsonb null default '{}'::jsonb,
   session_id character varying(100) null,
-  user_agent character varying(255) null,
-  ip_address character varying(45) null,
   created_at timestamp with time zone null default CURRENT_TIMESTAMP,
   phone_number character varying(50) null,
   event_category character varying(50) null,

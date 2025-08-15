@@ -39,17 +39,20 @@ class LeadManager:
         """
         lead_info = {
             "name": None,
-            "phone": None,
+            "phone_number": None,  # Corrigido: phone → phone_number (campo correto no banco)
             "email": None,
             "bill_value": None,
-            "location": None,
-            "property_type": None,
-            "has_bill_image": False,
-            "interests": [],
-            "objections": [],
             "qualification_score": 0,
-            "stage": "novo",
-            "chosen_flow": None  # 🔥 CORREÇÃO: Campo para detectar seleção de fluxo
+            "current_stage": "INITIAL_CONTACT",  # Corrigido: stage → current_stage com valor padrão do banco
+            "chosen_flow": None,  # Campo para detectar seleção de fluxo
+            # Campos extras que serão armazenados em preferences JSONB
+            "preferences": {
+                "location": None,
+                "property_type": None,
+                "has_bill_image": False,
+                "interests": [],
+                "objections": []
+            }
         }
         
         # Processar cada mensagem
@@ -143,24 +146,24 @@ class LeadManager:
                     lead_info["bill_value"] = value
             
             # Detectar tipo de imóvel
-            if not lead_info["property_type"]:
+            if not lead_info["preferences"]["property_type"]:
                 prop_type = self._extract_property_type(content)
                 if prop_type:
-                    lead_info["property_type"] = prop_type
+                    lead_info["preferences"]["property_type"] = prop_type
             
             # Detectar localização
-            if not lead_info["location"]:
+            if not lead_info["preferences"]["location"]:
                 location = self._extract_location(content)
                 if location:
-                    lead_info["location"] = location
+                    lead_info["preferences"]["location"] = location
             
             # Detectar interesses
             interests = self._extract_interests(content)
-            lead_info["interests"].extend(interests)
+            lead_info["preferences"]["interests"].extend(interests)
             
             # Detectar objeções
             objections = self._extract_objections(content)
-            lead_info["objections"].extend(objections)
+            lead_info["preferences"]["objections"].extend(objections)
             
             # 🔥 CORREÇÃO CRÍTICA: Detectar seleção de fluxo
             if not lead_info.get("chosen_flow"):
@@ -169,13 +172,13 @@ class LeadManager:
                     lead_info["chosen_flow"] = chosen_flow
         
         # Remover duplicatas
-        lead_info["interests"] = list(set(lead_info["interests"]))
-        lead_info["objections"] = list(set(lead_info["objections"]))
+        lead_info["preferences"]["interests"] = list(set(lead_info["preferences"]["interests"]))
+        lead_info["preferences"]["objections"] = list(set(lead_info["preferences"]["objections"]))
         
         # Calcular score de qualificação
         if self.scoring_enabled:
             lead_info["qualification_score"] = self.calculate_qualification_score(lead_info)
-            lead_info["stage"] = self.determine_stage(lead_info)
+            lead_info["current_stage"] = self.determine_stage(lead_info)
         
         return lead_info
     
@@ -210,18 +213,18 @@ class LeadManager:
             score += 10
         if lead_info.get("email"):
             score += 5
-        if lead_info.get("location"):
+        if lead_info.get("preferences", {}).get("location"):
             score += 5
         
         # Tipo de imóvel (peso 15%)
-        property_type = lead_info.get("property_type") or ""  # Garante que nunca é None
+        property_type = lead_info.get("preferences", {}).get("property_type") or ""  # Garante que nunca é None
         if "comercial" in property_type or "empresa" in property_type:
             score += 15
         elif "residencial" in property_type or "casa" in property_type:
             score += 10
         
         # Interesses demonstrados (peso 10%)
-        interests = lead_info.get("interests", [])
+        interests = lead_info.get("preferences", {}).get("interests", [])
         if len(interests) >= 3:
             score += 10
         elif len(interests) >= 2:
@@ -230,7 +233,7 @@ class LeadManager:
             score += 5
         
         # Objeções (peso -5%)
-        objections = lead_info.get("objections", [])
+        objections = lead_info.get("preferences", {}).get("objections", [])
         if len(objections) >= 3:
             score -= 5
         elif len(objections) >= 2:
@@ -247,20 +250,21 @@ class LeadManager:
             lead_info: Informações do lead
             
         Returns:
-            Estágio do lead
+            Estágio do lead (compatível com banco de dados)
         """
         score = lead_info.get("qualification_score", 0)
         
+        # Mapeamento para valores compatíveis com o banco
         if score >= 80:
-            return "quente"
+            return "HOT"  # quente
         elif score >= 60:
-            return "morno"
+            return "WARM"  # morno
         elif score >= 40:
-            return "qualificando"
+            return "QUALIFYING"  # qualificando
         elif score >= 20:
-            return "interesse"
+            return "INTERESTED"  # interesse
         else:
-            return "novo"
+            return "INITIAL_CONTACT"  # novo (valor padrão do banco)
     
     def _extract_name(self, text: str) -> Optional[str]:
         """Extrai nome do texto com filtros mais rigorosos"""
