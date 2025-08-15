@@ -197,10 +197,10 @@ class FollowUpExecutorService:
                         'hangoutLink': metadata.get('meet_link')
                     } if google_event_id else None
                     
-                    # Buscar qualificação do lead
+                    # Buscar qualificação do lead - usar maybeSingle para permitir 0 resultados
                     qualification_result = self.db.client.table('leads_qualifications').select("*").eq(
                         'lead_id', reminder['lead_id']
-                    ).single().execute()
+                    ).maybe_single().execute()
                     
                     qualification_id = qualification_result.data['id'] if qualification_result.data else None
                     
@@ -283,10 +283,10 @@ class FollowUpExecutorService:
             try:
                 # Buscar dados do lead - Suportar busca por ID ou telefone
                 if lead_id:
-                    # Tentar buscar por ID primeiro
+                    # Tentar buscar por ID primeiro - usar maybeSingle para permitir 0 resultados
                     lead_result = self.db.client.table('leads').select("*").eq(
                         'id', lead_id
-                    ).single().execute()
+                    ).maybe_single().execute()
                 else:
                     # Se não tem lead_id, buscar pelo telefone do follow-up
                     followup_phone = followup.get('phone_number')
