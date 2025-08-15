@@ -33,6 +33,9 @@ else:
 class Settings(BaseSettings):
     """Configurações do sistema"""
     
+    # Agent Mode Configuration
+    use_stateless_mode: bool = Field(default=False, env="USE_STATELESS_MODE")  # False = Singleton, True = Stateless
+    
     # OpenAI
     openai_api_key: str = Field(default="", env="OPENAI_API_KEY")
     

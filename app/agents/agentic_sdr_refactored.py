@@ -752,6 +752,22 @@ async def get_agentic_agent() -> AgenticSDR:
     
     return _singleton_instance
 
+# ============= STATELESS PATTERN =============
+
+async def create_stateless_agent() -> AgenticSDR:
+    """
+    Cria uma nova instância stateless do AgenticSDR
+    Cada chamada retorna uma nova instância isolada
+    
+    Returns:
+        Nova instância inicializada do AgenticSDR
+    """
+    emoji_logger.system_event("🆕 Criando instância stateless do AgenticSDR...")
+    agent = AgenticSDR()
+    await agent.initialize()
+    emoji_logger.system_ready("✅ Instância stateless criada e inicializada")
+    return agent
+
 async def reset_agent():
     """Reseta o agent singleton (útil para testes)"""
     global _singleton_instance, _singleton_lock

@@ -13,7 +13,7 @@ from app.utils.logger import emoji_logger
 from app.integrations.supabase_client import supabase_client
 from app.integrations.redis_client import redis_client
 from app.integrations.evolution import evolution_client
-from app.agents.agentic_sdr_stateless import create_stateless_agent  # Importa o AGENTIC SDR Stateless
+from app.agents import get_agentic_agent, create_stateless_agent  # Importa ambos os modos
 from app.config import settings
 from app.services.message_buffer import MessageBuffer, set_message_buffer
 from app.services.message_splitter import MessageSplitter, set_message_splitter
@@ -276,8 +276,13 @@ async def create_agent_with_context(phone: str, conversation_id: str = None) -> 
             "timestamp": datetime.now().isoformat()
         }
         
-        # Criar agente stateless
-        agent = await create_stateless_agent()
+        # Criar agente conforme configuração (stateless ou singleton)
+        use_stateless = settings.use_stateless_mode
+        
+        if use_stateless:
+            agent = await create_stateless_agent()  # Nova instância
+        else:
+            agent = await get_agentic_agent()  # Singleton
         
         emoji_logger.system_ready(
             "✅ Agente stateless criado com contexto",
@@ -545,21 +550,20 @@ async def process_message_with_agent(
         message_id: ID da mensagem
     """
     try:
-        # PARALELIZAÇÃO MÁXIMA: Busca lead + conversa + agente em paralelo com tratamento de erros
+        # PARALELIZAÇÃO MÁXIMA: Busca lead + conversa em paralelo com tratamento de erros
         lead_task = asyncio.create_task(supabase_client.get_lead_by_phone(phone))
         conversation_task = asyncio.create_task(supabase_client.get_conversation_by_phone(phone))
-        agent_task = asyncio.create_task(get_agentic_agent())  # Pré-carrega agente
+        # Agente stateless será criado depois, não precisa pré-carregar
         
         # Aguarda todas as tasks com tratamento de erros
         results = await asyncio.gather(
             lead_task,
             conversation_task,
-            agent_task,
             return_exceptions=True
         )
         
         # Processar resultados com tratamento de erros
-        lead_result, conv_result, agent_result = results
+        lead_result, conv_result = results
         
         # Verificar lead
         if isinstance(lead_result, Exception):
@@ -634,7 +638,7 @@ async def process_message_with_agent(
         try:
             agentic, execution_context = await create_agent_with_context(
                 phone=phone,
-                conversation_id=conversation_id
+                conversation_id=conversation["id"]
             )
             emoji_logger.webhook_process("AGENTIC SDR Stateless pronto para uso")
         except Exception as e:

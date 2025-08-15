@@ -85,20 +85,28 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 emoji_logger.system_warning(f"⚠️ FollowUp Executor não iniciado: {str(e)}")
         
-        # PRÉ-AQUECIMENTO: Cria agente singleton na inicialização com retry
-        from app.api.webhooks import get_agentic_agent
+        # PRÉ-AQUECIMENTO: Testa criação do agente (singleton ou stateless conforme configuração)
+        from app.agents import get_agentic_agent, create_stateless_agent
+        from app.config import settings
+        
+        use_stateless = settings.use_stateless_mode
+        agent_mode = "Stateless" if use_stateless else "Singleton"
         
         for attempt in range(3):
             try:
-                emoji_logger.system_info(f"🔥 Pré-aquecendo AgenticSDR (tentativa {attempt+1}/3)...")
-                await get_agentic_agent()  # Força criação do singleton
-                emoji_logger.system_ready("AgenticSDR", status="pré-aquecido com sucesso")
+                emoji_logger.system_info(f"🔥 Pré-aquecendo AgenticSDR ({agent_mode}) - tentativa {attempt+1}/3...")
+                
+                if use_stateless:
+                    test_agent = await create_stateless_agent()  # Testa criação stateless
+                else:
+                    test_agent = await get_agentic_agent()  # Pré-aquece singleton
+                
+                emoji_logger.system_ready(f"AgenticSDR ({agent_mode})", status="sistema pronto")
                 break
             except Exception as e:
                 if attempt == 2:  # Última tentativa
-                    emoji_logger.system_error("AgenticSDR", f"Falha no pré-aquecimento após 3 tentativas: {e}")
-                    # Continua sem pré-aquecimento - cold start na primeira mensagem
-                    emoji_logger.system_warning("AgenticSDR funcionará com cold start na primeira mensagem")
+                    emoji_logger.system_error("AgenticSDR", f"Falha no teste após 3 tentativas: {e}")
+                    emoji_logger.system_warning(f"Sistema continuará normalmente (modo {agent_mode})")
                 else:
                     emoji_logger.system_warning(f"Tentativa {attempt+1} falhou, tentando novamente...")
                     await asyncio.sleep(2)  # Aguarda 2 segundos antes de tentar novamente
