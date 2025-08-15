@@ -959,3 +959,69 @@ class TeamCoordinator:
             emoji_logger.service_error(f"Erro ao obter UUID do Supabase: {e}")
             # Fallback: criar novo UUID
             return str(uuid4())
+    
+    async def proactive_crm_sync(self, lead_info: Dict[str, Any], context: Dict[str, Any]):
+        """
+        Sincroniza proativamente o estágio do lead, tags e campos customizados com o CRM,
+        baseado no contexto completo da conversa e nas regras de negócio.
+        """
+        if "crm" not in self.services:
+            return
+
+        crm_service = self.services["crm"]
+        kommo_lead_id = lead_info.get("kommo_lead_id")
+
+        if not kommo_lead_id:
+            emoji_logger.service_warning("Kommo Lead ID não encontrado para sync proativo.")
+            return
+
+        # 1. Mapeamento de Estágio Conversacional para Estágio do CRM
+        conversation_stage = context.get("conversation_stage")
+        lead_score = lead_info.get("qualification_score", 0)
+        
+        target_stage_name = None
+        if conversation_stage == "agendamento":
+            target_stage_name = "REUNIÃO AGENDADA"
+        elif conversation_stage == "qualificação":
+            if lead_score >= settings.min_qualification_score:
+                target_stage_name = "QUALIFICADO"
+            else:
+                target_stage_name = "DESQUALIFICADO"
+        elif conversation_stage in ["estágio_1_apresentar_soluções", "estágio_2_aguardando_escolha"]:
+            target_stage_name = "EM QUALIFICAÇÃO"
+        
+        if target_stage_name:
+            try:
+                await crm_service.update_lead_stage(str(kommo_lead_id), target_stage_name)
+                emoji_logger.system_success(f"✅ Estágio atualizado para: {target_stage_name}")
+            except Exception as e:
+                emoji_logger.service_error(f"Erro ao atualizar estágio: {e}")
+
+        # 2. Atualização de Campos Customizados
+        fields_to_update = {}
+        if lead_info.get("bill_value"):
+            fields_to_update["bill_value"] = lead_info["bill_value"]
+        if lead_info.get("chosen_flow"):
+            fields_to_update["solution_type"] = lead_info["chosen_flow"]
+        
+        if fields_to_update:
+            try:
+                await crm_service.update_fields(str(kommo_lead_id), fields_to_update)
+                emoji_logger.system_success(f"✅ Campos atualizados: {list(fields_to_update.keys())}")
+            except Exception as e:
+                emoji_logger.service_error(f"Erro ao atualizar campos: {e}")
+
+        # 3. Atualização de Tags Contextuais
+        tags_to_add = []
+        if lead_info.get("chosen_flow"):
+            tags_to_add.append(f"fluxo_{lead_info['chosen_flow'].lower().replace(' ', '_')}")
+        if context.get("objections_raised"):
+            for objection in context["objections_raised"]:
+                tags_to_add.append(f"objecao_{objection}")
+        
+        if tags_to_add:
+            try:
+                await crm_service.add_tags_to_lead(str(kommo_lead_id), tags_to_add)
+                emoji_logger.system_success(f"✅ Tags adicionadas: {tags_to_add}")
+            except Exception as e:
+                emoji_logger.service_error(f"Erro ao adicionar tags: {e}")

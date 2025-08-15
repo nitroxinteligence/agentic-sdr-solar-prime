@@ -468,6 +468,7 @@ class AgenticSDRStateless:
             try:
                 sync_data = lead_info.copy()
                 sync_data['phone'] = phone
+                sync_data.update(changes)  # Mescla as alterações
                 
                 result = await self.team_coordinator.sync_lead_to_crm(sync_data)
                 

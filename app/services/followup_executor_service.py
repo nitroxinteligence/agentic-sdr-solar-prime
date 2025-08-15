@@ -585,9 +585,29 @@ class FollowUpExecutorService:
                             logger.error("Falha ao agendar follow-up sequencial de 24h")
                     
                 elif trigger == "agent_response_24h":
-                    # Este era o follow-up de 24h, pode continuar nurturing por mais alguns dias
+                    # Este era o follow-up de 24h, pode continuar nurturing ou marcar como perdido
                     attempt = current_followup.get('attempt', 0)
-                    if attempt < 3:  # Máximo 3 tentativas adicionais após 24h
+                    if attempt >= 2:  # Após 30min + 24h + 48h sem resposta
+                        emoji_logger.system_info(f"🔚 Sequência de follow-up para {lead.get('name')} concluída sem resposta.")
+                        
+                        # ✅ AÇÃO: Mover para o estágio "NÃO INTERESSADO"
+                        try:
+                            # Verificar se temos serviços CRM disponíveis
+                            services = getattr(self, 'services', {})
+                            if 'crm' in services:
+                                crm_service = services["crm"]
+                                kommo_lead_id = lead.get("kommo_lead_id")
+                                if kommo_lead_id:
+                                    await crm_service.update_lead_stage(str(kommo_lead_id), "NÃO INTERESSADO")
+                                    emoji_logger.crm_event(f"Lead {kommo_lead_id} movido para NÃO INTERESSADO.")
+                                else:
+                                    logger.warning(f"Lead {lead.get('name')} sem kommo_lead_id para mover para NÃO INTERESSADO")
+                            else:
+                                logger.warning("Serviço CRM não disponível para mover lead para NÃO INTERESSADO")
+                        except Exception as e:
+                            logger.error(f"❌ Erro ao mover lead para NÃO INTERESSADO: {e}")
+                    else:
+                        # Agendar próximo nurturing
                         next_time = get_business_aware_datetime(hours_from_now=48)  # A cada 48h
                         
                         await self._create_followup(
@@ -1024,3 +1044,27 @@ OBJETIVO: Gerar mensagem empática de reengajamento para reativar conversa onde 
 
 # Singleton
 followup_executor_service = FollowUpExecutorService()
+
+async def start_followup_executor():
+    """Inicia o executor de follow-ups com dependências"""
+    try:
+        # Inicializar serviços CRM se habilitado
+        services = {}
+        
+        if settings.enable_crm_agent:
+            try:
+                from app.services.crm_service_100_real import CRMServiceReal as CRMService
+                services["crm"] = CRMService()
+                emoji_logger.service_ready("📊 CRM Service inicializado para FollowUp Executor")
+            except Exception as e:
+                emoji_logger.service_error(f"Erro ao inicializar CRM para FollowUp: {e}")
+        
+        # Injetar serviços no executor
+        followup_executor_service.services = services
+        
+        # Iniciar o executor
+        await followup_executor_service.start()
+        
+    except Exception as e:
+        logger.error(f"❌ Erro ao iniciar FollowUp Executor: {e}")
+        raise
