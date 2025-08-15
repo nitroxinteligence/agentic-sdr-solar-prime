@@ -12,6 +12,7 @@ import random
 from functools import wraps
 from app.utils.logger import emoji_logger
 from app.config import settings
+from app.services.rate_limiter import wait_for_kommo
 
 def async_retry_with_backoff(max_retries: int = 3, initial_delay: float = 1.0, max_delay: float = 30.0, backoff_factor: float = 2.0):
     """
@@ -154,6 +155,9 @@ class CRMServiceReal:
             )
             
             # Testar conexão com a API
+            # Aplicar rate limiting antes da requisição
+            await wait_for_kommo()
+            
             async with self.session.get(
                 f"{self.base_url}/api/v4/account",
                 headers=self.headers
@@ -183,6 +187,9 @@ class CRMServiceReal:
     async def _fetch_custom_fields(self):
         """Busca IDs dos campos customizados dinamicamente"""
         try:
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
             async with self.session.get(
                 f"{self.base_url}/api/v4/leads/custom_fields",
                 headers=self.headers
@@ -248,6 +255,9 @@ class CRMServiceReal:
             emoji_logger.system_debug("🔄 Buscando estágios do Kommo...")
             
             # Buscar estágios do Kommo
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
             async with self.session.get(
                 f"{self.base_url}/api/v4/leads/pipelines",
                 headers=self.headers
@@ -421,6 +431,9 @@ class CRMServiceReal:
                 # Atualizar lead existente
                 lead_id = existing_lead["id"]
                 print(f"🔍 DEBUG: Atualizando lead existente: {lead_id}")
+                # Aplicar rate limiting
+                await wait_for_kommo()
+                
                 async with self.session.patch(
                     f"{self.base_url}/api/v4/leads/{lead_id}",
                     headers=self.headers,
@@ -440,6 +453,9 @@ class CRMServiceReal:
             else:
                 # Criar novo lead
                 print(f"🔍 DEBUG: Criando novo lead com dados: {kommo_lead}")
+                # Aplicar rate limiting
+                await wait_for_kommo()
+                
                 async with self.session.post(
                     f"{self.base_url}/api/v4/leads",
                     headers=self.headers,
@@ -501,6 +517,9 @@ class CRMServiceReal:
             clean_phone = ''.join(filter(str.isdigit, phone))
             
             # Buscar no Kommo
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
             async with self.session.get(
                 f"{self.base_url}/api/v4/leads",
                 headers=self.headers,
@@ -618,6 +637,9 @@ class CRMServiceReal:
             status_id = stage_map.get(stage, stage_map.get(stage.lower(), stage_map.get(stage.upper(), 89709459)))
             
             # Atualizar no Kommo
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
             async with self.session.patch(
                 f"{self.base_url}/api/v4/leads/{lead_id}",
                 headers=self.headers,
@@ -664,6 +686,9 @@ class CRMServiceReal:
                 }
             }
             
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
             async with self.session.post(
                 f"{self.base_url}/api/v4/leads/{lead_id}/notes",
                 headers=self.headers,
@@ -709,6 +734,9 @@ class CRMServiceReal:
                 "task_type_id": 1  # 1 = Call
             }
             
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
             async with self.session.post(
                 f"{self.base_url}/api/v4/tasks",
                 headers=self.headers,
@@ -745,6 +773,9 @@ class CRMServiceReal:
             await self.initialize()
         
         try:
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
             async with self.session.get(
                 f"{self.base_url}/api/v4/leads/{lead_id}",
                 headers=self.headers,
@@ -1162,6 +1193,9 @@ class CRMServiceReal:
                 await self.initialize()
             
             # Testar acesso à API
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
             async with self.session.get(
                 f"{self.base_url}/api/v4/account",
                 headers=self.headers

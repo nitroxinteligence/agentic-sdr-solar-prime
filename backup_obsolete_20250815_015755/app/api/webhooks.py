@@ -13,7 +13,7 @@ from app.utils.logger import emoji_logger
 from app.integrations.supabase_client import supabase_client
 from app.integrations.redis_client import redis_client
 from app.integrations.evolution import evolution_client
-# Singleton removido, create_stateless_agent  # Importa ambos os modos
+from app.agents import get_agentic_agent, create_stateless_agent  # Importa ambos os modos
 from app.config import settings
 from app.services.message_buffer import MessageBuffer, set_message_buffer
 from app.services.message_splitter import MessageSplitter, set_message_splitter
@@ -282,7 +282,7 @@ async def create_agent_with_context(phone: str, conversation_id: str = None) -> 
         if use_stateless:
             agent = await create_stateless_agent()  # Nova instância
         else:
-            agent = await create_stateless_agent()  # Singleton
+            agent = await get_agentic_agent()  # Singleton
         
         emoji_logger.system_ready(
             "✅ Agente stateless criado com contexto",

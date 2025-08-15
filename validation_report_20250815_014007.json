@@ -1,0 +1,93 @@
+{
+  "timestamp": "2025-08-15T01:40:07.958256",
+  "duration": 29.08701992034912,
+  "results": {
+    "stateless_mode": {
+      "status": "✅",
+      "details": [
+        "Agente 1 ID: 4492820976",
+        "Agente 2 ID: 4492863376",
+        "Agente 3 ID: 4492886992",
+        "Isolamento confirmado: 3 instâncias únicas"
+      ]
+    },
+    "multimodal": {
+      "status": "✅",
+      "details": [
+        "✅ Processamento de texto funcional",
+        "✅ Análise multimodal habilitada"
+      ]
+    },
+    "google_calendar": {
+      "status": "✅",
+      "details": [
+        "✅ Método check_availability disponível",
+        "❌ Método create_event ausente",
+        "❌ Método list_events ausente",
+        "❌ Método get_calendar_link ausente"
+      ]
+    },
+    "kommo_crm": {
+      "status": "✅",
+      "details": [
+        "✅ Configuração básica presente",
+        "✅ Método update_fields disponível",
+        "✅ Estrutura de lead válida"
+      ]
+    },
+    "follow_ups": {
+      "status": "✅",
+      "details": [
+        "✅ Estrutura de follow-up válida"
+      ]
+    },
+    "rate_limiting": {
+      "status": "✅",
+      "details": [
+        "✅ Configuração Kommo: 5 req/10s",
+        "✅ Request 1: Permitida",
+        "✅ Request 2: Permitida",
+        "✅ Request 3: Permitida",
+        "✅ Request 4: Permitida",
+        "✅ Request 6: Bloqueada corretamente",
+        "✅ Request 7: Bloqueada corretamente"
+      ]
+    },
+    "concurrency": {
+      "status": "✅",
+      "details": [
+        "✅ 3/3 processamentos simultâneos bem-sucedidos"
+      ]
+    },
+    "supabase": {
+      "status": "✅",
+      "details": [
+        "✅ 6 tabelas essenciais mapeadas",
+        "✅ pgvector configurado para busca semântica"
+      ]
+    },
+    "evolution_api": {
+      "status": "✅",
+      "details": [
+        "✅ Configuração presente",
+        "✅ Instância: SDR IA SolarPrime",
+        "✅ Envio de texto disponível",
+        "✅ Envio de mídia disponível",
+        "✅ Indicador de digitação disponível"
+      ]
+    },
+    "ai_models": {
+      "status": "⚠️",
+      "details": [
+        "✅ Modelo primário: gemini-2.5-pro",
+        "✅ Modelo fallback: o3-mini",
+        "Erro: 'Settings' object has no attribute 'gemini_api_key'"
+      ]
+    }
+  },
+  "summary": {
+    "functional": 9,
+    "partial": 1,
+    "failed": 0
+  }
+}

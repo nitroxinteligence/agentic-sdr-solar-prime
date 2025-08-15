@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import asyncio
 from app.utils.logger import emoji_logger
 from app.config import settings
-from app.database.supabase_client import SupabaseClient
+from app.integrations.supabase_client import SupabaseClient
 
 class ConversationMonitor:
     """

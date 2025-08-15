@@ -2,6 +2,7 @@
 Database module initialization
 """
 
-from .supabase_client import SupabaseClient
+# SupabaseClient movido para app/integrations/supabase_client.py
+from app.integrations.supabase_client import SupabaseClient
 
 __all__ = ['SupabaseClient']

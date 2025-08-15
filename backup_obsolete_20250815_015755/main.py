@@ -86,7 +86,7 @@ async def lifespan(app: FastAPI):
                 emoji_logger.system_warning(f"⚠️ FollowUp Executor não iniciado: {str(e)}")
         
         # PRÉ-AQUECIMENTO: Testa criação do agente (singleton ou stateless conforme configuração)
-        from app.agents import create_stateless_agent, create_stateless_agent
+        from app.agents import get_agentic_agent, create_stateless_agent
         from app.config import settings
         
         use_stateless = settings.use_stateless_mode
@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
                 if use_stateless:
                     test_agent = await create_stateless_agent()  # Testa criação stateless
                 else:
-                    test_agent = await create_stateless_agent()  # Pré-aquece singleton
+                    test_agent = await get_agentic_agent()  # Pré-aquece singleton
                 
                 emoji_logger.system_ready(f"AgenticSDR ({agent_mode})", status="sistema pronto")
                 break
