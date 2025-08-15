@@ -237,18 +237,31 @@ class ConversationMonitor:
 
 ## 📚 Documentação
 
-### Guias Técnicos
-- [CLAUDE.md](CLAUDE.md) - Guia completo para desenvolvimento
-- [Arquitetura Stateless](IMPLEMENTACAO_STATELESS_COMPLETA.md)
-- [Melhorias Team Coordinator](RELATORIO_MELHORIAS_TEAM_COORDINATOR.md)
-- [Google Calendar OAuth](docs-3/GOOGLE_CALENDAR_OAUTH_SETUP.md)
-- [Kommo CRM Setup](docs-3/CRM_SYNC_IMPLEMENTATION_REPORT.md)
+### 🏗️ Arquitetura e Sistema
+- [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) - Arquitetura completa do sistema v0.3
+- [CLAUDE.md](CLAUDE.md) - Guia completo para desenvolvimento com Claude Code
+- [Implementação Stateless](docs/docs-3/ANALISE_IMPLEMENTACAO_STATELESS.md) - Decisão e implementação da arquitetura stateless
 
-### Relatórios de Implementação
-- [Diagnóstico Completo v2](DIAGNOSTICO_COMPLETO_AGENTE_V2.md)
-- [Solução Multimodal](DIAGNOSTICO_E_SOLUCAO_MULTIMODAL.md)
-- [Correção Follow-up](CORRECAO_FOLLOWUP_APLICADA.md)
-- [Troubleshooting](docs-3/PRODUCTION_READINESS_REPORT.md)
+### 📖 Guias de Referência
+- [Google Calendar OAuth Setup](docs/reference/GOOGLE_CALENDAR_OAUTH_SETUP.md) - Configuração do OAuth 2.0
+- [Kommo CRM Integration](docs/reference/CRM_DYNAMIC_SYNC_DOCUMENTATION.md) - Integração completa com Kommo
+- [AGNO Framework Guide](docs/reference/AGNO_FRAMEWORK_GUIDE.md) - Documentação do framework
+- [Transbordo System](docs/reference/TRANSBORDO_DOCUMENTATION.md) - Sistema de handoff para humanos
+
+### 📊 Relatórios Atuais
+- [Release Notes v0.3](docs/docs-3/RELEASE_NOTES_v03.md) - Últimas funcionalidades implementadas
+- [Validação do Sistema](docs/docs-3/RELATORIO_VALIDACAO_v03.md) - Relatório de validação completo
+- [Arquitetura Atual](docs/docs-2/ARQUITETURA_ATUAL.md) - Visão geral dos componentes
+
+### 📦 Arquivo Histórico
+- [Documentação Histórica](docs/archive/) - 150+ documentos de desenvolvimento (93 arquivados)
+  - `phase1-gemini-errors/` - Problemas resolvidos com API Gemini
+  - `phase2-refactoring/` - Processo de refatoração modular
+  - `phase3-stateless/` - Migração para arquitetura stateless
+  - `agno-framework/` - Evolução do uso do framework AGNO
+  - `diagnostics/` - Análises e diagnósticos resolvidos
+  - `implementations/` - Implementações concluídas
+  - `validations/` - Relatórios de validação anteriores
 
 ## 🔧 Stack Tecnológica
 
