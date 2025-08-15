@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
     Gerencia o ciclo de vida da aplicação
     """
     # Startup
-    emoji_logger.system_start("SDR IA Solar Prime v0.2")
+    emoji_logger.system_start("SDR IA Solar Prime v0.3")
     
     try:
         # Conecta ao Redis
@@ -79,27 +79,25 @@ async def lifespan(app: FastAPI):
         # Inicializa FollowUp Executor Service (versão segura)
         if settings.enable_follow_up_automation:
             try:
-                from app.services.followup_executor_safe import start_followup_executor
+                from app.services.followup_executor_service import start_followup_executor
                 asyncio.create_task(start_followup_executor())  # Roda em background
                 emoji_logger.system_ready("FollowUp Executor", check_interval="1min", types="30min, 24h")
             except Exception as e:
                 emoji_logger.system_warning(f"⚠️ FollowUp Executor não iniciado: {str(e)}")
         
         # PRÉ-AQUECIMENTO: Testa criação do agente (singleton ou stateless conforme configuração)
-        from app.agents import create_stateless_agent, create_stateless_agent
+        from app.agents import create_stateless_agent
         from app.config import settings
         
-        use_stateless = settings.use_stateless_mode
-        agent_mode = "Stateless" if use_stateless else "Singleton"
+        # Sistema agora é 100% stateless
+        agent_mode = "Stateless"
         
         for attempt in range(3):
             try:
                 emoji_logger.system_info(f"🔥 Pré-aquecendo AgenticSDR ({agent_mode}) - tentativa {attempt+1}/3...")
                 
-                if use_stateless:
-                    test_agent = await create_stateless_agent()  # Testa criação stateless
-                else:
-                    test_agent = await create_stateless_agent()  # Pré-aquece singleton
+                # Sempre criar instância stateless
+                test_agent = await create_stateless_agent()
                 
                 emoji_logger.system_ready(f"AgenticSDR ({agent_mode})", status="sistema pronto")
                 break
@@ -151,7 +149,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="SDR IA Solar Prime",
     description="Sistema Inteligente de Vendas para Energia Solar - Powered by AGnO Teams",
-    version="0.2.0",
+    version="0.3.0",  # Pure Stateless Architecture
     lifespan=lifespan
 )
 

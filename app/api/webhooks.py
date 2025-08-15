@@ -13,7 +13,7 @@ from app.utils.logger import emoji_logger
 from app.integrations.supabase_client import supabase_client
 from app.integrations.redis_client import redis_client
 from app.integrations.evolution import evolution_client
-# Singleton removido, create_stateless_agent  # Importa ambos os modos
+from app.agents import create_stateless_agent  # Import do agente stateless
 from app.config import settings
 from app.services.message_buffer import MessageBuffer, set_message_buffer
 from app.services.message_splitter import MessageSplitter, set_message_splitter
@@ -1171,7 +1171,7 @@ async def process_message_with_agent(
                 
                 try:
                     # Criar NOVA instância para o retry - limpa qualquer estado problemático
-                    new_agent = await create_agentic_sdr()
+                    new_agent = await create_stateless_agent()
                     
                     # Pequeno delay exponencial entre tentativas
                     await asyncio.sleep(retry_count * 0.5)
@@ -1396,7 +1396,7 @@ async def process_message_with_agent(
         # Última tentativa de recuperação com nova instância
         try:
             emoji_logger.webhook_process("Tentativa final de recuperação...")
-            recovery_agent = await create_agentic_sdr()
+            recovery_agent = await create_stateless_agent()
             await asyncio.sleep(1)  # Delay de 1 segundo
             
             response = await recovery_agent.process_message(
