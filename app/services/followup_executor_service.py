@@ -789,7 +789,7 @@ class FollowUpExecutorService:
             # 3. VERIFICAR KNOWLEDGE BASE (AgenticSDR pode acessar quando necessário)
             try:
                 # Schema correto baseado no SQL: question, answer, category
-                kb_result = self.db.client.table('knowledge_base').select("title").limit(1).execute()
+                kb_result = self.db.client.table('knowledge_base').select("question").limit(1).execute()
                 kb_available = len(kb_result.data) > 0
                 logger.info(f"🧠 Knowledge base disponível: {'✅' if kb_available else '❌'}")
             except Exception as e:
@@ -810,9 +810,9 @@ Contexto da conversa anterior:
 OBJETIVO: Gerar mensagem empática de reengajamento para reativar conversa onde parou. NÃO mencionar agendamentos a menos que o histórico mostre interesse específico nisso."""
             
             # 5. CHAMAR AGENTIC SDR PARA GERAR MENSAGEM INTELIGENTE
-            from app.agents.agentic_sdr_refactored import get_agentic_agent
+            from app.agents.agentic_sdr_stateless import create_stateless_agent
             
-            sdr_agent = await get_agentic_agent()
+            sdr_agent = await create_stateless_agent()
             
             # Chamar AgenticSDR com contexto da conversa
             response = await sdr_agent.process_message(
@@ -919,9 +919,9 @@ OBJETIVO: Gerar mensagem empática de reengajamento para reativar conversa onde 
 - NÃO seja genérica, use detalhes específicos da conversa quando possível"""
             
             # 3. CHAMAR AGENTIC SDR COM CONTEXTO DE LEMBRETE
-            from app.agents.agentic_sdr_refactored import get_agentic_agent
+            from app.agents.agentic_sdr_stateless import create_stateless_agent
             
-            sdr_agent = await get_agentic_agent()
+            sdr_agent = await create_stateless_agent()
             
             response = await sdr_agent.process_message(
                 message=meeting_context,
