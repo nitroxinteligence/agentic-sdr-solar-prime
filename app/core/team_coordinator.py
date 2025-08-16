@@ -186,7 +186,7 @@ class TeamCoordinator:
         # 4. INDICADORES DE TEMPO ESPECÍFICO (peso 0.5)
         time_patterns = [
             r"\d{1,2}h\d{0,2}", r"\d{1,2}:\d{2}", r"\d{1,2}/\d{1,2}",
-            "manhã", "tarde", "noite", "segunda", "terça", "quarta", 
+            "segunda", "terça", "quarta", 
             "quinta", "sexta", "sábado", "domingo"
         ]
         import re
