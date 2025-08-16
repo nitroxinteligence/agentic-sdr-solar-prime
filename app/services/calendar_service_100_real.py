@@ -22,6 +22,13 @@ class CalendarServiceReal:
         self.service = None
         self.oauth_handler = get_oauth_handler()
         
+        # 🚨 HORÁRIO COMERCIAL: Segunda a Sexta, 8h às 17h
+        self.business_hours = {
+            "start_hour": 8,   # 8:00
+            "end_hour": 17,    # 17:00
+            "weekdays": [0, 1, 2, 3, 4]  # Segunda(0) a Sexta(4)
+        }
+        
     async def initialize(self):
         """Inicializa conexão REAL com Google Calendar usando OAuth 2.0"""
         if self.is_initialized:
@@ -55,6 +62,46 @@ class CalendarServiceReal:
             emoji_logger.service_error(f"Erro ao conectar Google Calendar: {e}")
             raise
     
+    def is_business_hours(self, datetime_obj: datetime) -> bool:
+        """
+        Verifica se a data/hora está dentro do horário comercial
+        Segunda a Sexta, 8h às 17h
+        
+        Returns:
+            True se está no horário comercial, False caso contrário
+        """
+        # Verificar dia da semana (0=Segunda, 6=Domingo)
+        if datetime_obj.weekday() not in self.business_hours["weekdays"]:
+            return False
+        
+        # Verificar horário (8h às 17h)
+        if datetime_obj.hour < self.business_hours["start_hour"] or datetime_obj.hour >= self.business_hours["end_hour"]:
+            return False
+        
+        return True
+    
+    def get_next_business_day(self, date: datetime) -> datetime:
+        """
+        Retorna o próximo dia útil disponível
+        """
+        next_day = date
+        while next_day.weekday() not in self.business_hours["weekdays"]:
+            next_day += timedelta(days=1)
+        return next_day
+    
+    def format_business_hours_message(self) -> str:
+        """
+        Retorna mensagem formatada sobre horário comercial
+        """
+        weekday_names = {
+            0: "Segunda", 1: "Terça", 2: "Quarta", 
+            3: "Quinta", 4: "Sexta"
+        }
+        days_str = " a ".join([weekday_names[self.business_hours["weekdays"][0]], 
+                               weekday_names[self.business_hours["weekdays"][-1]]])
+        
+        return f"{days_str}, das {self.business_hours['start_hour']}h às {self.business_hours['end_hour']}h"
+    
     async def check_availability(self, date_request: str) -> Dict[str, Any]:
         """
         Verifica disponibilidade REAL no Google Calendar
@@ -65,6 +112,11 @@ class CalendarServiceReal:
         try:
             # Determinar data baseada no request
             tomorrow = datetime.now() + timedelta(days=1)
+            
+            # 🚨 VALIDAÇÃO: Ajustar para próximo dia útil se necessário
+            if tomorrow.weekday() not in self.business_hours["weekdays"]:
+                tomorrow = self.get_next_business_day(tomorrow)
+                emoji_logger.service_info(f"📅 Ajustando para próximo dia útil: {tomorrow.strftime('%A, %d/%m')}")
             
             # Buscar eventos do dia
             time_min = tomorrow.replace(hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z'
@@ -80,9 +132,9 @@ class CalendarServiceReal:
             
             events = events_result.get('items', [])
             
-            # Horários disponíveis (9h às 18h)
+            # 🚨 HORÁRIO COMERCIAL: Apenas horários dentro do expediente
             all_slots = []
-            for hour in range(9, 18):
+            for hour in range(self.business_hours["start_hour"], self.business_hours["end_hour"]):
                 slot_start = tomorrow.replace(hour=hour, minute=0, second=0, microsecond=0)
                 slot_end = slot_start + timedelta(hours=1)
                 
@@ -140,6 +192,48 @@ class CalendarServiceReal:
             # Converter data e hora
             meeting_datetime = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
             meeting_end = meeting_datetime + timedelta(hours=1)
+            
+            # 🚨 VALIDAÇÃO DE HORÁRIO COMERCIAL
+            if not self.is_business_hours(meeting_datetime):
+                weekday_names = {
+                    5: "sábado", 6: "domingo",
+                    0: "segunda-feira", 1: "terça-feira", 2: "quarta-feira",
+                    3: "quinta-feira", 4: "sexta-feira"
+                }
+                
+                # Mensagem específica para fim de semana
+                if meeting_datetime.weekday() in [5, 6]:
+                    emoji_logger.service_warning(f"⚠️ Tentativa de agendar no {weekday_names[meeting_datetime.weekday()]}")
+                    
+                    # Sugerir próximo dia útil
+                    next_business = self.get_next_business_day(meeting_datetime)
+                    
+                    return {
+                        "success": False,
+                        "error": "weekend_not_allowed",
+                        "message": f"Ops! Não agendamos reuniões aos finais de semana. 🚫\n\n" +
+                                  f"O Leonardo atende apenas em dias úteis ({self.format_business_hours_message()}).\n\n" +
+                                  f"Que tal {weekday_names[next_business.weekday()]}, {next_business.strftime('%d/%m')}? " +
+                                  f"Posso verificar os horários disponíveis para você! 😊",
+                        "suggested_date": next_business.strftime("%Y-%m-%d"),
+                        "business_hours": self.format_business_hours_message()
+                    }
+                
+                # Mensagem para horário fora do expediente
+                elif meeting_datetime.hour < self.business_hours["start_hour"] or meeting_datetime.hour >= self.business_hours["end_hour"]:
+                    emoji_logger.service_warning(f"⚠️ Tentativa de agendar às {meeting_datetime.hour}h (fora do expediente)")
+                    
+                    return {
+                        "success": False,
+                        "error": "outside_business_hours",
+                        "message": f"Ops! Esse horário está fora do nosso expediente. ⏰\n\n" +
+                                  f"O Leonardo atende {self.format_business_hours_message()}.\n\n" +
+                                  f"Posso verificar os horários disponíveis dentro do expediente para você! 😊",
+                        "requested_time": time,
+                        "business_hours": self.format_business_hours_message()
+                    }
+            
+            # Se passou na validação, continuar com o agendamento normal
             
             # Criar evento
             event = {
