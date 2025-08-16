@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional, List
 import asyncio
 from datetime import datetime
 import pytz
+import re
 
 from app.core.model_manager import ModelManager
 from app.core.multimodal_processor import MultimodalProcessor
@@ -190,6 +191,119 @@ class AgenticSDRStateless:
             emoji_logger.system_error("AgenticSDRStateless", error=f"Traceback: {traceback.format_exc()}")
             return "Desculpe, tive um problema ao processar sua mensagem. Pode repetir? 🤔"
     
+    async def _parse_and_execute_tools(self, response: str, lead_info: dict, context: dict) -> dict:
+        """
+        Parse e executa tool calls na resposta do agente
+        Formato: [TOOL: service.method | param=value | param2=value2]
+        """
+        
+        tool_pattern = r'\[TOOL:\s*([^|]+?)(?:\s*\|\s*([^\]]+))?\]'
+        tool_matches = re.findall(tool_pattern, response)
+        
+        if not tool_matches:
+            return {}
+        
+        tool_results = {}
+        
+        for match in tool_matches:
+            service_method = match[0].strip()
+            params_str = match[1].strip() if len(match) > 1 and match[1] else ""
+            
+            # Parse dos parâmetros
+            params = {}
+            if params_str:
+                param_pairs = params_str.split('|')
+                for pair in param_pairs:
+                    if '=' in pair:
+                        key, value = pair.split('=', 1)
+                        params[key.strip()] = value.strip()
+            
+            # Executar o tool
+            try:
+                result = await self._execute_single_tool(
+                    service_method, params, lead_info, context
+                )
+                tool_results[service_method] = result
+                emoji_logger.system_success(f"✅ Tool executado: {service_method}")
+            except Exception as e:
+                tool_results[service_method] = {"error": str(e)}
+                emoji_logger.system_error("Tool execution error", error=f"❌ Erro no tool {service_method}: {e}")
+        
+        return tool_results
+
+    async def _execute_single_tool(self, service_method: str, params: dict, lead_info: dict, context: dict):
+        """Executa um tool específico"""
+        
+        parts = service_method.split('.')
+        if len(parts) != 2:
+            raise ValueError(f"Formato inválido: {service_method}")
+        
+        service_name, method_name = parts
+        
+        # Calendar tools
+        if service_name == "calendar":
+            if not self.team_coordinator.services.get("calendar"):
+                raise ValueError("Calendar service não disponível")
+            
+            calendar_service = self.team_coordinator.services["calendar"]
+            
+            if method_name == "check_availability":
+                return await calendar_service.check_availability(
+                    context.get("message", "")
+                )
+            elif method_name == "schedule_meeting":
+                return await calendar_service.schedule_meeting(
+                    date=params.get("date"),
+                    time=params.get("time"),
+                    lead_info={
+                        **lead_info,
+                        "email": params.get("email", lead_info.get("email"))
+                    }
+                )
+            elif method_name == "suggest_times":
+                return await calendar_service.suggest_times(lead_info)
+        
+        # CRM tools
+        elif service_name == "crm":
+            if not self.team_coordinator.services.get("crm"):
+                raise ValueError("CRM service não disponível")
+            
+            crm_service = self.team_coordinator.services["crm"]
+            
+            if method_name == "update_stage":
+                stage = params.get("stage", "").lower()
+                return await crm_service.update_lead_stage(
+                    lead_info.get("kommo_lead_id"),
+                    stage
+                )
+            elif method_name == "update_field":
+                field_name = params.get("field")
+                field_value = params.get("value")
+                if field_name and field_value:
+                    return await crm_service.update_fields(
+                        lead_info.get("kommo_lead_id"),
+                        {field_name: field_value}
+                    )
+        
+        # Follow-up tools
+        elif service_name == "followup":
+            if not self.team_coordinator.services.get("followup"):
+                raise ValueError("Follow-up service não disponível")
+            
+            followup_service = self.team_coordinator.services["followup"]
+            
+            if method_name == "schedule":
+                hours = int(params.get("hours", 24))
+                message = params.get("message", "Oi! Tudo bem? Ainda tem interesse em energia solar?")
+                return await followup_service.schedule_followup(
+                    phone_number=lead_info.get("phone"),
+                    message=message,
+                    delay_hours=hours,
+                    lead_info=lead_info
+                )
+        
+        raise ValueError(f"Tool não reconhecido: {service_method}")
+    
     async def _generate_response(self,
                                 message: str,
                                 context: Dict[str, Any],
@@ -225,12 +339,41 @@ class AgenticSDRStateless:
             len(service_results) > 0
         )
         
-        # Gerar resposta
-        response = await self.model_manager.get_response(
+        # Primeira passagem: gerar resposta com possíveis tool calls
+        initial_response = await self.model_manager.get_response(
             prompt,
             system_prompt=self._get_instructions(),
             use_reasoning=use_reasoning
         )
+
+        # Verificar e executar tool calls
+        tool_results = await self._parse_and_execute_tools(
+            initial_response, 
+            lead_info,
+            context
+        )
+
+        # Se houver tool results, re-gerar resposta com os resultados
+        if tool_results:
+            # Adicionar resultados ao contexto
+            tool_results_text = "\n\n=== RESULTADOS DOS TOOLS ===\n"
+            for tool_name, result in tool_results.items():
+                if isinstance(result, dict) and "error" in result:
+                    tool_results_text += f"❌ {tool_name}: Erro - {result['error']}\n"
+                else:
+                    tool_results_text += f"✅ {tool_name}: {str(result)[:500]}\n"
+            
+            # Re-construir prompt com resultados
+            enhanced_prompt = f"{prompt}\n{tool_results_text}\n\nAgora formule a resposta final para o usuário baseada nos resultados acima."
+            
+            # Gerar resposta final
+            response = await self.model_manager.get_response(
+                enhanced_prompt,
+                system_prompt=self._get_instructions(),
+                use_reasoning=use_reasoning
+            )
+        else:
+            response = initial_response
         
         if not response:
             response = self._get_fallback_response(context)
