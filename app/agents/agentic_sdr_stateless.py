@@ -621,7 +621,7 @@ class AgenticSDRStateless:
             
             if results:
                 knowledge_context = "\n\n📚 CONHECIMENTO RELEVANTE DA SOLARPRIME:\n"
-                for item in results[:10]:
+                for item in results:
                     knowledge_context += f"- {item.get('question', '')}: {item.get('answer', '')}\n"
                 
                 emoji_logger.system_event(f"🧠 Knowledge base: {len(results)} itens encontrados")
