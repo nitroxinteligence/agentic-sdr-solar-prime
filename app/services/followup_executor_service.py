@@ -817,10 +817,12 @@ OBJETIVO: Gerar mensagem empática de reengajamento para reativar conversa onde 
             # Chamar AgenticSDR com contexto da conversa
             response = await sdr_agent.process_message(
                 message=followup_trigger_message,
-                metadata={
+                execution_context={
                     "phone": phone or lead.get('phone_number', ''),
-                    "lead_data": lead,
-                    "conversation_id": conversation_id
+                    "lead_info": lead,
+                    "conversation_id": conversation_id,
+                    "conversation_history": [],  # Histórico já está no followup_trigger_message
+                    "timestamp": datetime.now().isoformat()
                 }
             )
             
@@ -925,10 +927,12 @@ OBJETIVO: Gerar mensagem empática de reengajamento para reativar conversa onde 
             
             response = await sdr_agent.process_message(
                 message=meeting_context,
-                metadata={
+                execution_context={
                     "phone": phone,
-                    "lead_data": lead_data,
-                    "conversation_id": conversation_id
+                    "lead_info": lead_data,
+                    "conversation_id": conversation_id,
+                    "conversation_history": [],  # Histórico já está no meeting_context
+                    "timestamp": datetime.now().isoformat()
                 }
             )
             
