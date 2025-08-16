@@ -353,6 +353,9 @@ class AgenticSDRStateless:
             context
         )
 
+        # Verificar se já temos resultados de serviços do TeamCoordinator
+        has_service_results = len(service_results) > 0
+        
         # Se houver tool results, re-gerar resposta com os resultados
         if tool_results:
             # Adicionar resultados ao contexto
@@ -372,6 +375,67 @@ class AgenticSDRStateless:
                 system_prompt=self._get_instructions(),
                 use_reasoning=use_reasoning
             )
+        elif has_service_results:
+            # Se temos resultados de serviços mas nenhum tool call, usar resposta inicial
+            # O prompt já inclui os service_results, então a resposta deve considerá-los
+            response = initial_response
+            
+            # VALIDAÇÃO CRÍTICA: Se há resultado de Calendar mas agente alucina, forçar re-geração
+            calendar_result = next((r for r in service_results if r.get("service") == "calendar" and r.get("success")), None)
+            
+            # Lista expandida de termos de alucinação
+            hallucination_terms = [
+                "problemas técnicos", "probleminhas técnicos",
+                "erro", "não consegui", "não consigo",
+                "desculpa", "desculpe", "vixe",
+                "não estou conseguindo", "dificuldade",
+                "falha", "indisponível", "inacessível",
+                "tentar novamente", "tente novamente"
+            ]
+            
+            # Verificar se há alucinação
+            response_lower = response.lower()
+            has_hallucination = any(term in response_lower for term in hallucination_terms)
+            
+            if calendar_result and has_hallucination:
+                emoji_logger.system_warning("🚨 ANTI-ALUCINAÇÃO ATIVADO: Calendar funcionou mas agente alucinando!")
+                
+                # Extrair dados do Calendar
+                calendar_data = calendar_result.get("data", {})
+                calendar_message = calendar_data.get("message", "")
+                
+                # Se não há mensagem específica, extrair do resultado
+                if not calendar_message and calendar_result.get("result"):
+                    calendar_message = calendar_result.get("result")
+                
+                correction_prompt = f"""
+CONTEXTO CRÍTICO - CORREÇÃO OBRIGATÓRIA:
+
+O Google Calendar foi executado COM SUCESSO e retornou horários disponíveis.
+NÃO há problemas técnicos. O sistema está funcionando PERFEITAMENTE.
+
+RESULTADO DO CALENDAR (USE ISTO):
+📅 {calendar_message}
+
+INSTRUÇÕES OBRIGATÓRIAS:
+1. Apresente os horários disponíveis de forma natural e entusiasmada
+2. NUNCA mencione problemas técnicos ou erros
+3. Use exatamente os horários retornados pelo Calendar
+4. Seja positiva e proativa como Helen sempre é
+
+Mensagem do cliente: {message}
+Nome do lead: {lead_info.get('name', 'Cliente')}
+
+RESPONDA AGORA usando os horários do Calendar!
+"""
+                
+                response = await self.model_manager.get_response(
+                    correction_prompt,
+                    system_prompt=self._get_instructions(),
+                    use_reasoning=True  # Usar reasoning para garantir correção
+                )
+                
+                emoji_logger.system_success("✅ Resposta corrigida - alucinação removida")
         else:
             response = initial_response
         
@@ -458,12 +522,31 @@ class AgenticSDRStateless:
         if lead_info.get("chosen_flow"):
             prompt_parts.append(f"Fluxo escolhido: {lead_info['chosen_flow']}")
         
-        # Resultados de serviços
-        for result in service_results:
-            if result.get("service") == "calendar" and result.get("success"):
-                prompt_parts.append("Reunião agendada com sucesso")
-            elif result.get("service") == "crm" and result.get("success"):
-                prompt_parts.append("Lead atualizado no CRM")
+        # Resultados de serviços (TeamCoordinator)
+        if service_results:
+            prompt_parts.append("\n🚨 === RESULTADOS DE SERVIÇOS EXECUTADOS === 🚨")
+            prompt_parts.append("ATENÇÃO: Os serviços abaixo foram executados COM SUCESSO.")
+            prompt_parts.append("VOCÊ DEVE usar estes resultados na sua resposta!")
+            prompt_parts.append("")
+            
+            for result in service_results:
+                if result.get("service") == "calendar" and result.get("success"):
+                    calendar_data = result.get("data", {})
+                    if calendar_data.get("message"):
+                        prompt_parts.append(f"📅 CALENDAR EXECUTADO COM SUCESSO:")
+                        prompt_parts.append(f"   Resultado: {calendar_data['message']}")
+                        prompt_parts.append("   ✅ USE ESTES HORÁRIOS NA SUA RESPOSTA!")
+                    else:
+                        prompt_parts.append("📅 Calendar: Operação executada com sucesso")
+                elif result.get("service") == "crm" and result.get("success"):
+                    prompt_parts.append("📊 CRM: Lead atualizado com sucesso")
+                elif result.get("service") == "followup" and result.get("success"):
+                    prompt_parts.append("🔄 Follow-up: Agendado com sucesso")
+            
+            prompt_parts.append("")
+            prompt_parts.append("⚠️ REGRA CRÍTICA: NUNCA diga que está com problemas técnicos")
+            prompt_parts.append("se os serviços funcionaram! Use os dados acima!")
+            prompt_parts.append("=== FIM DOS RESULTADOS DE SERVIÇOS ===")
         
         # Contexto de mídia
         if media_context:
