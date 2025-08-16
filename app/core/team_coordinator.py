@@ -665,13 +665,44 @@ class TeamCoordinator:
         elif "depois de amanhã" in text_lower:
             date = (hoje + timedelta(days=2)).strftime("%Y-%m-%d")
         else:
-            # Tentar extrair data no formato DD/MM
-            date_match = re.search(r"(\d{1,2})[/-](\d{1,2})", text)
-            if date_match:
-                day = int(date_match.group(1))
-                month = int(date_match.group(2))
-                year = hoje.year
-                date = f"{year}-{month:02d}-{day:02d}"
+            # Detectar dias da semana
+            weekdays = {
+                "segunda": 0, "segunda-feira": 0, "segunda feira": 0,
+                "terça": 1, "terça-feira": 1, "terça feira": 1, "terca": 1,
+                "quarta": 2, "quarta-feira": 2, "quarta feira": 2,
+                "quinta": 3, "quinta-feira": 3, "quinta feira": 3,
+                "sexta": 4, "sexta-feira": 4, "sexta feira": 4,
+                "sábado": 5, "sabado": 5,
+                "domingo": 6
+            }
+            
+            # Procurar por dia da semana no texto
+            found_weekday = None
+            for weekday_name, weekday_num in weekdays.items():
+                if weekday_name in text_lower:
+                    found_weekday = weekday_num
+                    break
+            
+            if found_weekday is not None:
+                # Calcular próxima ocorrência do dia da semana
+                current_weekday = hoje.weekday()
+                days_ahead = found_weekday - current_weekday
+                
+                # Se o dia já passou nesta semana, pegar próxima semana
+                if days_ahead <= 0:
+                    days_ahead += 7
+                
+                target_date = hoje + timedelta(days=days_ahead)
+                date = target_date.strftime("%Y-%m-%d")
+                emoji_logger.service_event(f"📅 Dia da semana detectado: {target_date.strftime('%A, %d/%m/%Y')}")
+            else:
+                # Tentar extrair data no formato DD/MM
+                date_match = re.search(r"(\d{1,2})[/-](\d{1,2})", text)
+                if date_match:
+                    day = int(date_match.group(1))
+                    month = int(date_match.group(2))
+                    year = hoje.year
+                    date = f"{year}-{month:02d}-{day:02d}"
         
         # Se não encontrou data, buscar no contexto da conversa
         if not date and conversation_history:

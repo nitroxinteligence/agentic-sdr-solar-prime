@@ -21,6 +21,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ **No Repetitive Greetings**: Fixed "Massa!", "Show de bola!" repetition
 - ✅ **Internal Reasoning Hidden**: Fixed leak of stage/flow/emotions to users
 - ✅ **Phrase Filter Fixed**: Removed false positive on "deixa eu"
+- ✅ **Weekday Parsing**: Supports "segunda-feira", "terça", etc. with proper date calculation
+- ✅ **Business Hours Enforcement**: Blocks weekends (Saturday/Sunday) and non-business hours (8-17h)
+- ✅ **Context-Aware Scheduling**: Smart detection prevents scheduling loops
 
 ### 🚀 Previous Improvements (v0.3)
 - ✅ **Unified PT/EN Stage Mapping**: Accepts both Portuguese and English stage names
