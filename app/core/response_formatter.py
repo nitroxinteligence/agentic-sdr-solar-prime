@@ -117,7 +117,7 @@ class ResponseFormatter:
         
         # Verificar palavras proibidas que indicam vazamento de raciocínio
         forbidden_phrases = [
-            "vou analisar", "deixa eu", "processando", "calculando",
+            "vou analisar", "processando", "calculando",
             "verificando", "aguarde", "só um momento", "um minutinho"
         ]
         
