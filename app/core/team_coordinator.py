@@ -159,7 +159,8 @@ class TeamCoordinator:
         # 1. PALAVRAS-CHAVE BÁSICAS (peso 0.2)
         basic_keywords = [
             "agendar", "marcar", "reunião", "conversar", "leonardo",
-            "horário", "disponível", "data", "quando", "encontro"
+            "horário", "disponível", "data", "quando", "encontro",
+            "pode ser", "poderia ser", "da pra ser", "dá pra ser"
         ]
         keyword_matches = sum(1 for kw in basic_keywords if kw in message_lower)
         calendar_score += min(0.4, keyword_matches * 0.2)  # Max 0.4 de keywords
@@ -175,13 +176,24 @@ class TeamCoordinator:
                 calendar_score += 0.4
                 break
         
-        # 3. INDICADORES DE URGÊNCIA (peso 0.3)
+        # 3. INDICADORES DE URGÊNCIA E TEMPO (peso 0.4 - aumentado)
         urgency_indicators = [
             "hoje", "amanhã", "logo", "rápido", "urgente",
             "já", "agora", "preciso", "importante"
         ]
-        if any(indicator in message_lower for indicator in urgency_indicators):
-            calendar_score += 0.3
+        # Indicadores específicos de flexibilidade temporal (peso maior)
+        time_flexibility_indicators = [
+            "amanhã pode", "pode ser amanhã", "amanhã da", "amanhã dá"
+        ]
+        
+        urgency_match = any(indicator in message_lower for indicator in urgency_indicators)
+        flexibility_match = any(indicator in message_lower for indicator in time_flexibility_indicators)
+        
+        if flexibility_match:
+            calendar_score += 0.5  # Peso maior para flexibilidade temporal específica
+            emoji_logger.service_event("🎯 BOOST Calendar por flexibilidade temporal detectada")
+        elif urgency_match:
+            calendar_score += 0.4  # Peso aumentado para urgência geral
         
         # 4. INDICADORES DE TEMPO ESPECÍFICO (peso 0.5)
         time_patterns = [
@@ -189,11 +201,29 @@ class TeamCoordinator:
             "segunda", "terça", "quarta", 
             "quinta", "sexta", "sábado", "domingo"
         ]
+        # Padrões de hora simplificados que indicam agendamento
+        simple_time_patterns = [
+            r"\d{1,2}h", r"as \d{1,2}", r"às \d{1,2}", 
+            r"pode ser \d{1,2}", r"pode ser as \d{1,2}"
+        ]
+        
         import re
+        time_detected = False
+        
+        # Verificar padrões de tempo específicos
         for pattern in time_patterns:
             if re.search(pattern, message_lower):
                 calendar_score += 0.5
+                time_detected = True
                 break
+        
+        # Verificar padrões de hora simplificados (contexto de agendamento)
+        if not time_detected:
+            for pattern in simple_time_patterns:
+                if re.search(pattern, message_lower):
+                    calendar_score += 0.6  # Peso maior para padrões contextuais
+                    emoji_logger.service_event(f"🎯 BOOST Calendar por padrão temporal: {pattern}")
+                    break
         
         # 🚀 5. BOOST PROATIVO PARA CLOSING/AGENDAMENTO (peso 0.3)
         conversation_stage = context.get("conversation_stage", "").lower()
@@ -214,9 +244,28 @@ class TeamCoordinator:
             "interessante", "interessado", "faz sentido", "legal", "ótimo",
             "perfeito", "quero", "preciso", "vou", "aceito"
         ]
+        
+        # 🚀 7. BOOST POR CONTEXTO DE AGENDAMENTO CONVERSACIONAL
+        # Detecta quando usuário responde com flexibilidade após pergunta sobre horário
+        contextual_scheduling_phrases = [
+            "pode ser", "da pra", "dá pra", "consigo", "posso", 
+            "tudo bem", "ok", "sim", "claro", "perfeito"
+        ]
+        
         if any(indicator in message_lower for indicator in interest_indicators):
             calendar_score += 0.2
             emoji_logger.service_event("🎯 BOOST Calendar por interesse demonstrado")
+        
+        # Boost adicional para frases contextuais de agendamento
+        if any(phrase in message_lower for phrase in contextual_scheduling_phrases):
+            # Verificar se há indicador temporal na mesma mensagem
+            has_time_context = any(time_word in message_lower for time_word in 
+                                 ["amanhã", "hoje", "depois", "manhã", "tarde", "noite"] + 
+                                 [str(i)+"h" for i in range(6, 24)])
+            
+            if has_time_context:
+                calendar_score += 0.3  # Boost significativo para contexto temporal + flexibilidade
+                emoji_logger.service_event("🎯 BOOST Calendar por contexto de agendamento conversacional")
         
         return min(1.0, calendar_score)
     
