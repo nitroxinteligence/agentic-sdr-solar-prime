@@ -262,6 +262,23 @@ class AgenticSDRStateless:
                 )
             elif method_name == "suggest_times":
                 return await calendar_service.suggest_times(lead_info)
+            elif method_name == "cancel_meeting":
+                meeting_id = params.get("meeting_id")
+                if not meeting_id:
+                    raise ValueError("meeting_id é obrigatório para cancelar reunião")
+                return await calendar_service.cancel_meeting(meeting_id)
+            elif method_name == "reschedule_meeting":
+                meeting_id = params.get("meeting_id")
+                date = params.get("date")
+                time = params.get("time")
+                if not meeting_id:
+                    raise ValueError("meeting_id é obrigatório para reagendar reunião")
+                return await calendar_service.reschedule_meeting(
+                    meeting_id=meeting_id,
+                    date=date,
+                    time=time,
+                    lead_info=lead_info
+                )
         
         # CRM tools
         elif service_name == "crm":

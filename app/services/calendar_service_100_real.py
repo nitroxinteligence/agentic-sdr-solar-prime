@@ -463,6 +463,116 @@ Equipe SolarPrime
                 "details": f"Event ID: {meeting_id}"
             }
     
+    async def reschedule_meeting(self, 
+                                meeting_id: str,
+                                date: Optional[str] = None,
+                                time: Optional[str] = None,
+                                lead_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Reagenda reunião REAL no Google Calendar
+        Estratégia: Cancela a reunião existente e cria uma nova
+        
+        Args:
+            meeting_id: ID da reunião existente
+            date: Nova data (YYYY-MM-DD ou string natural)
+            time: Novo horário (HH:MM)
+            lead_info: Informações do lead
+            
+        Returns:
+            Dict com resultado do reagendamento
+        """
+        if not self.is_initialized:
+            await self.initialize()
+        
+        try:
+            # Primeiro, buscar detalhes da reunião existente
+            try:
+                existing_event = self.service.events().get(
+                    calendarId=self.calendar_id,
+                    eventId=meeting_id
+                ).execute()
+                
+                # Extrair informações do evento existente
+                existing_summary = existing_event.get('summary', '')
+                existing_attendees = existing_event.get('attendees', [])
+                existing_description = existing_event.get('description', '')
+                
+            except HttpError as e:
+                if e.resp.status == 404:
+                    emoji_logger.service_error(f"❌ Reunião {meeting_id} não encontrada")
+                    return {
+                        "success": False,
+                        "message": "Reunião não encontrada para reagendar",
+                        "meeting_id": meeting_id
+                    }
+                raise
+            
+            # Cancelar a reunião existente
+            cancel_result = await self.cancel_meeting(meeting_id)
+            
+            if not cancel_result.get("success") and "já foi cancelado" not in cancel_result.get("message", ""):
+                return {
+                    "success": False,
+                    "message": f"Erro ao cancelar reunião anterior: {cancel_result.get('message')}",
+                    "meeting_id": meeting_id
+                }
+            
+            # Preparar informações do lead
+            if not lead_info and existing_attendees:
+                # Tentar extrair informações dos participantes existentes
+                for attendee in existing_attendees:
+                    if attendee.get('email') and '@' in attendee.get('email', ''):
+                        lead_info = {
+                            "email": attendee.get('email'),
+                            "name": attendee.get('displayName', 'Cliente')
+                        }
+                        break
+            
+            if not lead_info:
+                lead_info = {"name": "Cliente", "email": None}
+            
+            # Criar nova reunião com os novos parâmetros
+            schedule_result = await self.schedule_meeting(
+                date=date,
+                time=time,
+                lead_info=lead_info
+            )
+            
+            if schedule_result.get("success"):
+                emoji_logger.calendar_event(
+                    f"✅ Reunião reagendada: {meeting_id} → {schedule_result.get('meeting_id')}"
+                )
+                
+                return {
+                    "success": True,
+                    "message": "Reunião reagendada com sucesso",
+                    "old_meeting_id": meeting_id,
+                    "new_meeting_id": schedule_result.get("meeting_id"),
+                    "meeting_link": schedule_result.get("meeting_link"),
+                    "datetime": schedule_result.get("datetime"),
+                    "real": True
+                }
+            else:
+                # Se falhou ao criar nova reunião, tentar informar o usuário
+                emoji_logger.service_error(
+                    f"❌ Falha ao criar nova reunião após cancelar {meeting_id}"
+                )
+                
+                return {
+                    "success": False,
+                    "message": f"Reunião cancelada mas erro ao criar nova: {schedule_result.get('message')}",
+                    "old_meeting_id": meeting_id,
+                    "details": "A reunião anterior foi cancelada, mas houve erro ao criar a nova"
+                }
+                
+        except Exception as e:
+            emoji_logger.service_error(f"❌ Erro ao reagendar reunião: {e}")
+            return {
+                "success": False,
+                "message": f"Erro ao reagendar reunião: {e}",
+                "meeting_id": meeting_id
+            }
+    
     async def suggest_times(self, lead_info: Dict[str, Any]) -> Dict[str, Any]:
         """Sugere horários disponíveis REAIS"""
         availability = await self.check_availability("próximos dias")

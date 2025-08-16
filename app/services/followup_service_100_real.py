@@ -379,7 +379,7 @@ class FollowUpServiceReal:
         """
         try:
             # Buscar do Supabase
-            pending = await self.db.get_pending_followups()
+            pending = await self.db.get_pending_follow_ups()
             
             emoji_logger.followup_event(
                 f"📅 {len(pending)} follow-ups pendentes encontrados"

@@ -621,6 +621,26 @@
         <parameters>Nenhum parâmetro necessário</parameters>
         <example>[TOOL: calendar.suggest_times]</example>
       </tool>
+      
+      <tool name="calendar.cancel_meeting">
+        <description>Cancelar reunião agendada no Google Calendar</description>
+        <usage>Usar quando cliente solicitar cancelamento de reunião</usage>
+        <parameters>
+          - meeting_id: ID da reunião a cancelar (obrigatório)
+        </parameters>
+        <example>[TOOL: calendar.cancel_meeting | meeting_id=abc123def456]</example>
+      </tool>
+      
+      <tool name="calendar.reschedule_meeting">
+        <description>Reagendar reunião para nova data/horário</description>
+        <usage>Usar quando cliente quiser mudar horário de reunião existente</usage>
+        <parameters>
+          - meeting_id: ID da reunião atual (obrigatório)
+          - date: Nova data YYYY-MM-DD (opcional, mantém atual se não informado)
+          - time: Novo horário HH:MM (opcional, mantém atual se não informado)
+        </parameters>
+        <example>[TOOL: calendar.reschedule_meeting | meeting_id=abc123def456 | date=2024-08-22 | time=15:00]</example>
+      </tool>
     </calendar_tools>
     
     <crm_tools>
