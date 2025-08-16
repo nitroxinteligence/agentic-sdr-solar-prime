@@ -379,7 +379,20 @@ class TeamCoordinator:
         """
         results = []
         
-        # Analisar necessidade
+        # 🧠 ANÁLISE CONTEXTUAL: Detectar se usuário está respondendo sobre horário
+        conversation_history = context.get("conversation_history", [])
+        is_time_selection = self._detect_time_selection_pattern(message, conversation_history)
+        
+        if is_time_selection:
+            emoji_logger.service_event(
+                "🎯 TIME SELECTION DETECTADO: Usuário escolhendo horário de lista anterior",
+                user_message=message[:100]
+            )
+            # Se usuário está escolhendo horário, NÃO executar check_availability
+            # Deixar o agente processar com [TOOL: calendar.schedule_meeting]
+            return results
+        
+        # Analisar necessidade normalmente
         scores = self.analyze_service_need(message, context)
         
         # Executar serviços com threshold dinâmico
@@ -436,8 +449,9 @@ class TeamCoordinator:
                 if "disponível" in message.lower() or "horário" in message.lower():
                     result = await service.check_availability(message)
                 else:
-                    # Extrair data/hora da mensagem
-                    date_time = self._extract_datetime(message)
+                    # Extrair data/hora da mensagem com contexto
+                    conversation_history = context.get("conversation_history", [])
+                    date_time = self._extract_datetime(message, conversation_history)
                     if date_time:
                         result = await service.schedule_meeting(
                             date_time["date"],
@@ -541,12 +555,95 @@ class TeamCoordinator:
         
         return None
     
-    def _extract_datetime(self, text: str) -> Optional[Dict[str, str]]:
+    def _detect_time_selection_pattern(self, message: str, conversation_history: List[Dict[str, Any]]) -> bool:
         """
-        Extrai data e hora do texto (SIMPLES)
+        🧠 Detecta se o usuário está escolhendo um horário de uma lista apresentada anteriormente
+        
+        Args:
+            message: Mensagem atual do usuário
+            conversation_history: Histórico da conversa
+            
+        Returns:
+            True se está escolhendo horário de lista anterior, False caso contrário
+        """
+        import re
+        
+        message_lower = message.lower()
+        
+        # Se não há histórico suficiente, não é seleção de horário
+        if len(conversation_history) < 2:
+            return False
+        
+        # 1. Verificar se a mensagem contém indicação de escolha de horário
+        time_selection_patterns = [
+            r"pode ser (?:as |às )?\d{1,2}",  # "pode ser as 10"
+            r"(?:as |às )?\d{1,2}h",          # "as 10h" ou "10h"
+            r"escolho (?:as |às )?\d{1,2}",   # "escolho as 10"
+            r"prefiro (?:as |às )?\d{1,2}",   # "prefiro as 10"
+            r"fica (?:as |às )?\d{1,2}",      # "fica as 10"
+            r"vamos (?:as |às )?\d{1,2}",     # "vamos as 10"
+            r"ok,? (?:as |às )?\d{1,2}",      # "ok, as 10"
+            r"sim,? (?:as |às )?\d{1,2}",     # "sim, as 10"
+            r"^\d{1,2}h?$",                   # apenas "10" ou "10h"
+        ]
+        
+        has_time_selection = any(re.search(pattern, message_lower) for pattern in time_selection_patterns)
+        
+        if not has_time_selection:
+            return False
+        
+        # 2. Verificar se há horários disponíveis nas últimas mensagens do assistant
+        # Buscar nas últimas 4 mensagens por listas de horários
+        for i in range(min(4, len(conversation_history))):
+            idx = -(i + 1)
+            msg = conversation_history[idx]
+            
+            # Verificar apenas mensagens do assistant
+            if msg.get("role") == "assistant":
+                content = msg.get("content", "").lower()
+                
+                # Padrões que indicam que horários foram apresentados
+                availability_patterns = [
+                    r"horários? disponíve(?:l|is)",
+                    r"tenho (?:estes|os seguintes) horários",
+                    r"\d{1,2}:\d{2}",  # formato hora:minuto
+                    r"\d{1,2}h",        # formato hora com h
+                    "qual prefere",
+                    "qual horário",
+                    "escolha um horário",
+                    "pode escolher",
+                    "opções de horário"
+                ]
+                
+                # Se encontrou indicação de horários apresentados
+                if any(pattern in content or re.search(pattern, content) for pattern in availability_patterns):
+                    emoji_logger.service_event(
+                        "🎯 CONTEXTO: Horários foram apresentados anteriormente",
+                        assistant_message_snippet=content[:100]
+                    )
+                    return True
+        
+        # 3. Verificar se o contexto indica stage de agendamento
+        if has_time_selection:
+            # Se mensagem tem seleção de horário mas não encontramos lista anterior,
+            # ainda pode ser uma escolha se estamos em contexto de agendamento
+            for msg in conversation_history[-3:]:
+                content = (msg.get("content", "") if msg else "").lower()
+                if any(word in content for word in ["agendar", "marcar", "reunião", "conversar", "leonardo"]):
+                    emoji_logger.service_event(
+                        "🎯 CONTEXTO: Usuário escolhendo horário em contexto de agendamento"
+                    )
+                    return True
+        
+        return False
+    
+    def _extract_datetime(self, text: str, conversation_history: List[Dict[str, Any]] = None) -> Optional[Dict[str, str]]:
+        """
+        Extrai data e hora do texto, com contexto da conversa
         
         Args:
             text: Texto com data/hora
+            conversation_history: Histórico para contexto de data
             
         Returns:
             Dict com date e time ou None
@@ -558,6 +655,7 @@ class TeamCoordinator:
         
         # Padrões simples
         hoje = datetime.now()
+        date = None
         
         # Detectar "hoje", "amanhã", "depois de amanhã"
         if "hoje" in text_lower:
@@ -574,16 +672,47 @@ class TeamCoordinator:
                 month = int(date_match.group(2))
                 year = hoje.year
                 date = f"{year}-{month:02d}-{day:02d}"
-            else:
-                date = None
         
-        # Extrair hora
-        time_match = re.search(r"(\d{1,2})[h:](\d{0,2})", text_lower)
-        if time_match:
-            hour = int(time_match.group(1))
-            minute = int(time_match.group(2)) if time_match.group(2) else 0
-            time = f"{hour:02d}:{minute:02d}"
-        else:
+        # Se não encontrou data, buscar no contexto da conversa
+        if not date and conversation_history:
+            # Buscar menção de data nas últimas mensagens
+            for msg in conversation_history[-5:]:
+                content = (msg.get("content", "") if msg else "").lower()
+                if "amanhã" in content:
+                    date = (hoje + timedelta(days=1)).strftime("%Y-%m-%d")
+                    emoji_logger.service_event("📅 Data herdada do contexto: amanhã")
+                    break
+                elif "hoje" in content:
+                    date = hoje.strftime("%Y-%m-%d")
+                    emoji_logger.service_event("📅 Data herdada do contexto: hoje")
+                    break
+                elif "depois de amanhã" in content:
+                    date = (hoje + timedelta(days=2)).strftime("%Y-%m-%d")
+                    emoji_logger.service_event("📅 Data herdada do contexto: depois de amanhã")
+                    break
+        
+        # Se ainda não tem data, assumir amanhã como padrão para agendamentos
+        if not date:
+            date = (hoje + timedelta(days=1)).strftime("%Y-%m-%d")
+            emoji_logger.service_event("📅 Data padrão assumida: amanhã")
+        
+        # Extrair hora - melhorado para detectar mais padrões
+        time = None
+        
+        # Padrões de hora mais abrangentes
+        time_patterns = [
+            (r"(?:as |às )?(\d{1,2})[h:](\d{0,2})", lambda m: f"{int(m.group(1)):02d}:{int(m.group(2)) if m.group(2) else 0:02d}"),
+            (r"(?:as |às )?(\d{1,2}) horas?", lambda m: f"{int(m.group(1)):02d}:00"),
+            (r"pode ser (?:as |às )?(\d{1,2})", lambda m: f"{int(m.group(1)):02d}:00"),
+        ]
+        
+        for pattern, formatter in time_patterns:
+            match = re.search(pattern, text_lower)
+            if match:
+                time = formatter(match)
+                break
+        
+        if not time:
             # Detectar períodos
             if "manhã" in text_lower:
                 time = "09:00"
@@ -594,10 +723,7 @@ class TeamCoordinator:
             else:
                 time = "10:00"  # Default
         
-        if date:
-            return {"date": date, "time": time}
-        
-        return None
+        return {"date": date, "time": time}
     
     def _calculate_followup_date(self, context: Dict[str, Any]) -> str:
         """
