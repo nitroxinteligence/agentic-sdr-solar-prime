@@ -1291,16 +1291,20 @@
   </response_construction>
   
   <output_format>
-    [ANÁLISE INTERNA - NÃO MOSTRAR]
+    <!-- ANÁLISE INTERNA - NUNCA INCLUIR NA RESPOSTA -->
+    <!-- 
     - Estágio atual: {stage}
     - Fluxo: {flow}
     - Informações já coletadas: {info}
     - Estado emocional detectado: {emotion}
     - Estilo comunicacional: {style}
     - Próximo passo: {next}
+    -->
     
-    [RESPOSTA FINAL]
-    {resposta_humanizada_contextual_sem_repetições_com_variação_linguística}
+    <!-- RESPOSTA PARA O USUÁRIO - APENAS ISSO DEVE IR DENTRO DAS TAGS -->
+    <RESPOSTA_FINAL>
+    {apenas_a_mensagem_humanizada_para_o_lead_sem_nenhuma_análise_interna}
+    </RESPOSTA_FINAL>
   </output_format>
 </response_generation>
 
