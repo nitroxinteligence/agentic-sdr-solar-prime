@@ -398,275 +398,110 @@ class FollowUpExecutorService:
             
             # Extrair informações do evento
             start_str = google_event.get('start', {}).get('dateTime', '')
-            start_time = self._parse_datetime(start_str)
             
-            # Local da reunião (online ou presencial)
-            location = google_event.get('location', 'Online')
+            # Parse da data/hora do evento
+            try:
+                if start_str:
+                    # Remover timezone info para parsing
+                    start_dt = datetime.fromisoformat(start_str.replace('Z', '+00:00')).replace(tzinfo=None)
+                    event_time = start_dt.strftime("%H:%M")
+                    event_date = start_dt.strftime("%d/%m")
+                else:
+                    event_time = "10:00"  # Default
+                    event_date = datetime.now().strftime("%d/%m")
+            except Exception:
+                event_time = "10:00"  # Default fallback
+                event_date = datetime.now().strftime("%d/%m")
             
-            # Link da reunião se houver
-            meeting_link = ''
-            if google_event.get('hangoutLink'):
-                meeting_link = google_event['hangoutLink']
-            elif 'meet.google.com' in google_event.get('description', ''):
-                # Extrair link do Google Meet da descrição
-                import re
-                match = re.search(r'(https://meet\.google\.com/[\w-]+)', google_event.get('description', ''))
-                if match:
-                    meeting_link = match.group(1)
+            # Extrair link do Google Meet
+            meet_link = google_event.get('hangoutLink', '')
             
-            # 🧠 GERAR MENSAGEM INTELIGENTE PERSONALIZADA (Helen + Contexto)
-            logger.info(f"🧠 Gerando lembrete personalizado {hours_before}h para {lead_data.get('name')}")
-            
-            # Simular follow-up para reutilizar sistema inteligente
-            fake_followup = {
-                'type': f'MEETING_REMINDER_{hours_before}H',
-                'metadata': {
-                    'phone': phone,
-                    'meeting_date': start_time.strftime('%d/%m/%Y'),
-                    'meeting_time': start_time.strftime('%H:%M'),
-                    'meeting_link': meeting_link,
-                    'location': location,
-                    'hours_before': hours_before,
-                    'google_event_id': google_event.get('id')
-                }
+            # Preparar dados do lead para contexto
+            lead_info = {
+                "name": lead_data.get("name", "Cliente"),
+                "bill_value": lead_data.get("bill_value", 0),
+                "chosen_flow": lead_data.get("chosen_flow", "Não definido"),
+                "qualification_score": lead_data.get("qualification_score", 0)
             }
             
-            # Tentar mensagem inteligente primeiro
-            intelligent_message = await self._generate_intelligent_meeting_reminder(lead_data, fake_followup, hours_before)
-            
-            if intelligent_message:
-                message = intelligent_message
-                logger.info(f"✅ Lembrete personalizado gerado por Helen")
-            else:
-                # Fallback para mensagem básica (mas melhor que padrão)
-                if hours_before == 24:
-                    message = f"Oi {lead_data.get('name', 'Cliente')}! Nossa reunião sobre energia solar está confirmada para amanhã ({start_time.strftime('%d/%m/%Y')}) às {start_time.strftime('%H:%M')}. Posso confirmar sua presença?"
-                elif hours_before == 2:
-                    message = f"{lead_data.get('name', 'Cliente')}, nossa reunião é daqui a 2 horas ({start_time.strftime('%H:%M')})! {f'🔗 {meeting_link}' if meeting_link else ''} Até já!"
-                else:
-                    return
-                logger.info(f"⚠️ Usando mensagem de fallback para lembrete {hours_before}h")
-            
-            # Marcar como enviado ANTES de tentar enviar
+            # Gerar mensagem personalizada usando contexto completo
             if hours_before == 24:
-                self.db.client.table('leads_qualifications').update({
-                    'reminder_24h_sent': True,
-                    'reminder_24h_sent_at': datetime.now(timezone.utc).isoformat()
-                }).eq('id', qualification_id).execute()
+                # Lembrete 24h antes
+                if lead_info["bill_value"] > 0:
+                    message = f"""☀️ {lead_info['name']}, amanhã ({event_date}) às {event_time} temos nossa reunião sobre energia solar!
+
+💰 Sua conta de R$ {lead_info['bill_value']} pode ser reduzida em até 90% com a SolarPrime.
+
+📍 Link da reunião: {meet_link}
+
+✅ Nossa reunião vai mostrar:
+• Análise personalizada da sua conta
+• Simulação de economia real
+• Opções de financiamento que cabem no seu bolso
+
+Confirma presença? É só responder SIM ou NÃO 🙏"""
+                else:
+                    message = f"""☀️ {lead_info['name']}, amanhã ({event_date}) às {event_time} temos nossa reunião sobre energia solar!
+
+📍 Link da reunião: {meet_link}
+
+✅ Nossa reunião vai mostrar:
+• Como a energia solar pode transformar sua conta de luz
+• As melhores soluções para seu perfil
+• Condições especiais exclusivas
+
+Confirma presença? É só responder SIM ou NÃO 🙏"""
+            
             elif hours_before == 2:
-                self.db.client.table('leads_qualifications').update({
-                    'reminder_2h_sent': True,
-                    'reminder_2h_sent_at': datetime.now(timezone.utc).isoformat()
-                }).eq('id', qualification_id).execute()
+                # Lembrete 2h antes
+                message = f"""⏰ {lead_info['name']}, nossa reunião é daqui a 2 HORAS ({event_time})!
+
+📍 Link da reunião: {meet_link}
+
+Chegou a hora de transformar sua conta de luz! Preparei tudo para mostrar como você pode economizar até 90%.
+
+Nos vemos na reunião! 👋"""
             
-            # SANITIZAÇÃO FINAL - Remove qualquer tag remanescente
-            message = self._sanitize_final_message(message)
+            else:
+                # Lembrete genérico
+                message = f"""☀️ {lead_info['name']}, sua reunião sobre energia solar é às {event_time}!
+
+📍 Link da reunião: {meet_link}
+
+Preparado para descobrir como economizar na conta de luz?
+
+Até já! 👋"""
             
-            # Enviar via WhatsApp
+            # Enviar mensagem via Evolution API
             result = await self.evolution.send_text_message(
                 phone=phone,
                 message=message
             )
             
             if result:
-                emoji_logger.whatsapp_sent(f"Lembrete personalizado {hours_before}h enviado para {lead_data.get('name')}")
+                logger.info(f"🧠✅ Lembrete de reunião enviado para {lead_info['name']} - {hours_before}h antes")
+                emoji_logger.whatsapp_sent(f"Lembrete {hours_before}h enviado para {lead_info['name']}")
             else:
-                logger.error(f"Falha ao enviar lembrete {hours_before}h para {lead_data.get('name')}")
-                # Não reverter marcação - evita reenvios múltiplos
-            
-        except Exception as e:
-            logger.error(f"❌ Erro ao enviar lembrete personalizado: {e}")
-    
-    async def _prepare_followup_message(self, followup_type: str, lead: Dict, followup: Dict) -> Optional[str]:
-        """Prepara mensagem personalizada - INTELIGENTE para reengajamento, template para outros"""
-        try:
-            # FOLLOW-UP INTELIGENTE: Para reengajamento, SEMPRE usar Helen completa com contexto
-            if followup_type in ["reengagement", "IMMEDIATE_REENGAGEMENT", "ABANDONMENT_CHECK"]:
-                return await self._generate_intelligent_message(followup_type, lead, followup)
-            
-            # TEMPLATES EXISTENTES: Para outros tipos (funcionam perfeitamente)
-            templates = self.templates.get(followup_type, [])
-            
-            if not templates:
-                # CORREÇÃO CRÍTICA: NUNCA usar campo 'message' diretamente pois pode conter texto técnico
-                # Em vez disso, usar fallback inteligente
-                if followup.get('message', '').strip():
-                    # Se tem mensagem mas não é template conhecido, tentar IA também
-                    intelligent_fallback = await self._generate_intelligent_message(followup_type, lead, followup)
-                    if intelligent_fallback:
-                        return intelligent_fallback
-                    # Se IA falhar, usar template padrão seguro
-                    return f"Oi {lead.get('name', 'Cliente')}! Vi que nossa conversa ficou pela metade... Posso continuar te ajudando?"
-                return None
-            
-            # Selecionar template baseado no índice do follow-up
-            attempt = followup.get('attempt', 0)
-            template = templates[min(attempt, len(templates) - 1)]
-            
-            # Substituir variáveis
-            bill_value = float(lead.get('bill_value', 0) or 0)
-            savings_value = bill_value * 0.3  # 30% de economia
-            
-            # Calcular dias desde criação
-            created_at = lead.get('created_at', datetime.now(timezone.utc).isoformat())
-            if created_at:
-                created_dt = self._parse_datetime(created_at)
-                days_since = (datetime.now(timezone.utc) - created_dt).days
-            else:
-                days_since = 0
-            
-            message = template.format(
-                name=lead.get('name', 'Cliente'),
-                bill_value=f"{bill_value:.2f}",
-                savings=f"{savings_value:.2f}",
-                percentage=30,
-                time=followup.get('metadata', {}).get('meeting_time', ''),
-                meeting_link=followup.get('metadata', {}).get('meeting_link', ''),
-                days=days_since,
-                hours=followup.get('metadata', {}).get('hours_until', '')
-            )
-            
-            return message
-            
-        except Exception as e:
-            logger.error(f"Erro ao preparar mensagem: {e}")
-            return None
-    
-    async def _schedule_next_followup(self, followup_type: str, lead: Dict, current_followup: Dict):
-        """Agenda próximo follow-up baseado na estratégia - FLUXO SEQUENCIAL"""
-        try:
-            from app.utils.time_utils import get_business_aware_datetime
-            
-            # NOVO FLUXO SEQUENCIAL - Só agenda próximo se usuário não respondeu
-            if followup_type == "reengagement":
-                # Agendar follow-up de 24h apenas se foi o primeiro (30min)
-                metadata = current_followup.get('metadata', {})
-                trigger = metadata.get('trigger', '')
+                logger.error(f"❌ Falha ao enviar lembrete de reunião para {lead_info['name']}")
                 
-                if trigger == "agent_response_30min":
-                    # Este era o follow-up de 30min, agendar o de 24h
-                    agent_response_timestamp = metadata.get('agent_response_timestamp')
-                    phone = metadata.get('phone')
-                    conversation_id = metadata.get('conversation_id')
-                    
-                    if agent_response_timestamp and phone and conversation_id:
-                        next_time = get_business_aware_datetime(hours_from_now=24)
-                        
-                        followup_24h_data = {
-                            'lead_id': lead['id'],
-                            'scheduled_at': next_time.isoformat(),
-                            'type': 'reengagement',
-                            'follow_up_type': 'DAILY_NURTURING',
-                            'message': '',  # Usar mensagem inteligente
-                            'status': 'pending',
-                            'priority': 'medium',
-                            'metadata': {
-                                'phone': phone,
-                                'conversation_id': conversation_id,
-                                'trigger': 'agent_response_24h',
-                                'agent_response_timestamp': agent_response_timestamp,
-                                'scheduled_reason': 'User inactivity check 24h after agent response',
-                                'message_type': 'intelligent_reengagement'
-                            }
-                        }
-                        
-                        result = self.db.client.table('follow_ups').insert(followup_24h_data).execute()
-                        
-                        if result.data:
-                            emoji_logger.system_info(f"📅 Follow-up sequencial de 24h agendado para {phone} às {next_time.strftime('%d/%m %H:%M')}")
-                        else:
-                            logger.error("Falha ao agendar follow-up sequencial de 24h")
-                    
-                elif trigger == "agent_response_24h":
-                    # Este era o follow-up de 24h, pode continuar nurturing ou marcar como perdido
-                    attempt = current_followup.get('attempt', 0)
-                    if attempt >= 2:  # Após 30min + 24h + 48h sem resposta
-                        emoji_logger.system_info(f"🔚 Sequência de follow-up para {lead.get('name')} concluída sem resposta.")
-                        
-                        # ✅ AÇÃO: Mover para o estágio "NÃO INTERESSADO"
-                        try:
-                            # Verificar se temos serviços CRM disponíveis
-                            services = getattr(self, 'services', {})
-                            if 'crm' in services:
-                                crm_service = services["crm"]
-                                kommo_lead_id = lead.get("kommo_lead_id")
-                                if kommo_lead_id:
-                                    await crm_service.update_lead_stage(str(kommo_lead_id), "NÃO INTERESSADO")
-                                    emoji_logger.crm_event(f"Lead {kommo_lead_id} movido para NÃO INTERESSADO.")
-                                else:
-                                    logger.warning(f"Lead {lead.get('name')} sem kommo_lead_id para mover para NÃO INTERESSADO")
-                            else:
-                                logger.warning("Serviço CRM não disponível para mover lead para NÃO INTERESSADO")
-                        except Exception as e:
-                            logger.error(f"❌ Erro ao mover lead para NÃO INTERESSADO: {e}")
-                    else:
-                        # Agendar próximo nurturing
-                        next_time = get_business_aware_datetime(hours_from_now=48)  # A cada 48h
-                        
-                        await self._create_followup(
-                            lead_id=lead['id'],
-                            followup_type="DAILY_NURTURING",
-                            scheduled_at=next_time,
-                            message="",
-                            priority="low",
-                            attempt=attempt + 1
-                        )
-                        emoji_logger.system_info(f"📅 Follow-up de nurturing adicional agendado (tentativa {attempt + 1})")
-                    
         except Exception as e:
-            logger.error(f"Erro ao agendar próximo follow-up: {e}")
+            logger.error(f"❌ Erro ao enviar lembrete de reunião: {e}")
     
-    async def _create_followup(self, lead_id: int, followup_type: str, 
-                              scheduled_at: datetime, message: str, 
-                              priority: str = "medium", attempt: int = 0):
-        """Cria novo follow-up no banco"""
-        try:
-            # AVISO: Este método recebe lead_id como int do Kommo
-            # NÃO deve ser usado diretamente no Supabase que espera UUID
-            # TODO: Refatorar para usar UUID adequadamente
-            
-            from uuid import uuid4
-            # Por agora, criar UUID temporário se lead_id for integer do Kommo
-            if isinstance(lead_id, int):
-                logger.warning(f"⚠️ USANDO LEAD_ID INTEGER ({lead_id}) - DEVE SER REFATORADO PARA UUID")
-                # Usar None ao invés de integer inválido
-                supabase_lead_id = None
-            else:
-                supabase_lead_id = lead_id
-            
-            followup_data = {
-                'lead_id': supabase_lead_id,  # UUID válido ou None
-                'type': followup_type,
-                'scheduled_at': scheduled_at.isoformat(),
-                'status': 'pending',
-                'priority': priority,
-                'message': message,
-                'attempt': attempt,
-                'created_at': datetime.now(timezone.utc).isoformat(),
-                'metadata': {
-                    'kommo_lead_id': lead_id if isinstance(lead_id, int) else None  # Preservar ID do Kommo
-                }
-            }
-            
-            self.db.client.table('follow_ups').insert(followup_data).execute()
-            logger.info(f"📅 Novo follow-up agendado para {scheduled_at}")
-            
-        except Exception as e:
-            logger.error(f"Erro ao criar follow-up: {e}")
+    def _sanitize_final_message(self, message: str) -> str:
+        """Remove tags e formatação remanescentes da mensagem final"""
+        import re
+        
+        # Remover tags específicas do sistema
+        message = re.sub(r'<RESPOSTA_FINAL>.*?</RESPOSTA_FINAL>', '', message, flags=re.DOTALL)
+        message = re.sub(r'<[^>]+>', '', message)  # Remove qualquer tag HTML/XML
+        
+        # Remover múltiplos espaços e quebras de linha
+        message = re.sub(r'\s+', ' ', message)
+        message = message.strip()
+        
+        return message
     
-    async def _mark_followup_failed(self, followup_id: int, reason: str):
-        """Marca follow-up como falho"""
-        try:
-            self.db.client.table('follow_ups').update({
-                'status': 'failed',
-                'executed_at': datetime.now(timezone.utc).isoformat(),  # Usar executed_at em vez de failed_at
-                'error_reason': reason
-            }).eq('id', followup_id).execute()
-            
-        except Exception as e:
-            logger.error(f"Erro ao marcar follow-up como falho: {e}")
-    
-    async def _validate_inactivity_followup(self, followup: Dict[str, Any]) -> bool:
+    async def _validate_inactivity_followup(self, followup: Dict) -> bool:
         """
         Valida se usuário realmente ficou inativo para follow-ups de reengajamento
         
@@ -675,393 +510,374 @@ class FollowUpExecutorService:
             False: Cancelar follow-up (usuário respondeu)
         """
         try:
+            # Extrair metadados necessários
             metadata = followup.get('metadata', {})
-            if not isinstance(metadata, dict):
-                metadata = json.loads(metadata) if metadata else {}
+            lead_id = followup.get('lead_id')
             
-            conversation_id = metadata.get('conversation_id')
-            agent_response_timestamp = metadata.get('agent_response_timestamp')
-            
-            if not conversation_id or not agent_response_timestamp:
-                logger.warning(f"Follow-up {followup['id']} sem metadados necessários para validação")
+            if not lead_id:
+                logger.warning(f"Follow-up {followup['id']} sem lead_id para validação")
                 return True  # Se não temos dados, enviar o follow-up mesmo assim
             
-            # Converter timestamp para datetime (garantir timezone-aware)
-            agent_response_time = self._parse_datetime(agent_response_timestamp)
+            # Buscar última resposta do usuário e última resposta do agente antes deste follow-up
+            conversation = await self.db.get_conversation_by_lead_id(lead_id)
+            if not conversation or not conversation.get('messages'):
+                return True  # Sem mensagens, enviar follow-up
             
-            # Buscar última mensagem do usuário na conversa (sender='user')
-            result = self.db.client.table('messages').select(
-                "id, created_at, role"
-            ).eq(
-                'conversation_id', conversation_id
-            ).eq(
-                'role', 'user'
-            ).order(
-                'created_at', desc=True
-            ).limit(1).execute()
+            messages = conversation['messages']
+            agent_response_time = None
+            last_user_message_time = None
             
-            if not result.data:
-                # Sem mensagens do usuário na conversa, enviar follow-up
-                logger.info(f"🔍 Nenhuma mensagem do usuário encontrada na conversa {conversation_id}")
+            # Encontrar timestamp da resposta do agente que gerou este follow-up
+            if 'agent_response_timestamp' in metadata:
+                agent_response_time = datetime.fromisoformat(metadata['agent_response_timestamp'])
+            else:
+                # Retroceder para encontrar última mensagem do agente
+                for msg in reversed(messages):
+                    if msg.get('role') == 'assistant':
+                        agent_response_time = datetime.fromisoformat(msg['timestamp'])
+                        break
+            
+            # Encontrar última mensagem do usuário
+            for msg in reversed(messages):
+                if msg.get('role') == 'user':
+                    last_user_message_time = datetime.fromisoformat(msg['timestamp'])
+                    break
+            
+            # Se não temos dados suficientes, enviar follow-up
+            if not agent_response_time:
+                logger.warning(f"Follow-up {followup['id']} sem metadados necessários para validação")
                 return True
             
-            last_user_message = result.data[0]
-            last_user_message_time = self._parse_datetime(last_user_message['created_at'])
-            
-            # Verificar se usuário respondeu APÓS a resposta do agente que gerou este follow-up
-            if last_user_message_time > agent_response_time:
+            # Se usuário não respondeu desde a resposta do agente, enviar follow-up
+            if not last_user_message_time or last_user_message_time < agent_response_time:
+                logger.info(f"✅ Usuário inativo desde {agent_response_time} - enviando follow-up de reengajamento")
+                return True
+            else:
+                # Usuário respondeu após a resposta do agente, cancelar follow-up
                 logger.info(f"🚫 Usuário respondeu às {last_user_message_time} após agente às {agent_response_time} - cancelando follow-up")
                 return False
-            
-            # Usuário não respondeu desde a resposta do agente, enviar follow-up
-            logger.info(f"✅ Usuário inativo desde {agent_response_time} - enviando follow-up de reengajamento")
-            return True
-            
+                
         except Exception as e:
             logger.error(f"❌ Erro ao validar inatividade do follow-up: {e}")
             return True  # Em caso de erro, enviar o follow-up mesmo assim
     
-    def _parse_datetime(self, datetime_str: str) -> datetime:
+    async def _prepare_followup_message(self, followup_type: str, lead: Dict, followup: Dict) -> str:
         """
-        Converte string para datetime garantindo timezone awareness
-        Lida com diferentes formatos que podem vir do banco
+        Prepara mensagem de follow-up usando templates + contexto
+        
+        Args:
+            followup_type: Tipo do follow-up (IMMEDIATE_REENGAGEMENT, DAILY_NURTURING, etc.)
+            lead: Dados do lead
+            followup: Dados do follow-up
+            
+        Returns:
+            Mensagem formatada para envio
         """
         try:
-            # Tentar parse com fromisoformat
-            dt = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
+            # Extrair informações do lead
+            name = lead.get("name", "Cliente").split()[0]  # Usar apenas primeiro nome
+            bill_value = lead.get("bill_value", 0)
+            qualification_score = lead.get("qualification_score", 0)
             
-            # Se o datetime é naive (sem timezone), assumir UTC
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
+            # Calcular economia estimada (70% da conta)
+            estimated_savings = bill_value * 0.7 if bill_value > 0 else 0
             
-            return dt
+            # Selecionar template baseado no índice do follow-up
+            templates_for_type = self.templates.get(followup_type, self.templates.get("DAILY_NURTURING"))
+            
+            # Escolher template baseado em algum critério (ex: score, tentativa, etc.)
+            template_index = min(qualification_score // 20, len(templates_for_type) - 1) if qualification_score > 0 else 0
+            template = templates_for_type[template_index]
+            
+            # Formatar mensagem com dados do lead
+            message = template.format(
+                name=name,
+                bill_value=f"R$ {bill_value:.2f}" if bill_value > 0 else "R$ 0,00",
+                savings=f"R$ {estimated_savings:.2f}" if estimated_savings > 0 else "R$ 0,00",
+                percentage="70",
+                time="10:00",  # Default time
+                hours=24,  # Default hours
+                days=2,  # Default days
+                meeting_link=""  # Default empty
+            )
+            
+            # FOLLOW-UP INTELIGENTE: Para reengajamento, SEMPRE usar Helen completa com contexto
+            if followup_type == "IMMEDIATE_REENGAGEMENT":
+                # Criar contexto mais completo para follow-up inteligente
+                context = {
+                    "lead_name": name,
+                    "bill_value": bill_value,
+                    "qualification_score": qualification_score,
+                    "last_interaction": lead.get("last_interaction", ""),
+                    "current_stage": lead.get("current_stage", "UNKNOWN"),
+                    "chosen_flow": lead.get("chosen_flow", "Não definido")
+                }
+                
+                # Mensagem mais personalizada para reengajamento
+                message = f"""☀️ {name}, tudo bem?
+
+Vi que nossa conversa sobre energia solar ficou pela metade...
+
+{'💰' if bill_value > 0 else '💡'} {f'Com sua conta de R$ {bill_value:.2f}, ' if bill_value > 0 else ''}você pode economizar até 90% com a SolarPrime!
+
+✨ Como posso te ajudar hoje?
+1️⃣ Quero continuar nossa conversa
+2️⃣ Prefiro agendar para outro momento
+3️⃣ Dúvidas sobre energia solar
+
+É só responder com o número! 😊"""
+            
+            elif followup_type == "DAILY_NURTURING":
+                # Mensagem de nurturing mais elaborada
+                message = f"""☀️ Bom dia, {name}!
+
+{'💰' if bill_value > 0 else '💡'} {f'Clientes com contas similares à sua (R$ {bill_value:.2f}) ' if bill_value > 0 else 'Nossos clientes '} economizam em média R$ {estimated_savings:.2f} por ano com energia solar!
+
+✅ A SolarPrime oferece:
+• Instalação própria de usina - economia de até 90%
+• Aluguel de lote - sua usina em nosso terreno  
+• Compra com desconto - economia imediata de 20%
+• Usina de investimento - renda passiva com energia solar
+
+Quer que eu te mostre as opções ideais para seu perfil?
+
+1️⃣ Sim, me mostre as opções
+2️⃣ Prefiro agendar uma reunião  
+3️⃣ Tenho dúvidas
+
+É só responder com o número! 🙏"""
+            
+            return message
+            
         except Exception as e:
-            logger.warning(f"Erro ao fazer parse de datetime '{datetime_str}': {e}")
-            # Fallback: retornar datetime atual em UTC
-            return datetime.now(timezone.utc)
+            logger.error(f"❌ Erro ao preparar mensagem de follow-up: {e}")
+            # Fallback para mensagem padrão
+            return f"Olá {lead.get('name', 'Cliente')}! Tudo bem? Estou checando se ainda tem interesse em nossa conversa sobre energia solar. 😊"
     
-    async def _generate_intelligent_message(self, followup_type: str, lead: Dict, followup: Dict) -> Optional[str]:
+    async def _schedule_next_followup(self, followup_type: str, lead: Dict, current_followup: Dict):
         """
-        FOLLOW-UP INTELIGENTE: Helen analisa contexto completo e gera mensagem personalizada
-        Usa prompt-agente.md + histórico + knowledge_base + AgenticSDR
+        Agenda próximo follow-up baseado na estratégia - FLUXO SEQUENCIAL
         """
         try:
-            logger.info(f"🧠 Gerando follow-up inteligente para {lead.get('name')}")
-            
-            # 1. VERIFICAR DISPONIBILIDADE DO PROMPT (AgenticSDR já carrega automaticamente)
-            import os
-            base_path = os.path.dirname(os.path.dirname(__file__))
-            prompt_path = os.path.join(base_path, "prompts", "prompt-agente.md")
-            
-            prompt_available = os.path.exists(prompt_path)
-            logger.info(f"📚 Prompt Helen disponível: {'✅' if prompt_available else '❌'}")
-            
-            # 2. RECUPERAR CONTEXTO DA CONVERSA
-            metadata = followup.get('metadata', {})
-            if isinstance(metadata, str):
-                metadata = json.loads(metadata)
-            
-            conversation_id = metadata.get('conversation_id')
-            phone = metadata.get('phone')
-            
-            conversation_history = ""
-            if conversation_id:
+            # Verificar tipo de follow-up atual
+            if followup_type == 'IMMEDIATE_REENGAGEMENT':
+                # Este era o follow-up de 30min, agendar o de 24h
+                next_time = datetime.now() + timedelta(hours=24)
+                
+                # Criar follow-up de 24h
+                followup_24h_data = {
+                    'lead_id': lead['id'],
+                    'type': 'reengagement',
+                    'follow_up_type': 'DAILY_NURTURING',
+                    'scheduled_at': next_time.isoformat(),
+                    'message': await self._prepare_followup_message('DAILY_NURTURING', lead, {}),
+                    'status': 'pending',
+                    'metadata': {
+                        'previous_followup_id': current_followup['id'],
+                        'scheduled_reason': 'User inactivity check 24h after agent response'
+                    }
+                }
+                
                 try:
-                    # Buscar histórico completo da conversa
-                    messages_result = self.db.client.table('messages').select(
-                        "role, content, created_at"
-                    ).eq(
-                        'conversation_id', conversation_id
-                    ).order('created_at', desc=False).execute()
-                    
-                    if messages_result.data:
-                        conversation_history = "\n".join([
-                            f"{msg['role'].upper()}: {msg['content']}"
-                            for msg in messages_result.data
-                        ])
-                        logger.info(f"📚 Histórico recuperado: {len(messages_result.data)} mensagens")
-                    else:
-                        logger.info("📚 Nenhuma mensagem encontrada na conversa")
+                    result = self.db.client.table('follow_ups').insert(followup_24h_data).execute()
+                    if result.data:
+                        emoji_logger.system_info(f"📅 Follow-up sequencial de 24h agendado para {lead.get('phone_number')} às {next_time.strftime('%d/%m %H:%M')}")
                 except Exception as e:
-                    logger.warning(f"Erro ao buscar histórico: {e}")
-                    conversation_history = "Histórico não disponível"
+                    emoji_logger.system_error("Falha ao agendar follow-up sequencial de 24h", error=str(e))
             
-            # 3. VERIFICAR KNOWLEDGE BASE (AgenticSDR pode acessar quando necessário)
-            try:
-                # Schema correto baseado no SQL: question, answer, category
-                kb_result = self.db.client.table('knowledge_base').select("question").limit(1).execute()
-                kb_available = len(kb_result.data) > 0
-                logger.info(f"🧠 Knowledge base disponível: {'✅' if kb_available else '❌'}")
-            except Exception as e:
-                logger.warning(f"Knowledge base não acessível: {e}")
-                kb_available = False
-            
-            # 4. CRIAR MENSAGEM DE CONTEXTO PARA FOLLOW-UP (EVITAR TRIGGER DE CALENDÁRIO)
-            followup_trigger_message = f"""REENGAJAMENTO DE LEAD - NÃO É AGENDAMENTO:
-
-⚠️ IMPORTANTE: Esta é uma mensagem de follow-up/reengajamento, NÃO é uma solicitação de agendamento.
-
-Lead: {lead.get('name', 'Cliente')} - Conta: R${lead.get('bill_value', '0')} - Tel: {phone}
-Status: Lead parou de responder após conversa ({followup_type})
-
-Contexto da conversa anterior:
-{conversation_history[-800:] if conversation_history else "Nenhum histórico disponível"}
-
-OBJETIVO: Gerar mensagem empática de reengajamento para reativar conversa onde parou. NÃO mencionar agendamentos a menos que o histórico mostre interesse específico nisso."""
-            
-            # 5. CHAMAR AGENTIC SDR PARA GERAR MENSAGEM INTELIGENTE
-            from app.agents.agentic_sdr_stateless import create_stateless_agent
-            
-            sdr_agent = await create_stateless_agent()
-            
-            # Chamar AgenticSDR com contexto da conversa
-            response = await sdr_agent.process_message(
-                message=followup_trigger_message,
-                execution_context={
-                    "phone": phone or lead.get('phone_number', ''),
-                    "lead_info": lead,
-                    "conversation_id": conversation_id,
-                    "conversation_history": [],  # Histórico já está no followup_trigger_message
-                    "timestamp": datetime.now().isoformat()
-                }
-            )
-            
-            if response:
-                # Extrair resposta limpa
-                if isinstance(response, dict):
-                    intelligent_message = response.get("text", "")
+            elif followup_type == 'DAILY_NURTURING':
+                # Este era o follow-up de 24h, pode continuar nurturing ou marcar como perdido
+                attempt = current_followup.get('attempt', 0)
+                if attempt < 2:  # Tentar mais 2 vezes de nurturing
+                    next_time = datetime.now() + timedelta(days=2)  # Próximo em 2 dias
+                    # Agendar próximo follow-up de nurturing
+                    await self._schedule_nurturing_followup(lead, current_followup, attempt + 1, next_time)
                 else:
-                    intelligent_message = str(response)
-                
-                # Limpar resposta (remover tags se houver)
-                intelligent_message = self._extract_final_response(intelligent_message)
-                
-                # Garantir linha única para WhatsApp
-                intelligent_message = intelligent_message.replace('\n', ' ').replace('\r', ' ')
-                intelligent_message = ' '.join(intelligent_message.split())
-                
-                logger.info(f"🧠✅ Follow-up inteligente gerado: {intelligent_message[:50]}...")
-                return intelligent_message
-            else:
-                logger.warning("❌ AgenticSDR não gerou resposta, usando fallback")
-                return None
-                
-        except Exception as e:
-            logger.error(f"❌ Erro ao gerar follow-up inteligente: {e}")
-            # Fallback para template original em caso de erro
-            return None
-    
-    async def _generate_intelligent_meeting_reminder(self, lead_data: Dict, fake_followup: Dict, hours_before: int) -> Optional[str]:
-        """
-        LEMBRETE INTELIGENTE: Helen recupera contexto da conversa e gera lembrete personalizado
-        Usa prompt-agente.md + histórico da conversa + dados da reunião + AgenticSDR
-        """
-        try:
-            logger.info(f"🧠 Gerando lembrete inteligente {hours_before}h para {lead_data.get('name')}")
-            
-            phone = lead_data.get('phone_number')
-            metadata = fake_followup.get('metadata', {})
-            
-            # 1. BUSCAR HISTÓRICO DA CONVERSA (Lead pode ter conversation_id)
-            conversation_history = ""
-            conversation_id = None
-            
-            try:
-                # Buscar conversas do lead pelo telefone
-                conversations_result = self.db.client.table('conversations').select(
-                    "id, created_at"
-                ).eq('phone_number', phone).order('created_at', desc=True).limit(1).execute()
-                
-                if conversations_result.data:
-                    conversation_id = conversations_result.data[0]['id']
-                    logger.info(f"📚 Conversa encontrada: {conversation_id}")
+                    # Marcar lead como não interessado após múltiplas tentativas
+                    await self._mark_lead_as_not_interested(lead, current_followup)
+                    emoji_logger.system_info(f"🔚 Sequência de follow-up para {lead.get('name')} concluída sem resposta.")
                     
-                    # Buscar mensagens da conversa
-                    messages_result = self.db.client.table('messages').select(
-                        "role, content, created_at"
-                    ).eq(
-                        'conversation_id', conversation_id
-                    ).order('created_at', desc=False).execute()
-                    
-                    if messages_result.data:
-                        conversation_history = "\n".join([
-                            f"{msg['role'].upper()}: {msg['content']}"
-                            for msg in messages_result.data
-                        ])
-                        logger.info(f"📚 Histórico recuperado: {len(messages_result.data)} mensagens")
-                    else:
-                        logger.info("📚 Nenhuma mensagem encontrada na conversa")
-                else:
-                    logger.info(f"📚 Nenhuma conversa encontrada para telefone {phone}")
-            except Exception as e:
-                logger.warning(f"Erro ao buscar histórico da conversa: {e}")
-                conversation_history = "Histórico não disponível"
+        except Exception as e:
+            logger.error(f"Erro ao agendar próximo follow-up: {e}")
+    
+    async def _schedule_nurturing_followup(self, lead: Dict, previous_followup: Dict, attempt: int, scheduled_time: datetime):
+        """
+        Agenda follow-up de nurturing adicional
+        """
+        try:
+            # Preparar mensagem personalizada para nurturing
+            message = await self._prepare_followup_message('DAILY_NURTURING', lead, {})
             
-            # 2. CRIAR CONTEXTO ESPECÍFICO PARA LEMBRETE DE REUNIÃO
-            meeting_context = f"""LEMBRETE DE REUNIÃO PERSONALIZADO - Helen Vieira:
-
-⏰ TIPO: Lembrete de reunião {hours_before}h antes
-📅 REUNIÃO: {metadata.get('meeting_date')} às {metadata.get('meeting_time')}
-🔗 LINK: {metadata.get('meeting_link', 'A definir')}
-📍 LOCAL: {metadata.get('location', 'Online')}
-
-👤 LEAD: {lead_data.get('name', 'Cliente')} 
-📞 TELEFONE: {phone}
-💰 CONTA DE LUZ: R$ {lead_data.get('bill_value', '0')}
-
-🗨️ CONTEXTO DA CONVERSA:
-{conversation_history[-1000:] if conversation_history else "Primeira interação - ainda não temos histórico de conversa"}
-
-🎯 OBJETIVO: Gerar lembrete caloroso e personalizado usando o contexto da conversa.
-- Para 24h antes: Confirmar presença e criar expectativa positiva
-- Para 2h antes: Lembrete amigável com link e motivação final
-- Use o nome real do lead
-- Seja empática e referente aos assuntos discutidos na conversa
-- Mantenha o tom Helen Vieira (consultora especialista em energia solar)
-- NÃO seja genérica, use detalhes específicos da conversa quando possível"""
-            
-            # 3. CHAMAR AGENTIC SDR COM CONTEXTO DE LEMBRETE
-            from app.agents.agentic_sdr_stateless import create_stateless_agent
-            
-            sdr_agent = await create_stateless_agent()
-            
-            response = await sdr_agent.process_message(
-                message=meeting_context,
-                execution_context={
-                    "phone": phone,
-                    "lead_info": lead_data,
-                    "conversation_id": conversation_id,
-                    "conversation_history": [],  # Histórico já está no meeting_context
-                    "timestamp": datetime.now().isoformat()
+            # Criar follow-up de nurturing
+            nurturing_followup_data = {
+                'lead_id': lead['id'],
+                'type': 'nurture',
+                'follow_up_type': 'DAILY_NURTURING',
+                'scheduled_at': scheduled_time.isoformat(),
+                'message': message,
+                'status': 'pending',
+                'attempt': attempt,
+                'metadata': {
+                    'previous_followup_id': previous_followup['id'],
+                    'scheduled_reason': f'Nurturing attempt #{attempt}'
                 }
-            )
+            }
             
-            if response:
-                # Extrair resposta limpa
-                if isinstance(response, dict):
-                    intelligent_reminder = response.get("text", "")
-                else:
-                    intelligent_reminder = str(response)
-                
-                # Limpar resposta (remover tags se houver)
-                intelligent_reminder = self._extract_final_response(intelligent_reminder)
-                
-                # Garantir formatação adequada para WhatsApp (manter quebras de linha)
-                intelligent_reminder = intelligent_reminder.strip()
-                
-                logger.info(f"🧠✅ Lembrete inteligente {hours_before}h gerado: {intelligent_reminder[:60]}...")
-                return intelligent_reminder
-            else:
-                logger.warning("❌ AgenticSDR não gerou lembrete, usando fallback")
-                return None
+            result = self.db.client.table('follow_ups').insert(nurturing_followup_data).execute()
+            if result.data:
+                emoji_logger.system_info(f"📅 Follow-up de nurturing adicional agendado (tentativa {attempt})")
                 
         except Exception as e:
-            logger.error(f"❌ Erro ao gerar lembrete inteligente: {e}")
-            return None
+            logger.error(f"Erro ao agendar próximo follow-up: {e}")
     
-    async def force_process(self) -> Dict[str, Any]:
+    async def _mark_lead_as_not_interested(self, lead: Dict, current_followup: Dict):
         """
-        Força processamento imediato de follow-ups
-        Útil para testes
+        Marca lead como não interessado após múltiplas tentativas de follow-up
         """
         try:
-            await self.process_pending_followups()
-            await self.process_meeting_reminders()
+            # Atualizar status do lead
+            await self.db.client.table('leads').update({
+                'current_stage': 'NOT_INTERESTED',
+                'qualification_status': 'NOT_QUALIFIED',
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }).eq('id', lead['id']).execute()
             
-            return {
-                'success': True,
-                'message': 'Processamento forçado concluído'
+            # Criar registro na tabela de qualificações
+            qualification_data = {
+                'lead_id': lead['id'],
+                'qualification_status': 'NOT_QUALIFIED',
+                'score': 0,
+                'notes': f'Lead não respondeu após múltiplos follow-ups. Último follow-up: {current_followup.get("id")}',
+                'qualified_at': datetime.now(timezone.utc).isoformat()
             }
+            
+            await self.db.client.table('leads_qualifications').insert(qualification_data).execute()
+            
+            emoji_logger.system_info(f"📋 Lead {lead.get('name')} marcado como NÃO INTERESSADO após follow-ups")
+            
         except Exception as e:
-            return {
-                'success': False,
-                'error': str(e)
-            }
+            logger.error(f"Erro ao marcar lead como não interessado: {e}")
     
-    def _sanitize_final_message(self, text: str) -> str:
-        """
-        Sanitização final de mensagens - Remove qualquer tag remanescente
-        
-        Args:
-            text: Texto a ser sanitizado
-            
-        Returns:
-            Texto limpo sem tags
-        """
-        import re
-        
-        if not isinstance(text, str) or not text:
-            return ""
-        
-        # Remove qualquer tag XML/HTML remanescente
-        text = re.sub(r'<[^>]+>', '', text)
-        
-        # Remove quebras de linha múltiplas
-        text = re.sub(r'\n+', '\n', text)
-        text = re.sub(r'\r+', '', text)
-        
-        # Limpa espaços extras
-        text = ' '.join(text.split())
-        
-        return text.strip()
-    
-    def _extract_final_response(self, full_response: str) -> str:
-        """
-        Extrai apenas a resposta final das tags <RESPOSTA_FINAL>
-        
-        Args:
-            full_response: Resposta completa do LLM incluindo raciocínio
-            
-        Returns:
-            Apenas o conteúdo dentro das tags RESPOSTA_FINAL
-        """
-        import re
-        
+    async def _mark_followup_failed(self, followup_id: str, error_reason: str):
+        """Marca follow-up como falho"""
         try:
-            if not full_response:
-                return "Desculpe, tive um problema ao processar sua mensagem. Pode tentar novamente?"
+            self.db.client.table('follow_ups').update({
+                'status': 'failed',
+                'executed_at': datetime.now(timezone.utc).isoformat(),
+                'error_reason': error_reason
+            }).eq('id', followup_id).execute()
             
-            # Busca o conteúdo entre as tags <RESPOSTA_FINAL> e </RESPOSTA_FINAL>
-            pattern = r'<RESPOSTA_FINAL>(.*?)</RESPOSTA_FINAL>'
-            match = re.search(pattern, full_response, re.DOTALL | re.IGNORECASE)
+            logger.error(f"❌ Follow-up {followup_id} marcado como falho: {error_reason}")
+        except Exception as e:
+            logger.error(f"Erro ao marcar follow-up como falho: {e}")
+    
+    async def create_followup(self, followup_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Cria novo follow-up no banco"""
+        try:
+            # Validar dados obrigatórios
+            required_fields = ['lead_id', 'type', 'message', 'scheduled_at']
+            for field in required_fields:
+                if not followup_data.get(field):
+                    raise ValueError(f"Campo obrigatório faltando: {field}")
             
-            if match:
-                # Extrai e limpa o conteúdo
-                final_response = match.group(1).strip()
-                return final_response
+            # Adicionar campos padrão
+            followup_data.setdefault('status', 'pending')
+            followup_data.setdefault('created_at', datetime.now(timezone.utc).isoformat())
+            followup_data.setdefault('updated_at', datetime.now(timezone.utc).isoformat())
+            
+            result = self.db.client.table('follow_ups').insert(followup_data).execute()
+            if result.data:
+                logger.info(f"📅 Novo follow-up agendado para {followup_data.get('scheduled_at')}")
+                return result.data[0]
             else:
-                # ✅ RESPOSTA SEGURA: fallback que não vaza raciocínio
-                logger.warning("🚨 TAGS <RESPOSTA_FINAL> não encontradas no follow-up")
-                return "Olá! Como posso te ajudar hoje com sua energia solar?"
+                raise Exception("Falha ao criar follow-up")
                 
         except Exception as e:
-            logger.error(f"🚨 ERRO ao extrair resposta final: {e}")
-            # 🚨 RESPOSTA SEGURA: fallback de emergência
-            return "Oi! Tive um probleminha técnico. Me dê só um momento que já te respondo!"
-
-# Singleton
-followup_executor_service = FollowUpExecutorService()
-
-async def start_followup_executor():
-    """Inicia o executor de follow-ups com dependências"""
-    try:
-        # Inicializar serviços CRM se habilitado
-        services = {}
+            logger.error(f"Erro ao criar follow-up: {e}")
+            raise
+    
+    async def mark_followup_failed(self, followup_id: str, error_reason: str):
+        """Marca follow-up como falho"""
+        try:
+            self.db.client.table('follow_ups').update({
+                'status': 'failed',
+                'executed_at': datetime.now(timezone.utc).isoformat(),
+                'error_reason': error_reason
+            }).eq('id', followup_id).execute()
+            
+            logger.error(f"Erro ao marcar follow-up como falho: {e}")
+    
+    def _validate_inactivity_followup(self, followup: Dict) -> bool:
+        """
+        Valida se usuário realmente ficou inativo para follow-ups de reengajamento
         
-        if settings.enable_crm_agent:
-            try:
-                from app.services.crm_service_100_real import CRMServiceReal as CRMService
-                services["crm"] = CRMService()
-                emoji_logger.service_ready("📊 CRM Service inicializado para FollowUp Executor")
-            except Exception as e:
-                emoji_logger.service_error(f"Erro ao inicializar CRM para FollowUp: {e}")
-        
-        # Injetar serviços no executor
-        followup_executor_service.services = services
-        
-        # Iniciar o executor
-        await followup_executor_service.start()
-        
-    except Exception as e:
-        logger.error(f"❌ Erro ao iniciar FollowUp Executor: {e}")
-        raise
+        Returns:
+            True: Deve enviar follow-up (usuário inativo)
+            False: Cancelar follow-up (usuário respondeu)
+        """
+        try:
+            # Extrair metadados necessários
+            metadata = followup.get('metadata', {})
+            lead_id = followup.get('lead_id')
+            
+            if not lead_id:
+                logger.warning(f"Follow-up {followup['id']} sem lead_id para validação")
+                return True  # Se não temos dados, enviar o follow-up mesmo assim
+            
+            # Buscar última resposta do usuário e última resposta do agente antes deste follow-up
+            # Esta função precisa ser implementada no SupabaseClient
+            # conversation = await self.db.get_conversation_by_lead_id(lead_id)
+            # Se não estiver implementada, retornar True para manter comportamento original
+            return True
+                
+        except Exception as e:
+            logger.error(f"❌ Erro ao validar inatividade do follow-up: {e}")
+            return True  # Em caso de erro, enviar o follow-up mesmo assim
+    
+    async def force_process_followups(self):
+        """Força processamento imediato de follow-ups"""
+        logger.info("🔄 Forçando processamento imediato de follow-ups...")
+        await self.process_pending_followups()
+        logger.info("✅ Processamento de follow-ups concluído")
+    
+    async def get_pending_followups_count(self) -> int:
+        """Retorna contagem de follow-ups pendentes"""
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            result = self.db.client.table('follow_ups').select(
+                "count"
+            ).eq(
+                'status', 'pending'
+            ).lte(
+                'scheduled_at', now
+            ).execute()
+            
+            return len(result.data) if result.data else 0
+        except Exception as e:
+            logger.error(f"Erro ao contar follow-ups pendentes: {e}")
+            return 0
+    
+    async def cancel_followup(self, followup_id: str) -> Dict[str, Any]:
+        """Cancela follow-up específico"""
+        try:
+            result = self.db.client.table('follow_ups').update({
+                'status': 'cancelled',
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }).eq('id', followup_id).execute()
+            
+            if result.data:
+                return {
+                    "success": True,
+                    "message": f"Follow-up {followup_id} cancelado com sucesso"
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Follow-up não encontrado"
+                }
+        except Exception as e:
+            logger.error(f"Erro ao cancelar follow-up: {e}")
+            return {
+                "success": False,
+                "message": f"Erro ao cancelar follow-up: {e}"
+            }

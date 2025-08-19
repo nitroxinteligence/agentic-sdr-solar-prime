@@ -106,6 +106,44 @@ class CRMServiceReal:
             "conversation_id": 392860     # Mantendo para compatibilidade
         }
         
+        # Mapeamento UNIFICADO de estágios para IDs do Kommo
+        # Aceita tanto chaves em inglês quanto português
+        self.stage_map = {
+            # QUALIFICAÇÃO
+            "QUALIFICATION": 89709589,
+            "QUALIFICACAO": 89709589,
+            "QUALIFICADO": 89709589,
+            "QUALIFIED": 89709589,
+            
+            # AGENDAMENTO
+            "SCHEDULE": 89709591,
+            "AGENDAMENTO": 89709591,
+            "MEETING_SCHEDULED": 89709595,
+            "REUNIAO_AGENDADA": 89709595,
+            "REUNIÃO AGENDADA": 89709595,
+            
+            # EM NEGOCIAÇÃO
+            "NEGOTIATION": 89709593,
+            "NEGOCIACAO": 89709593,
+            "EM_NEGOCIACAO": 89709593,
+            "EM NEGOCIAÇÃO": 89709593,
+            
+            # FECHADO
+            "CLOSED": 89709597,
+            "FECHADO": 89709597,
+            "CONVERTED": 89709597,
+            "CONVERTIDO": 89709597,
+            
+            # NÃO INTERESSADO
+            "NOT_INTERESTED": 89709599,
+            "NAO_INTERESSADO": 89709599,
+            "NÃO INTERESSADO": 89709599,
+            
+            # ATENDIMENTO HUMANO
+            "HUMAN_HANDOFF": 90421387,
+            "ATENDIMENTO_HUMANO": 90421387,
+        }
+        
         # Mapeamento de valores do campo SELECT "Solução Solar" (ID: 392808)
         # IMPORTANTE: Usar enum_id, não o texto!
         # Valores REAIS validados em 13/08/2025 via API Kommo
@@ -299,422 +337,596 @@ class CRMServiceReal:
                                 elif "em qualificação" in stage_name:
                                     self.stage_map["em_qualificacao"] = stage_id
                                     self.stage_map["EM_QUALIFICACAO"] = stage_id
-                                    self.stage_map["QUALIFYING"] = stage_id
+                                    self.stage_map["QUALIFICATION"] = stage_id
                                 elif "qualificado" in stage_name:
                                     self.stage_map["qualificado"] = stage_id
                                     self.stage_map["QUALIFICADO"] = stage_id
-                                    self.stage_map["qualified"] = stage_id
                                     self.stage_map["QUALIFIED"] = stage_id
-                                elif "proposta enviada" in stage_name:
-                                    self.stage_map["proposta enviada"] = stage_id
-                                    self.stage_map["PROPOSTA_ENVIADA"] = stage_id
-                                    self.stage_map["proposal_sent"] = stage_id
-                                    self.stage_map["PROPOSAL_SENT"] = stage_id
-                                elif "negociação" in stage_name or "negociacão" in stage_name:
-                                    self.stage_map["negociacao"] = stage_id
-                                    self.stage_map["NEGOCIACAO"] = stage_id
-                                    self.stage_map["negotiation"] = stage_id
-                                    self.stage_map["NEGOTIATION"] = stage_id
-                                
-                            emoji_logger.service_info(f"📈 {len(self.stage_map)} estágios mapeados")
+                                elif "fechado" in stage_name:
+                                    self.stage_map["fechado"] = stage_id
+                                    self.stage_map["FECHADO"] = stage_id
+                                    self.stage_map["CLOSED"] = stage_id
+                                elif "agendamento" in stage_name:
+                                    self.stage_map["agendamento"] = stage_id
+                                    self.stage_map["AGENDAMENTO"] = stage_id
+                                    self.stage_map["SCHEDULE"] = stage_id
+                                elif "atendimento humano" in stage_name:
+                                    self.stage_map["atendimento_humano"] = stage_id
+                                    self.stage_map["ATENDIMENTO_HUMANO"] = stage_id
+                                    self.stage_map["HUMAN_HANDOFF"] = stage_id
                             
-                            # Salvar no cache SIMPLES
-                            import time
-                            self._stages_cache = self.stage_map.copy()
-                            self._cache_timestamp = time.time()
-                            emoji_logger.system_debug("💾 Cache de estágios atualizado")
+                            # Atualizar cache
+                            self._stages_cache = self.stage_map
+                            self._cache_timestamp = current_time
                             
+                            emoji_logger.service_info(f"📊 {len(self.stage_map)} estágios mapeados")
                             break
         except Exception as e:
-            emoji_logger.service_warning(f"Erro ao buscar estágios: {e}")
+            emoji_logger.service_warning(f"Erro ao buscar estágios do pipeline: {e}")
             # Manter mapeamento padrão se falhar
     
-    async def create_or_update_lead_direct(self, lead_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Método direto para criar/atualizar lead no Kommo (alias para create_or_update_lead)
-        Usado pelo KommoAutoSyncService
-        """
-        return await self.create_or_update_lead(lead_data)
-    
-    @async_retry_with_backoff(max_retries=3, initial_delay=1.0)
-    async def create_or_update_lead(self, lead_data: Dict[str, Any], tags: List[str] = None) -> Dict[str, Any]:
-        """
-        Cria ou atualiza lead REAL no Kommo com tags
-        🔥 FIX: Adicionando tags diretamente no _embedded
-        """
-        print(f"🔍 DEBUG: create_or_update_lead chamado com: {lead_data}")
-        
+    @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    async def create_lead(self, lead_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Cria lead REAL no Kommo"""
         if not self.is_initialized:
             await self.initialize()
         
         try:
-            # Primeiro, verificar se lead já existe pelo telefone
-            phone = lead_data.get("phone", "")
-            existing_lead = None
-            
-            if phone:
-                existing_lead = await self._find_lead_by_phone(phone)
-            
-            # Preparar dados do lead
-            # 🔥 CORREÇÃO: Nome padrão mais identificável
-            phone_suffix = lead_data.get("phone", "")[-4:] if lead_data.get("phone") else datetime.now().strftime("%H%M")
-            default_name = f"Lead WhatsApp {phone_suffix}"
-            
+            # Preparar dados do lead para Kommo
             kommo_lead = {
-                "name": lead_data.get("name") or default_name,  # Nome mais identificável
-                "price": int((lead_data.get("bill_value") or 0) * 12 * 5),  # Valor potencial 5 anos
+                "name": lead_data.get("name", "Lead sem nome"),
+                "responsible_user_id": 11031887,  # ID do usuário responsável (Leonardo)
                 "pipeline_id": self.pipeline_id,
-                "custom_fields_values": []
+                "status_id": 89709589,  # ID do estágio inicial (QUALIFICAÇÃO)
+                "_embedded": {
+                    "tags": [
+                        {
+                            "name": "SDR_IA"
+                        }
+                    ]
+                }
             }
             
-            # 🔥 LOG: Rastrear nome sendo usado
+            # Adicionar campos customizados se disponíveis
+            custom_fields = []
+            
+            # Telefone/WhatsApp
+            if lead_data.get("phone"):
+                custom_fields.append({
+                    "field_id": self.custom_fields.get("phone", 392802),  # ID padrão se não encontrado
+                    "values": [
+                        {
+                            "value": lead_data["phone"]
+                        }
+                    ]
+                })
+            
+            # Valor da conta
+            if lead_data.get("bill_value"):
+                custom_fields.append({
+                    "field_id": self.custom_fields.get("bill_value", 392804),
+                    "values": [
+                        {
+                            "value": lead_data["bill_value"]
+                        }
+                    ]
+                })
+            
+            # Tipo de solução
+            if lead_data.get("chosen_flow"):
+                solution_key = lead_data["chosen_flow"].lower()
+                enum_id = self.solution_type_values.get(solution_key)
+                if enum_id:
+                    custom_fields.append({
+                        "field_id": self.custom_fields.get("solution_type", 392808),
+                        "values": [
+                            {
+                                "enum_id": enum_id
+                            }
+                        ]
+                    })
+            
+            # Link do Google Calendar
+            if lead_data.get("google_event_link"):
+                custom_fields.append({
+                    "field_id": self.custom_fields.get("calendar_link", 395520),
+                    "values": [
+                        {
+                            "value": lead_data["google_event_link"]
+                        }
+                    ]
+                })
+            
+            # Adicionar campos customizados ao lead
+            if custom_fields:
+                kommo_lead["custom_fields_values"] = custom_fields
+            
             emoji_logger.system_event(f"🏷️ Nome do lead para Kommo: '{kommo_lead['name']}'")
             
-            # 🔥 FIX: Adicionar tags no _embedded se fornecidas
-            if tags:
-                kommo_lead["_embedded"] = {
-                    "tags": [{"name": tag} for tag in tags]
-                }
+            # Aplicar rate limiting
+            await wait_for_kommo()
             
-            print(f"🔍 DEBUG: Preparando lead: {kommo_lead}")
-            
-            # ===== ADICIONAR CAMPOS CUSTOMIZADOS VALIDADOS =====
-            
-            # Campo WhatsApp/Phone (text)
-            if lead_data.get("phone") and self.custom_fields.get("phone"):
-                kommo_lead["custom_fields_values"].append({
-                    "field_id": self.custom_fields["phone"],
-                    "values": [{"value": lead_data["phone"]}]
-                })
-            
-            # Campo Valor Conta Energia (numeric)
-            if lead_data.get("bill_value") and self.custom_fields.get("bill_value"):
-                kommo_lead["custom_fields_values"].append({
-                    "field_id": self.custom_fields["bill_value"],
-                    "values": [{"value": str(lead_data["bill_value"])}]
-                })
-            
-            # Campo Solução Solar (select) - VALIDADO ✅
-            if lead_data.get("solution_type") and self.custom_fields.get("solution_type"):
-                solution_text = str(lead_data["solution_type"]).lower()
-                enum_id = self.solution_type_values.get(solution_text)
-                
-                if enum_id:
-                    kommo_lead["custom_fields_values"].append({
-                        "field_id": self.custom_fields["solution_type"],
-                        "values": [{"enum_id": enum_id}]  # Usar enum_id para SELECT
-                    })
-                    emoji_logger.system_debug(f"Solution type '{solution_text}' mapeado para enum_id {enum_id}")
-                else:
-                    emoji_logger.service_warning(
-                        f"Valor '{lead_data['solution_type']}' não é válido para Solução Solar. "
-                        f"Use: {list(self.solution_type_values.keys())}"
+            # Criar lead no Kommo
+            async with self.session.post(
+                f"{self.base_url}/api/v4/leads",
+                headers=self.headers,
+                json=[kommo_lead]  # API espera array
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    lead_id = result.get("_embedded", {}).get("leads", [{}])[0].get("id")
+                    
+                    emoji_logger.crm_event(
+                        f"✅ Lead CRIADO no Kommo: {kommo_lead['name']} - ID: {lead_id}"
                     )
-            
-            # Campo Calendar Link (url) - VALIDADO ✅
-            if lead_data.get("calendar_link") and self.custom_fields.get("calendar_link"):
-                kommo_lead["custom_fields_values"].append({
-                    "field_id": self.custom_fields["calendar_link"],
-                    "values": [{"value": str(lead_data["calendar_link"])}]
-                })
-            
-            # ===== CAMPOS NÃO SUPORTADOS =====
-            # Campo email: Não existe como campo customizado em LEADS (apenas CONTACTS)
-            # Campo location: Existe apenas em COMPANIES, não em LEADS
-            # Campo score: Removido - causava erro 400
-            # Campo conversation_id: Removido por conflitos
-            
-            print(f"🔍 DEBUG: Campos customizados preparados: {kommo_lead['custom_fields_values']}")
-            
-            # Criar ou atualizar no Kommo
-            if existing_lead:
-                # Atualizar lead existente
-                lead_id = existing_lead["id"]
-                print(f"🔍 DEBUG: Atualizando lead existente: {lead_id}")
-                # Aplicar rate limiting
-                await wait_for_kommo()
-                
-                async with self.session.patch(
-                    f"{self.base_url}/api/v4/leads/{lead_id}",
-                    headers=self.headers,
-                    json=kommo_lead
-                ) as response:
-                    if response.status in [200, 202]:
-                        emoji_logger.crm_event(
-                            f"✅ Lead ATUALIZADO no Kommo: {lead_data.get('name')} - ID: {lead_id}"
-                        )
-                        return {
-                            "success": True,
-                            "lead_id": lead_id,
-                            "action": "updated",
-                            "message": "Lead atualizado com sucesso no CRM",
-                            "real": True
-                        }
-            else:
-                # Criar novo lead
-                print(f"🔍 DEBUG: Criando novo lead com dados: {kommo_lead}")
-                # Aplicar rate limiting
-                await wait_for_kommo()
-                
-                async with self.session.post(
-                    f"{self.base_url}/api/v4/leads",
-                    headers=self.headers,
-                    json=[kommo_lead]  # API espera array
-                ) as response:
-                    print(f"🔍 DEBUG: Response status: {response.status}")
-                    if response.status in [200, 201]:
-                        result = await response.json()
-                        print(f"🔍 DEBUG: Response JSON: {result}")
-                        if result.get("_embedded", {}).get("leads"):
-                            lead_id = result["_embedded"]["leads"][0]["id"]
-                        else:
-                            # Fallback se estrutura for diferente
-                            lead_id = result.get("id", f"lead_{datetime.now().timestamp()}")
-                        
-                        emoji_logger.crm_event(
-                            f"✅ Lead CRIADO no Kommo: {lead_data.get('name')} - ID: {lead_id}"
-                        )
-                        
-                        # Adicionar nota inicial
-                        await self.add_note(
-                            str(lead_id),  # Garantir que é string
-                            f"Lead criado via SDR IA\nScore: {lead_data.get('qualification_score', 0)}/100"
-                        )
-                        
-                        return {
-                            "success": True,
-                            "lead_id": str(lead_id),  # Garantir que é string
-                            "action": "created",
-                            "message": "Lead criado com sucesso no CRM",
-                            "real": True
-                        }
-                    else:
-                        error_text = await response.text()
-                        print(f"🔍 DEBUG: Erro na resposta: {error_text}")
-            
-            # Se chegou aqui, houve erro
-            print(f"🔍 DEBUG: Chegou ao final sem sucesso")
-            return {
-                "success": False,
-                "message": "Erro ao processar lead no CRM"
-            }
-            
+                    
+                    return {
+                        "success": True,
+                        "lead_id": lead_id,
+                        "message": "Lead criado com sucesso no CRM"
+                    }
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Erro na criação do lead: {response.status} - {error_text}")
+                    
         except Exception as e:
-            import traceback
-            emoji_logger.service_error(f"Erro ao criar/atualizar lead: {e}")
-            emoji_logger.service_error(f"Traceback: {traceback.format_exc()}")
+            emoji_logger.service_error(f"Erro ao criar lead no Kommo: {e}")
             return {
                 "success": False,
-                "message": f"Erro ao processar lead: {e}",
-                "error_details": str(e),
-                "traceback": traceback.format_exc()
+                "message": f"Erro ao criar lead no CRM: {e}"
             }
     
-    async def _find_lead_by_phone(self, phone: str) -> Optional[Dict[str, Any]]:
-        """Busca lead pelo telefone"""
+    @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    async def update_lead(self, lead_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Atualiza lead REAL no Kommo"""
+        if not self.is_initialized:
+            await self.initialize()
+        
         try:
-            # Limpar telefone
-            clean_phone = ''.join(filter(str.isdigit, phone))
+            # Preparar dados de atualização
+            kommo_update = {}
             
-            # Buscar no Kommo
+            # Nome (se fornecido)
+            if update_data.get("name"):
+                kommo_update["name"] = update_data["name"]
+            
+            # Estágio (se fornecido)
+            if update_data.get("current_stage"):
+                stage_name = update_data["current_stage"].upper().replace(" ", "_")
+                stage_id = self.stage_map.get(stage_name)
+                if stage_id:
+                    kommo_update["status_id"] = stage_id
+            
+            # Campos customizados
+            custom_fields = []
+            
+            # Valor da conta
+            if "bill_value" in update_data:
+                custom_fields.append({
+                    "field_id": self.custom_fields.get("bill_value", 392804),
+                    "values": [
+                        {
+                            "value": update_data["bill_value"]
+                        }
+                    ]
+                })
+            
+            # Tipo de solução
+            if update_data.get("chosen_flow"):
+                solution_key = update_data["chosen_flow"].lower()
+                enum_id = self.solution_type_values.get(solution_key)
+                if enum_id:
+                    custom_fields.append({
+                        "field_id": self.custom_fields.get("solution_type", 392808),
+                        "values": [
+                            {
+                                "enum_id": enum_id
+                            }
+                        ]
+                    })
+            
+            # Link do Google Calendar
+            if update_data.get("google_event_link"):
+                custom_fields.append({
+                    "field_id": self.custom_fields.get("calendar_link", 395520),
+                    "values": [
+                        {
+                            "value": update_data["google_event_link"]
+                        }
+                    ]
+                })
+            
+            # Adicionar campos customizados à atualização
+            if custom_fields:
+                kommo_update["custom_fields_values"] = custom_fields
+            
+            # Se não há dados para atualizar, retornar sucesso
+            if not kommo_update:
+                return {
+                    "success": True,
+                    "message": "Nenhum dado para atualizar"
+                }
+            
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
+            # Atualizar lead no Kommo
+            async with self.session.patch(
+                f"{self.base_url}/api/v4/leads",
+                headers=self.headers,
+                json={
+                    "update": [{
+                        "id": int(lead_id),
+                        **kommo_update
+                    }]
+                }
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    
+                    emoji_logger.crm_event(
+                        f"✅ Lead ATUALIZADO no Kommo: {lead_id}"
+                    )
+                    
+                    return {
+                        "success": True,
+                        "message": "Lead atualizado com sucesso no CRM"
+                    }
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Erro na atualização do lead: {response.status} - {error_text}")
+                    
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao atualizar lead no Kommo: {e}")
+            return {
+                "success": False,
+                "message": f"Erro ao atualizar lead no CRM: {e}"
+            }
+    
+    async def create_or_update_lead(self, lead_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Cria ou atualiza lead REAL no Kommo
+        Método direto para criar/atualizar lead no Kommo (alias para create_lead)
+        Usado pelo KommoAutoSyncService
+        """
+        # Verificar se lead já existe (por telefone)
+        if lead_data.get("phone"):
+            existing_lead = await self.get_lead_by_phone(lead_data["phone"])
+            if existing_lead and existing_lead.get("id"):
+                # Atualizar lead existente
+                update_result = await self.update_lead(existing_lead["id"], lead_data)
+                if update_result.get("success"):
+                    return {
+                        "success": True,
+                        "lead_id": existing_lead["id"],
+                        "message": "Lead atualizado com sucesso",
+                        "created": False
+                    }
+        
+        # Criar novo lead
+        return await self.create_lead(lead_data)
+    
+    @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    async def get_lead_by_id(self, lead_id: str) -> Optional[Dict[str, Any]]:
+        """Busca lead REAL no Kommo por ID"""
+        if not self.is_initialized:
+            await self.initialize()
+        
+        try:
             # Aplicar rate limiting
             await wait_for_kommo()
             
             async with self.session.get(
+                f"{self.base_url}/api/v4/leads/{lead_id}",
+                headers=self.headers
+            ) as response:
+                if response.status == 200:
+                    lead = await response.json()
+                    return lead
+                elif response.status == 404:
+                    return None
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Erro ao buscar lead: {response.status} - {error_text}")
+                    
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao buscar lead no Kommo: {e}")
+            return None
+    
+    @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    async def get_lead_by_phone(self, phone: str) -> Optional[Dict[str, Any]]:
+        """Busca lead REAL no Kommo por telefone"""
+        if not self.is_initialized:
+            await self.initialize()
+        
+        try:
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
+            # Buscar leads com o telefone específico
+            async with self.session.get(
                 f"{self.base_url}/api/v4/leads",
                 headers=self.headers,
-                params={"query": clean_phone}
+                params={
+                    "query": phone
+                }
             ) as response:
                 if response.status == 200:
                     result = await response.json()
                     leads = result.get("_embedded", {}).get("leads", [])
+                    
+                    # Retornar primeiro lead encontrado
                     if leads:
                         return leads[0]
-        except:
-            pass
-        return None
+                    return None
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Erro ao buscar lead por telefone: {response.status} - {error_text}")
+                    
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao buscar lead por telefone no Kommo: {e}")
+            return None
     
-    @async_retry_with_backoff(max_retries=3, initial_delay=1.0)
-    async def update_lead_stage(self, 
-                               lead_id: str, 
-                               stage: str,
-                               notes: Optional[str] = None) -> Dict[str, Any]:
+    @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    async def update_lead_stage(self, lead_id: str, stage_name: str, notes: str = "") -> Dict[str, Any]:
         """
-        Atualiza estágio REAL do lead no funil
+        Atualiza o estágio de um lead no Kommo CRM com mapeamento unificado
         """
         if not self.is_initialized:
             await self.initialize()
         
         try:
-            # Usar mapa dinâmico se disponível, senão usar padrão
-            if hasattr(self, 'stage_map') and self.stage_map:
-                # Usar mapa dinâmico buscado na inicialização
-                stage_map = self.stage_map
-            else:
-                # Mapeamento UNIFICADO de estágios para IDs do Kommo
-                # ACEITA tanto PORTUGUÊS quanto INGLÊS
-                stage_map = {
-                    # ========== NOVO LEAD (ID: 89709459) ==========
-                    # Português
-                    "novo": 89709459,
-                    "novo_lead": 89709459,
-                    "NOVO": 89709459,
-                    "NOVO_LEAD": 89709459,
-                    # Inglês
-                    "initial_contact": 89709459,
-                    "INITIAL_CONTACT": 89709459,
-                    "new_lead": 89709459,
-                    "NEW_LEAD": 89709459,
-                    
-                    # ========== EM QUALIFICAÇÃO (ID: 89709463) ==========
-                    # Português
-                    "em_qualificacao": 89709463,
-                    "em_qualificação": 89709463,
-                    "EM_QUALIFICACAO": 89709463,
-                    "EM_QUALIFICAÇÃO": 89709463,
-                    "contato": 89709463,
-                    "CONTATO": 89709463,
-                    # Inglês
-                    "qualifying": 89709463,
-                    "QUALIFYING": 89709463,
-                    "in_qualification": 89709463,
-                    "IN_QUALIFICATION": 89709463,
-                    
-                    # ========== QUALIFICADO (ID: 89709467) ==========
-                    # Português
-                    "qualificado": 89709467,
-                    "QUALIFICADO": 89709467,
-                    # Inglês
-                    "qualified": 89709467,
-                    "QUALIFIED": 89709467,
-                    
-                    # ========== REUNIÃO AGENDADA (ID: 89709595) ==========
-                    # Português
-                    "reunião_agendada": 89709595,
-                    "reuniao_agendada": 89709595,
-                    "REUNIÃO_AGENDADA": 89709595,
-                    "REUNIAO_AGENDADA": 89709595,
-                    "proposta": 89709595,
-                    "PROPOSTA": 89709595,
-                    # Inglês
-                    "meeting_scheduled": 89709595,
-                    "MEETING_SCHEDULED": 89709595,
-                    "proposal": 89709595,
-                    "PROPOSAL": 89709595,
-                    
-                    # ========== NÃO INTERESSADO (ID: 89709599) ==========
-                    # Português
-                    "não_interessado": 89709599,
-                    "nao_interessado": 89709599,
-                    "NÃO_INTERESSADO": 89709599,
-                    "NAO_INTERESSADO": 89709599,
-                    # Inglês
-                    "not_interested": 89709599,
-                    "NOT_INTERESTED": 89709599,
-                    
-                    # ========== GANHO/FECHADO (ID: 142) ==========
-                    # Português
-                    "ganho": 142,
-                    "GANHO": 142,
-                    "fechado": 142,
-                    "FECHADO": 142,
-                    # Inglês
-                    "won": 142,
-                    "WON": 142,
-                    "closed": 142,
-                    "CLOSED": 142,
-                    
-                    # ========== PERDIDO (ID: 143) ==========
-                    # Português
-                    "perdido": 143,
-                    "PERDIDO": 143,
-                    # Inglês
-                    "lost": 143,
-                    "LOST": 143
-                }
+            # Normalizar nome do estágio (remover espaços e converter para maiúsculas)
+            normalized_stage = stage_name.strip().upper().replace(" ", "_")
             
-            # Buscar ID com fallback para primeiro estágio (Novo Lead)
-            status_id = stage_map.get(stage, stage_map.get(stage.lower(), stage_map.get(stage.upper(), 89709459)))
+            # Verificar se estágio existe no mapeamento
+            stage_id = self.stage_map.get(normalized_stage)
+            
+            if not stage_id:
+                # Tentar encontrar com variações
+                for key, value in self.stage_map.items():
+                    if normalized_stage in key or key in normalized_stage:
+                        stage_id = value
+                        break
+            
+            if not stage_id:
+                raise ValueError(f"Estágio '{stage_name}' não encontrado no mapeamento")
+            
+            # Preparar dados para atualização
+            update_data = {
+                "status_id": stage_id,
+                "updated_at": int(datetime.now().timestamp())
+            }
+            
+            # Aplicar rate limiting
+            await wait_for_kommo()
             
             # Atualizar no Kommo
-            # Aplicar rate limiting
-            await wait_for_kommo()
-            
             async with self.session.patch(
-                f"{self.base_url}/api/v4/leads/{lead_id}",
+                f"{self.base_url}/api/v4/leads",
                 headers=self.headers,
-                json={"status_id": status_id}
+                json={
+                    "update": [{
+                        "id": int(lead_id),
+                        **update_data
+                    }]
+                }
             ) as response:
-                if response.status in [200, 202]:
-                    emoji_logger.crm_event(
-                        f"📈 Lead {lead_id} movido para: {stage} (REAL)"
-                    )
+                if response.status == 200:
+                    response_data = await response.json()
                     
-                    # Adicionar nota se fornecida
-                    if notes:
-                        await self.add_note(lead_id, notes)
+                    emoji_logger.crm_event(
+                        f"✅ Lead {lead_id} movido para estágio '{stage_name}' (ID: {stage_id})"
+                    )
                     
                     return {
                         "success": True,
-                        "message": f"Lead atualizado para estágio {stage}",
-                        "real": True
+                        "message": f"Lead movido para estágio {stage_name}",
+                        "stage_id": stage_id,
+                        "lead_id": lead_id
                     }
                 else:
-                    error = await response.text()
-                    raise Exception(f"Erro {response.status}: {error}")
+                    error_text = await response.text()
+                    raise Exception(f"Erro na atualização do estágio: {response.status} - {error_text}")
                     
         except Exception as e:
-            emoji_logger.service_error(f"Erro ao atualizar estágio: {e}")
+            emoji_logger.service_error(f"Erro ao atualizar estágio do lead {lead_id}: {e}")
             return {
                 "success": False,
-                "message": f"Erro ao atualizar estágio: {e}"
+                "message": f"Erro ao atualizar estágio: {e}",
+                "lead_id": lead_id
             }
     
-    async def add_note(self, lead_id: str, note: str) -> Dict[str, Any]:
+    @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    async def update_fields(self, lead_id: str, fields_dict: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Adiciona nota REAL ao lead
+        Atualiza campos customizados de um lead no Kommo
         """
         if not self.is_initialized:
             await self.initialize()
         
         try:
-            note_data = {
-                "entity_id": int(lead_id),
-                "note_type": "common",
-                "params": {
-                    "text": note
+            # Preparar campos customizados
+            custom_fields = []
+            
+            for field_name, field_value in fields_dict.items():
+                # Mapear nome do campo para ID
+                field_id = self.custom_fields.get(field_name)
+                
+                if field_id:
+                    # Preparar valor do campo
+                    field_data = {
+                        "field_id": field_id,
+                        "values": []
+                    }
+                    
+                    # Tratar diferentes tipos de valores
+                    if field_value is not None:
+                        if isinstance(field_value, (int, float)):
+                            field_data["values"].append({"value": field_value})
+                        elif isinstance(field_value, str):
+                            # Verificar se é um campo do tipo enum (select)
+                            if field_name in ["solution_type", "solucao_solar"]:
+                                # Procurar enum_id correspondente
+                                enum_id = self.solution_type_values.get(field_value.lower())
+                                if enum_id:
+                                    field_data["values"].append({"enum_id": enum_id})
+                                else:
+                                    # Se não encontrar enum_id, usar valor como string
+                                    field_data["values"].append({"value": field_value})
+                            else:
+                                field_data["values"].append({"value": field_value})
+                        else:
+                            # Para outros tipos, converter para string
+                            field_data["values"].append({"value": str(field_value)})
+                    
+                    custom_fields.append(field_data)
+            
+            # Se não há campos para atualizar, retornar sucesso
+            if not custom_fields:
+                return {
+                    "success": True,
+                    "message": "Nenhum campo para atualizar"
                 }
+            
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
+            # Atualizar campos no Kommo
+            async with self.session.patch(
+                f"{self.base_url}/api/v4/leads",
+                headers=self.headers,
+                json={
+                    "update": [{
+                        "id": int(lead_id),
+                        "custom_fields_values": custom_fields
+                    }]
+                }
+            ) as response:
+                if response.status == 200:
+                    emoji_logger.crm_event(
+                        f"✅ Campos atualizados para lead {lead_id}: {list(fields_dict.keys())}"
+                    )
+                    
+                    return {
+                        "success": True,
+                        "message": "Campos atualizados com sucesso"
+                    }
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Erro na atualização de campos: {response.status} - {error_text}")
+                    
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao atualizar campos do lead {lead_id}: {e}")
+            return {
+                "success": False,
+                "message": f"Erro ao atualizar campos: {e}",
+                "lead_id": lead_id
+            }
+    
+    @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    async def add_tags_to_lead(self, lead_id: str, tags: List[str]) -> Dict[str, Any]:
+        """
+        Adiciona tags REAIS ao lead no Kommo
+        """
+        if not self.is_initialized:
+            await self.initialize()
+        
+        try:
+            # Preparar tags
+            tag_data = []
+            for tag in tags:
+                tag_data.append({"name": tag})
+            
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
+            # Adicionar tags no Kommo
+            async with self.session.patch(
+                f"{self.base_url}/api/v4/leads",
+                headers=self.headers,
+                json={
+                    "update": [{
+                        "id": int(lead_id),
+                        "_embedded": {
+                            "tags": tag_data
+                        }
+                    }]
+                }
+            ) as response:
+                if response.status == 200:
+                    emoji_logger.crm_event(
+                        f"✅ Tags adicionadas ao lead {lead_id}: {tags}"
+                    )
+                    
+                    return {
+                        "success": True,
+                        "message": "Tags adicionadas com sucesso"
+                    }
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Erro ao adicionar tags: {response.status} - {error_text}")
+                    
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao adicionar tags ao lead {lead_id}: {e}")
+            return {
+                "success": False,
+                "message": f"Erro ao adicionar tags: {e}",
+                "lead_id": lead_id
+            }
+    
+    @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    async def add_note_to_lead(self, lead_id: str, note_text: str) -> Dict[str, Any]:
+        """
+        Adiciona nota ao lead no Kommo
+        """
+        if not self.is_initialized:
+            await self.initialize()
+        
+        try:
+            # Preparar dados da nota
+            note_data = {
+                "add": [{
+                    "element_id": int(lead_id),
+                    "element_type": 2,  # 2 para leads
+                    "note_type": 4,  # 4 para notas de texto
+                    "text": note_text,
+                    "created_by": 11031887  # ID do usuário (Leonardo)
+                }]
             }
             
             # Aplicar rate limiting
             await wait_for_kommo()
             
+            # Adicionar nota no Kommo
             async with self.session.post(
-                f"{self.base_url}/api/v4/leads/{lead_id}/notes",
+                f"{self.base_url}/api/v4/leads/notes",
                 headers=self.headers,
-                json=[note_data]
+                json=note_data
             ) as response:
-                if response.status in [200, 201]:
+                if response.status == 200:
                     emoji_logger.crm_note(
-                        f"📝 Nota REAL adicionada ao lead {lead_id}"
+                        f"📝 Nota adicionada ao lead {lead_id}"
                     )
+                    
                     return {
                         "success": True,
-                        "message": "Nota adicionada com sucesso",
-                        "real": True
+                        "message": "Nota adicionada com sucesso"
                     }
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Erro ao adicionar nota: {response.status} - {error_text}")
                     
         except Exception as e:
-            emoji_logger.service_error(f"Erro ao adicionar nota: {e}")
+            emoji_logger.service_error(f"Erro ao adicionar nota ao lead {lead_id}: {e}")
             return {
                 "success": False,
-                "message": f"Erro ao adicionar nota: {e}"
+                "message": f"Erro ao adicionar nota: {e}",
+                "lead_id": lead_id
             }
     
-    async def create_task(self, 
-                         lead_id: str,
-                         task_type: str,
-                         due_date: Optional[datetime] = None) -> Dict[str, Any]:
+    @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    async def create_task(self, lead_id: str, task_text: str, complete_till: datetime) -> Dict[str, Any]:
         """
         Cria tarefa REAL no Kommo
         """
@@ -722,468 +934,50 @@ class CRMServiceReal:
             await self.initialize()
         
         try:
-            # Data de vencimento (padrão: amanhã)
-            if not due_date:
-                due_date = datetime.now() + timedelta(days=1)
-            
+            # Preparar dados da tarefa
             task_data = {
-                "text": task_type,
-                "complete_till": int(due_date.timestamp()),
-                "entity_id": int(lead_id),
-                "entity_type": "leads",
-                "task_type_id": 1  # 1 = Call
+                "add": [{
+                    "element_id": int(lead_id),
+                    "element_type": 2,  # 2 para leads
+                    "task_type_id": 1,  # 1 para tarefas gerais
+                    "text": task_text,
+                    "complete_till": int(complete_till.timestamp()),
+                    "responsible_user_id": 11031887  # ID do usuário (Leonardo)
+                }]
             }
             
             # Aplicar rate limiting
             await wait_for_kommo()
             
+            # Criar tarefa no Kommo
             async with self.session.post(
                 f"{self.base_url}/api/v4/tasks",
                 headers=self.headers,
-                json=[task_data]
+                json=task_data
             ) as response:
-                if response.status in [200, 201]:
+                if response.status == 200:
                     result = await response.json()
-                    task_id = result["_embedded"]["tasks"][0]["id"]
+                    task_id = result.get("_embedded", {}).get("tasks", [{}])[0].get("id")
                     
                     emoji_logger.crm_event(
-                        f"📋 Tarefa REAL criada: {task_type} - ID: {task_id}"
+                        f"✅ Tarefa criada para lead {lead_id}: {task_id}"
                     )
                     
                     return {
                         "success": True,
                         "task_id": task_id,
-                        "message": f"Tarefa '{task_type}' criada com sucesso",
-                        "real": True
-                    }
-                    
-        except Exception as e:
-            emoji_logger.service_error(f"Erro ao criar tarefa: {e}")
-            return {
-                "success": False,
-                "message": f"Erro ao criar tarefa: {e}"
-            }
-    
-    @async_retry_with_backoff(max_retries=2, initial_delay=0.5)
-    async def get_lead_info(self, lead_id: str) -> Dict[str, Any]:
-        """
-        Busca informações REAIS do lead
-        """
-        if not self.is_initialized:
-            await self.initialize()
-        
-        try:
-            # Aplicar rate limiting
-            await wait_for_kommo()
-            
-            async with self.session.get(
-                f"{self.base_url}/api/v4/leads/{lead_id}",
-                headers=self.headers,
-                params={"with": "contacts"}
-            ) as response:
-                if response.status == 200:
-                    lead = await response.json()
-                    
-                    # Extrair campos customizados
-                    custom_values = {}
-                    for field in lead.get("custom_fields_values", []):
-                        field_id = field["field_id"]
-                        value = field["values"][0]["value"] if field["values"] else None
-                        
-                        # Mapear IDs para nomes
-                        for name, fid in self.custom_fields.items():
-                            if fid == field_id:
-                                custom_values[name] = value
-                                break
-                    
-                    return {
-                        "success": True,
-                        "lead": {
-                            "id": lead["id"],
-                            "name": lead["name"],
-                            "price": lead.get("price", 0),
-                            "status": lead.get("status_id"),
-                            "phone": custom_values.get("phone"),
-                            "email": custom_values.get("email"),
-                            "bill_value": custom_values.get("bill_value"),
-                            "created_at": lead.get("created_at")
-                        },
-                        "real": True
-                    }
-                    
-        except Exception as e:
-            emoji_logger.service_error(f"Erro ao buscar lead: {e}")
-            return {
-                "success": False,
-                "message": f"Erro ao buscar lead: {e}"
-            }
-    
-    async def get_lead_by_id(self, lead_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Busca lead por ID (alias simplificado para get_lead_info)
-        Retorna os dados do lead ou None se não encontrado
-        """
-        try:
-            result = await self.get_lead_info(lead_id)
-            if result and result.get("success"):
-                lead = result.get("lead", {})
-                # Retorna direto o lead com status_id no formato esperado
-                if lead:
-                    return {
-                        "id": lead.get("id"),
-                        "name": lead.get("name"),
-                        "status_id": lead.get("status"),  # Renomeia status para status_id
-                        "pipeline_id": lead.get("pipeline_id"),  # Adicionar se disponível
-                        "phone": lead.get("phone"),
-                        "email": lead.get("email"),
-                        "bill_value": lead.get("bill_value"),
-                        "created_at": lead.get("created_at")
-                    }
-        except Exception as e:
-            emoji_logger.service_warning(f"Lead {lead_id} não encontrado ou erro ao buscar: {e}")
-        return None
-    
-    @async_retry_with_backoff(max_retries=3, initial_delay=1.0)
-    async def add_tags_to_lead(self, lead_id: str, tags: List[str]) -> Dict[str, Any]:
-        """
-        Adiciona tags REAIS ao lead no Kommo
-        🔥 FIX: Usando _embedded no PATCH ao invés do endpoint /tags
-        
-        Args:
-            lead_id: ID do lead
-            tags: Lista de tags a adicionar
-            
-        Returns:
-            Dict com resultado da operação
-        """
-        if not self.is_initialized:
-            await self.initialize()
-        
-        try:
-            # 🔥 FIX: Usar PATCH com _embedded para adicionar tags
-            update_data = {
-                "_embedded": {
-                    "tags": [{"name": tag} for tag in tags]
-                }
-            }
-            
-            async with self.session.patch(
-                f"{self.base_url}/api/v4/leads/{lead_id}",
-                headers=self.headers,
-                json=update_data
-            ) as response:
-                if response.status in [200, 202]:
-                    emoji_logger.crm_event(
-                        f"🏷️ Tags adicionadas ao lead {lead_id}: {', '.join(tags)}"
-                    )
-                    return {
-                        "success": True,
-                        "message": f"Tags adicionadas com sucesso: {', '.join(tags)}",
-                        "tags": tags,
-                        "real": True
+                        "message": "Tarefa criada com sucesso"
                     }
                 else:
-                    error = await response.text()
-                    raise Exception(f"Erro {response.status}: {error}")
+                    error_text = await response.text()
+                    raise Exception(f"Erro ao criar tarefa: {response.status} - {error_text}")
                     
         except Exception as e:
-            emoji_logger.service_error(f"Erro ao adicionar tags: {e}")
+            emoji_logger.service_error(f"Erro ao criar tarefa para lead {lead_id}: {e}")
             return {
                 "success": False,
-                "message": f"Erro ao adicionar tags: {e}"
-            }
-        
-        # CÓDIGO ORIGINAL COMENTADO - CAUSAVA ERRO 404
-        # if not self.is_initialized:
-        #     await self.initialize()
-        # 
-        # try:
-        #     # Preparar dados das tags
-        #     tags_data = {
-        #         "_embedded": {
-        #             "tags": [{"name": tag} for tag in tags]
-        #         }
-        #     }
-        #     
-        #     # Adicionar tags ao lead
-        #     async with self.session.post(
-        #         f"{self.base_url}/api/v4/leads/{lead_id}/tags",
-        #         headers=self.headers,
-        #         json=tags_data
-        #     ) as response:
-        #         if response.status in [200, 201, 202]:
-        #             emoji_logger.crm_event(
-        #                 f"🏷️ Tags adicionadas ao lead {lead_id}: {', '.join(tags)}"
-        #             )
-        #             return {
-        #                 "success": True,
-        #                 "message": f"Tags adicionadas: {', '.join(tags)}",
-        #                 "tags": tags,
-        #                 "real": True
-        #             }
-        #         else:
-        #             error = await response.text()
-        #             raise Exception(f"Erro {response.status}: {error}")
-        #             
-        # except Exception as e:
-        #     emoji_logger.service_error(f"Erro ao adicionar tags: {e}")
-        #     return {
-        #         "success": False,
-        #         "message": f"Erro ao adicionar tags: {e}"
-        #     }
-    
-    @async_retry_with_backoff(max_retries=3, initial_delay=1.0)
-    async def update_fields(self, lead_id: str, fields: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Atualiza campos customizados do lead de forma DINÂMICA
-        ZERO complexidade, MÁXIMA flexibilidade
-        
-        Args:
-            lead_id: ID do lead no Kommo
-            fields: Dict com campos a atualizar (usa nomes amigáveis)
-                   Ex: {"bill_value": "500", "solution_type": "Usina própria"}
-        
-        Returns:
-            Dict com resultado da operação
-        """
-        if not self.is_initialized:
-            await self.initialize()
-        
-        try:
-            # Preparar campos customizados
-            custom_fields_values = []
-            
-            # Mapear campos conhecidos (usar campos da inicialização ou padrões)
-            # SIMPLES: Usa apenas campos confirmados como válidos
-            field_mapping = {}
-            
-            # Adicionar campos do self.custom_fields que existem
-            for field_name, field_id in self.custom_fields.items():
-                if field_id:  # Apenas campos com ID válido
-                    field_mapping[field_name] = field_id
-            
-            # Aliases adicionais para campos conhecidos
-            if self.custom_fields.get("phone"):
-                field_mapping["whatsapp"] = self.custom_fields["phone"]
-                field_mapping["telefone"] = self.custom_fields["phone"]
-            
-            if self.custom_fields.get("bill_value"):
-                field_mapping["valor_conta"] = self.custom_fields["bill_value"]
-                field_mapping["conta_energia"] = self.custom_fields["bill_value"]
-            
-            if self.custom_fields.get("solution_type"):
-                field_mapping["solucao_solar"] = self.custom_fields["solution_type"]
-                field_mapping["solução_solar"] = self.custom_fields["solution_type"]
-            
-            if self.custom_fields.get("calendar_link"):
-                field_mapping["google_calendar"] = self.custom_fields["calendar_link"]
-                field_mapping["link_calendario"] = self.custom_fields["calendar_link"]
-            
-            # Adicionar campos ao payload
-            for field_name, field_value in fields.items():
-                field_name_lower = field_name.lower()
-                
-                # Procurar ID do campo
-                field_id = field_mapping.get(field_name_lower)
-                
-                if field_id:
-                    # Verificar se é o campo SELECT solution_type (ID: 392808)
-                    if field_id == 392808:
-                        # Para campos SELECT, usar enum_id
-                        solution_text = str(field_value).lower()
-                        enum_id = self.solution_type_values.get(solution_text)
-                        
-                        if enum_id:
-                            custom_fields_values.append({
-                                "field_id": field_id,
-                                "values": [{"enum_id": enum_id}]  # Usar enum_id para SELECT
-                            })
-                            emoji_logger.system_debug(f"Campo SELECT {field_name}: enum_id {enum_id}")
-                        else:
-                            emoji_logger.service_warning(
-                                f"Valor '{field_value}' inválido para Solução Solar. "
-                                f"Use: {list(self.solution_type_values.keys())}"
-                            )
-                    else:
-                        # Campos TEXT, NUMERIC, URL - usar value
-                        custom_fields_values.append({
-                            "field_id": field_id,
-                            "values": [{"value": str(field_value)}]
-                        })
-                        emoji_logger.system_debug(f"Campo {field_name} (ID {field_id}): {field_value}")
-                else:
-                    emoji_logger.service_warning(f"Campo '{field_name}' não mapeado, ignorando")
-            
-            # Se não há campos para atualizar, retornar sucesso
-            if not custom_fields_values:
-                return {
-                    "success": True,
-                    "message": "Nenhum campo válido para atualizar",
-                    "real": True
-                }
-            
-            # Atualizar no Kommo
-            update_data = {
-                "custom_fields_values": custom_fields_values
-            }
-            
-            async with self.session.patch(
-                f"{self.base_url}/api/v4/leads/{lead_id}",
-                headers=self.headers,
-                json=update_data
-            ) as response:
-                if response.status in [200, 202]:
-                    emoji_logger.crm_event(
-                        f"✅ Campos atualizados no lead {lead_id}: {list(fields.keys())}"
-                    )
-                    return {
-                        "success": True,
-                        "message": f"Campos atualizados com sucesso",
-                        "fields_updated": list(fields.keys()),
-                        "real": True
-                    }
-                else:
-                    error = await response.text()
-                    raise Exception(f"Erro {response.status}: {error}")
-                    
-        except Exception as e:
-            emoji_logger.service_error(f"Erro ao atualizar campos: {e}")
-            return {
-                "success": False,
-                "message": f"Erro ao atualizar campos: {e}"
-            }
-    
-    async def create_or_update_lead_direct(self, lead_data: Dict[str, Any], tags: List[str] = None) -> Dict[str, Any]:
-        """
-        Método direto para criar/atualizar lead sem decorators - usado pelo auto sync
-        🔥 FIX: Passando tags diretamente para create_or_update_lead
-        
-        Args:
-            lead_data: Dados do lead
-            tags: Lista de tags
-            
-        Returns:
-            Dict com resultado da operação incluindo crm_id
-        """
-        try:
-            # 🔥 FIX: Passar tags diretamente no método create_or_update_lead
-            result = await self.create_or_update_lead(lead_data, tags)
-            
-            if result.get("success"):
-                # Log das tags adicionadas
-                if tags:
-                    emoji_logger.crm_event(
-                        f"🏷️ Tags adicionadas ao lead {result.get('lead_id')}: {', '.join(tags)}"
-                    )
-                
-                # Reformatar resposta para compatibilidade com auto sync
-                return {
-                    "success": True,
-                    "crm_id": result.get("lead_id"),  # Campo esperado pelo auto sync
-                    "lead_id": result.get("lead_id"),
-                    "action": result.get("action", "processed"),
-                    "message": result.get("message", "Lead processado com sucesso"),
-                    "real": True
-                }
-            else:
-                return result
-                
-        except Exception as e:
-            emoji_logger.service_error(f"Erro em create_or_update_lead_direct: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
-    
-    async def update_custom_fields(self, lead_id: str, fields: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Atualiza campos customizados dinamicamente
-        
-        Args:
-            lead_id: ID do lead
-            fields: Dicionário com campos a atualizar {nome_campo: valor}
-            
-        Returns:
-            Dict com resultado da operação
-        """
-        if not self.is_initialized:
-            await self.initialize()
-        
-        try:
-            # Preparar campos customizados
-            custom_fields_values = []
-            
-            # Mapear campos por nome amigável
-            field_name_mapping = {
-                "telefone": "phone",
-                "phone": "phone",
-                "email": "email",
-                "e-mail": "email",
-                "valor_conta": "bill_value",
-                "bill_value": "bill_value",
-                "valor": "bill_value",
-                "localizacao": "location",
-                "location": "location",
-                "endereco": "location",
-                "tipo_propriedade": "property_type",
-                "property_type": "property_type",
-                "tipo": "property_type"
-            }
-            
-            # Processar cada campo
-            for field_name, value in fields.items():
-                # Normalizar nome do campo
-                normalized_name = field_name.lower().replace(" ", "_")
-                
-                # Tentar mapear para campo conhecido
-                mapped_name = field_name_mapping.get(normalized_name, normalized_name)
-                
-                # Se temos o ID do campo, adicionar
-                if mapped_name in self.custom_fields:
-                    field_id = self.custom_fields[mapped_name]
-                    custom_fields_values.append({
-                        "field_id": field_id,
-                        "values": [{"value": str(value)}]
-                    })
-                    emoji_logger.system_debug(f"Campo {field_name} ({mapped_name}) -> ID {field_id} = {value}")
-                else:
-                    emoji_logger.service_warning(f"Campo desconhecido: {field_name}")
-            
-            # Se há campos para atualizar
-            if custom_fields_values:
-                update_data = {
-                    "custom_fields_values": custom_fields_values
-                }
-                
-                async with self.session.patch(
-                    f"{self.base_url}/api/v4/leads/{lead_id}",
-                    headers=self.headers,
-                    json=update_data
-                ) as response:
-                    if response.status in [200, 202]:
-                        emoji_logger.crm_event(
-                            f"📝 Campos customizados atualizados no lead {lead_id}"
-                        )
-                        return {
-                            "success": True,
-                            "message": f"Atualizados {len(custom_fields_values)} campos",
-                            "fields_updated": list(fields.keys()),
-                            "real": True
-                        }
-                    else:
-                        error = await response.text()
-                        raise Exception(f"Erro {response.status}: {error}")
-            else:
-                return {
-                    "success": False,
-                    "message": "Nenhum campo válido para atualizar"
-                }
-                
-        except Exception as e:
-            emoji_logger.service_error(f"Erro ao atualizar campos: {e}")
-            return {
-                "success": False,
-                "message": f"Erro ao atualizar campos: {e}"
+                "message": f"Erro ao criar tarefa: {e}",
+                "lead_id": lead_id
             }
     
     async def health_check(self) -> bool:
@@ -1192,8 +986,7 @@ class CRMServiceReal:
             if not self.is_initialized:
                 await self.initialize()
             
-            # Testar acesso à API
-            # Aplicar rate limiting
+            # Testar conexão com a API
             await wait_for_kommo()
             
             async with self.session.get(
@@ -1205,95 +998,16 @@ class CRMServiceReal:
         except:
             return False
     
-    async def ensure_lead_name_updated(self, lead_id: str, name: str, max_retries: int = 3) -> Dict[str, Any]:
-        """
-        🔥 CORREÇÃO: Garante que o nome do lead seja atualizado no Kommo
-        
-        Args:
-            lead_id: ID do lead no Kommo
-            name: Nome a ser atualizado
-            max_retries: Número máximo de tentativas
-            
-        Returns:
-            Dict com resultado da operação
-        """
-        if not name or name in ["Lead Solar", "NOVO LEAD", "Lead sem nome"]:
-            emoji_logger.service_warning(f"Nome inválido para atualização: '{name}'")
-            return {"success": False, "message": "Nome inválido"}
-        
-        for attempt in range(max_retries):
-            try:
-                emoji_logger.system_event(f"🔄 Tentativa {attempt + 1}/{max_retries} de atualizar nome para: {name}")
-                
-                # Atualizar nome diretamente
-                update_data = {"name": name}
-                
-                async with self.session.patch(
-                    f"{self.base_url}/api/v4/leads/{lead_id}",
-                    headers=self.headers,
-                    json=update_data
-                ) as response:
-                    if response.status in [200, 202]:
-                        emoji_logger.crm_event(f"✅ Nome atualizado com sucesso: {name} (Lead {lead_id})")
-                        return {
-                            "success": True,
-                            "message": f"Nome atualizado para: {name}",
-                            "lead_id": lead_id,
-                            "name": name
-                        }
-                    else:
-                        error = await response.text()
-                        emoji_logger.service_warning(f"Tentativa {attempt + 1} falhou: {error}")
-                        
-                        if attempt < max_retries - 1:
-                            await asyncio.sleep(2 ** attempt)  # Backoff exponencial
-                        
-            except Exception as e:
-                emoji_logger.service_error(f"Erro na tentativa {attempt + 1}: {e}")
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)
-        
-        emoji_logger.service_error(f"❌ Falha ao atualizar nome após {max_retries} tentativas")
-        return {
-            "success": False,
-            "message": f"Falha ao atualizar nome após {max_retries} tentativas"
-        }
+    async def _close_session_safely(self):
+        """Fecha sessão HTTP com segurança"""
+        try:
+            if self.session:
+                await self.session.close()
+                self.session = None
+                emoji_logger.service_info("🔌 Sessão CRM fechada com segurança")
+        except Exception as e:
+            emoji_logger.service_warning(f"Aviso ao fechar sessão CRM: {e}")
     
     async def close(self):
-        """Fecha conexões de forma segura"""
+        """Fecha conexão com o CRM"""
         await self._close_session_safely()
-    
-    async def _close_session_safely(self):
-        """🛡️ Fecha sessão aiohttp de forma segura"""
-        if self.session and not self.session.closed:
-            try:
-                await self.session.close()
-                # Aguardar um pouco para garantir que conexões sejam fechadas
-                await asyncio.sleep(0.1)
-                emoji_logger.service_info("🔌 Sessão CRM fechada com segurança")
-            except Exception as e:
-                emoji_logger.service_warning(f"Aviso ao fechar sessão CRM: {e}")
-            finally:
-                self.session = None
-    
-    def __del__(self):
-        """🗑️ Destrutor para garantir limpeza de recursos"""
-        if self.session and not self.session.closed:
-            # Criar nova task para fechar sessão se event loop estiver rodando
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(self._close_session_safely())
-                else:
-                    loop.run_until_complete(self._close_session_safely())
-            except RuntimeError:
-                # Event loop não disponível - criar novo loop para fechamento
-                try:
-                    if hasattr(self.session, '_connector') and self.session._connector:
-                        # Criar novo loop temporário para fechamento limpo
-                        temp_loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(temp_loop)
-                        temp_loop.run_until_complete(self._close_session_safely())
-                        temp_loop.close()
-                except:
-                    pass

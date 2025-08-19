@@ -14,10 +14,15 @@ from app.core.model_manager import ModelManager
 from app.core.multimodal_processor import MultimodalProcessor
 from app.core.lead_manager import LeadManager
 from app.core.context_analyzer import ContextAnalyzer
-from app.core.team_coordinator import TeamCoordinator
+# Removido TeamCoordinator - vamos instanciar serviços diretamente
 from app.services.conversation_monitor import get_conversation_monitor
 from app.utils.logger import emoji_logger
 from app.config import settings
+
+# Importar serviços diretamente
+from app.services.calendar_service_100_real import CalendarServiceReal
+from app.services.crm_service_100_real import CRMServiceReal
+from app.services.followup_service_100_real import FollowUpServiceReal
 
 class AgenticSDRStateless:
     """
@@ -33,7 +38,7 @@ class AgenticSDRStateless:
         self.multimodal = MultimodalProcessor()
         self.lead_manager = LeadManager()
         self.context_analyzer = ContextAnalyzer()
-        self.team_coordinator = TeamCoordinator()
+        # Removido TeamCoordinator
         self.conversation_monitor = get_conversation_monitor()
         
         # SEM ESTADO INTERNO!
@@ -53,7 +58,7 @@ class AgenticSDRStateless:
             self.multimodal.initialize()
             self.lead_manager.initialize()
             self.context_analyzer.initialize()
-            await self.team_coordinator.initialize()
+            # TeamCoordinator removido - não precisa inicializar
             await self.conversation_monitor.initialize()
             
             self.is_initialized = True
@@ -61,7 +66,7 @@ class AgenticSDRStateless:
                 "✅ AgenticSDR Stateless inicializado!",
                 modules=[
                     "ModelManager", "MultimodalProcessor", 
-                    "LeadManager", "ContextAnalyzer", "TeamCoordinator"
+                    "LeadManager", "ContextAnalyzer"
                 ]
             )
             
@@ -146,8 +151,8 @@ class AgenticSDRStateless:
             # Atualizar lead_info com novas informações
             lead_info.update(new_lead_info)
             
-            # 6. Executar serviços necessários
-            service_results = await self.team_coordinator.execute_services(
+            # 6. Executar serviços necessários diretamente (sem TeamCoordinator)
+            service_results = await self._execute_services_directly(
                 message,
                 context,
                 lead_info
@@ -190,6 +195,404 @@ class AgenticSDRStateless:
             emoji_logger.system_error("AgenticSDRStateless", error=f"Erro: {e}")
             emoji_logger.system_error("AgenticSDRStateless", error=f"Traceback: {traceback.format_exc()}")
             return "Desculpe, tive um problema ao processar sua mensagem. Pode repetir? 🤔"
+    
+    async def _execute_services_directly(self,
+                                       message: str,
+                                       context: Dict[str, Any],
+                                       lead_info: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Executa serviços necessários diretamente sem TeamCoordinator
+        Esta é a nova abordagem mais simples e direta
+        """
+        results = []
+        
+        # Analisar necessidade de serviços com lógica similar ao TeamCoordinator
+        service_needs = self._analyze_service_needs(message, context)
+        
+        # Executar serviços necessários
+        for service_name, need_score in service_needs.items():
+            # Threshold otimizado (similar ao TeamCoordinator)
+            if need_score >= 0.4:
+                emoji_logger.service_event(
+                    f"🎯 Executando {service_name} diretamente",
+                    score=f"{need_score:.3f}",
+                    threshold="0.4"
+                )
+                
+                result = await self._execute_single_service_directly(
+                    service_name,
+                    message,
+                    context,
+                    lead_info
+                )
+                
+                if result:
+                    results.append(result)
+        
+        return results
+    
+    def _analyze_service_needs(self, message: str, context: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Analisa necessidade de serviços com INTENÇÃO INTELIGENTE
+        Baseado na lógica do TeamCoordinator mas simplificada
+        """
+        scores = {
+            "calendar": 0.0,
+            "crm": 0.0,
+            "followup": 0.0
+        }
+        
+        message_lower = message.lower()
+        
+        # 🎯 CALENDAR - Análise de Intenção Aprimorada
+        calendar_score = self._analyze_calendar_intent(message_lower, context)
+        scores["calendar"] = calendar_score
+        
+        # 📊 CRM - Análise de Intenção para Dados
+        crm_score = self._analyze_crm_intent(message_lower, context)
+        scores["crm"] = crm_score
+        
+        # 🔄 FOLLOWUP - Análise de Intenção para Reengajamento
+        followup_score = self._analyze_followup_intent(message_lower, context)
+        scores["followup"] = followup_score
+        
+        # 🚀 BOOST INTELIGENTE baseado em user_intent e conversation_stage
+        scores = self._apply_intelligent_boost(scores, context)
+        
+        # Normalizar scores
+        for service in scores:
+            scores[service] = min(1.0, scores[service])
+        
+        return scores
+    
+    def _analyze_calendar_intent(self, message_lower: str, context: Dict[str, Any]) -> float:
+        """
+        🎯 Análise INTELIGENTE de intenção para Calendar Service
+        Simplificada do TeamCoordinator
+        """
+        calendar_score = 0.0
+        
+        # 1. PALAVRAS-CHAVE BÁSICAS (peso 0.2)
+        basic_keywords = [
+            "agendar", "marcar", "reunião", "conversar", "leonardo",
+            "horário", "disponível", "data", "quando", "encontro",
+            "pode ser", "poderia ser", "da pra ser", "dá pra ser"
+        ]
+        keyword_matches = sum(1 for kw in basic_keywords if kw in message_lower)
+        calendar_score += min(0.4, keyword_matches * 0.2)  # Max 0.4 de keywords
+        
+        # 2. INTENÇÕES FORTES (peso 0.4)
+        strong_intent_phrases = [
+            "quero agendar", "vamos marcar", "podemos conversar",
+            "falar com leonardo", "marcar reunião", "que horário",
+            "estou disponível", "quando posso", "vamos falar"
+        ]
+        for phrase in strong_intent_phrases:
+            if phrase in message_lower:
+                calendar_score += 0.4
+                break
+        
+        # 3. INDICADORES DE URGÊNCIA E TEMPO (peso 0.4)
+        urgency_indicators = [
+            "hoje", "amanhã", "logo", "rápido", "urgente",
+            "já", "agora", "preciso", "importante"
+        ]
+        # Indicadores específicos de flexibilidade temporal
+        time_flexibility_indicators = [
+            "amanhã pode", "pode ser amanhã", "amanhã da", "amanhã dá"
+        ]
+        
+        urgency_match = any(indicator in message_lower for indicator in urgency_indicators)
+        flexibility_match = any(indicator in message_lower for indicator in time_flexibility_indicators)
+        
+        if flexibility_match:
+            calendar_score += 0.5  # Peso maior para flexibilidade temporal específica
+        elif urgency_match:
+            calendar_score += 0.4  # Peso aumentado para urgência geral
+        
+        # 4. INDICADORES DE TEMPO ESPECÍFICO (peso 0.5)
+        time_patterns = [
+            r"\d{1,2}h\d{0,2}", r"\d{1,2}:\d{2}", r"\d{1,2}/\d{1,2}",
+            "segunda", "terça", "quarta", 
+            "quinta", "sexta", "sábado", "domingo"
+        ]
+        # Padrões de hora simplificados
+        simple_time_patterns = [
+            r"\d{1,2}h", r"as \d{1,2}", r"às \d{1,2}", 
+            r"pode ser \d{1,2}", r"pode ser as \d{1,2}"
+        ]
+        
+        import re
+        time_detected = False
+        
+        # Verificar padrões de tempo específicos
+        for pattern in time_patterns:
+            if re.search(pattern, message_lower):
+                calendar_score += 0.5
+                time_detected = True
+                break
+        
+        # Verificar padrões de hora simplificados
+        if not time_detected:
+            for pattern in simple_time_patterns:
+                if re.search(pattern, message_lower):
+                    calendar_score += 0.6  # Peso maior para padrões contextuais
+                    break
+        
+        # 🚀 BOOST PROATIVO PARA CLOSING/AGENDAMENTO
+        conversation_stage = context.get("conversation_stage", "").lower()
+        qualification_score = context.get("qualification_score", 0)
+        
+        # Boost quando estágio indica necessidade de agendamento
+        if conversation_stage in ["closing", "agendamento_processo", "qualificação_completa"]:
+            calendar_score += 0.3
+        
+        # Boost quando score de qualificação é alto (≥7)
+        if qualification_score >= 7:
+            calendar_score += 0.3
+        
+        # 🚀 BOOST POR INTERESSE DEMONSTRADO
+        interest_indicators = [
+            "interessante", "interessado", "faz sentido", "legal", "ótimo",
+            "perfeito", "quero", "preciso", "vou", "aceito"
+        ]
+        
+        # 🚀 BOOST POR CONTEXTO DE AGENDAMENTO CONVERSACIONAL
+        contextual_scheduling_phrases = [
+            "pode ser", "da pra", "dá pra", "consigo", "posso", 
+            "tudo bem", "ok", "sim", "claro", "perfeito"
+        ]
+        
+        if any(indicator in message_lower for indicator in interest_indicators):
+            calendar_score += 0.2
+        
+        # Boost adicional para frases contextuais de agendamento
+        if any(phrase in message_lower for phrase in contextual_scheduling_phrases):
+            # Verificar se há indicador temporal na mesma mensagem
+            has_time_context = any(time_word in message_lower for time_word in 
+                                 ["amanhã", "hoje", "depois", "manhã", "tarde", "noite"] + 
+                                 [str(i)+"h" for i in range(6, 24)])
+            
+            if has_time_context:
+                calendar_score += 0.3  # Boost significativo para contexto temporal + flexibilidade
+        
+        return min(1.0, calendar_score)
+    
+    def _analyze_crm_intent(self, message_lower: str, context: Dict[str, Any]) -> float:
+        """
+        📊 Análise INTELIGENTE de intenção para CRM Service
+        """
+        crm_score = 0.0
+        
+        # Palavras-chave de dados pessoais/empresa
+        data_keywords = [
+            "nome", "telefone", "email", "empresa", "conta",
+            "valor", "consumo", "kwh", "endereço", "cpf", "cnpj"
+        ]
+        keyword_matches = sum(1 for kw in data_keywords if kw in message_lower)
+        crm_score += min(0.6, keyword_matches * 0.25)
+        
+        # Intenções de fornecer dados
+        data_providing_phrases = [
+            "meu nome é", "me chamo", "minha empresa", "nossa conta",
+            "pagamos", "gastamos", "consumimos", "nosso endereço"
+        ]
+        for phrase in data_providing_phrases:
+            if phrase in message_lower:
+                crm_score += 0.4
+                break
+        
+        return min(1.0, crm_score)
+    
+    def _analyze_followup_intent(self, message_lower: str, context: Dict[str, Any]) -> float:
+        """
+        🔄 Análise INTELIGENTE de intenção para FollowUp Service
+        """
+        followup_score = 0.0
+        
+        # Palavras-chave de adiamento/reengajamento
+        followup_keywords = [
+            "lembrar", "retornar", "voltar", "depois", "pensar",
+            "aguardar", "futuro", "próxima", "acompanhar", "ligar"
+        ]
+        keyword_matches = sum(1 for kw in followup_keywords if kw in message_lower)
+        followup_score += min(0.4, keyword_matches * 0.2)
+        
+        # Intenções de adiamento
+        postpone_phrases = [
+            "vou pensar", "preciso conversar", "não posso agora",
+            "talvez depois", "outra hora", "me ligue", "entre em contato"
+        ]
+        for phrase in postpone_phrases:
+            if phrase in message_lower:
+                followup_score += 0.6
+                break
+        
+        return min(1.0, followup_score)
+    
+    def _apply_intelligent_boost(self, scores: Dict[str, float], context: Dict[str, Any]) -> Dict[str, float]:
+        """
+        🚀 Aplica boost inteligente baseado em user_intent e conversation_stage
+        """
+        # BOOST baseado em user_intent (do contexto analisado)
+        user_intent = context.get("user_intent", "").lower()
+        
+        if "agendar" in user_intent or "reunião" in user_intent:
+            scores["calendar"] += 0.4
+        elif "dados" in user_intent or "informações" in user_intent:
+            scores["crm"] += 0.4
+        elif "depois" in user_intent or "adiado" in user_intent:
+            scores["followup"] += 0.4
+        
+        # BOOST baseado em conversation_stage
+        stage = context.get("conversation_stage", "").lower()
+        
+        if stage in ["qualificação", "negociação", "fechamento"]:
+            scores["calendar"] += 0.3  # Estágios avançados = agendar reunião
+        elif stage in ["início", "descoberta"]:
+            scores["crm"] += 0.3  # Início = coletar dados
+        
+        # BOOST baseado em action_needed (compatibilidade)
+        action_needed = context.get("action_needed", "")
+        if action_needed == "agendar":
+            scores["calendar"] += 0.4
+        elif action_needed == "qualificar":
+            scores["crm"] += 0.4
+        elif action_needed == "reengajar":
+            scores["followup"] += 0.4
+        
+        return scores
+    
+    async def _execute_single_service_directly(self,
+                                             service_name: str,
+                                             message: str,
+                                             context: Dict[str, Any],
+                                             lead_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Executa um serviço específico diretamente sem TeamCoordinator
+        Esta é a nova abordagem mais simples e direta
+        """
+        try:
+            if service_name == "calendar":
+                # Instanciar CalendarService diretamente
+                calendar_service = CalendarServiceReal()
+                await calendar_service.initialize()
+                
+                # Verificar disponibilidade ou agendar
+                if "disponível" in message.lower() or "horário" in message.lower():
+                    result = await calendar_service.check_availability(message)
+                else:
+                    # Extrair data/hora da mensagem com contexto
+                    conversation_history = context.get("conversation_history", [])
+                    date_time = self._extract_datetime(message, conversation_history)
+                    if date_time:
+                        result = await calendar_service.schedule_meeting(
+                            date_time["date"],
+                            date_time["time"],
+                            lead_info
+                        )
+                        
+                        # Workflow completo pós-agendamento
+                        if result and result.get("success"):
+                            await self._execute_post_scheduling_workflow(
+                                result,
+                                lead_info,
+                                context
+                            )
+                    else:
+                        result = await calendar_service.suggest_times(lead_info)
+                
+            elif service_name == "crm":
+                # Instanciar CRMService diretamente
+                crm_service = CRMServiceReal()
+                await crm_service.initialize()
+                
+                # Atualizar lead no CRM
+                result = await crm_service.create_or_update_lead(lead_info)
+                
+                # Capturar o lead_id retornado e adicionar ao lead_info
+                if result.get("success") and result.get("lead_id"):
+                    lead_id = result["lead_id"]
+                    lead_info["id"] = lead_id  # Armazenar para uso futuro
+                    
+                    # Atualizar estágio se necessário
+                    if lead_info.get("stage"):
+                        await crm_service.update_lead_stage(
+                            lead_id,  # Usar o lead_id correto
+                            lead_info["stage"]
+                        )
+                    
+                    # Sincronização automática com Kommo
+                    try:
+                        emoji_logger.service_event("🔄 Sincronizando campos dinâmicos e tags")
+                        sync_result = await self._sync_lead_to_crm(lead_info)
+                        if sync_result.get("success"):
+                            emoji_logger.system_success("✅ Tags e campos personalizados sincronizados")
+                    except Exception as sync_error:
+                        emoji_logger.service_warning(f"Sync opcional falhou: {sync_error}")
+                
+            elif service_name == "followup":
+                # Instanciar FollowUpService diretamente
+                followup_service = FollowUpServiceReal()
+                
+                # Agendar follow-up
+                phone = lead_info.get("phone", "")
+                name = lead_info.get("name", "Cliente")
+                bill_value = lead_info.get("bill_value", 0)
+                
+                # Validação: Verificar se phone_number é válido
+                if not phone or phone.strip() == "":
+                    emoji_logger.service_warning("Phone number vazio - follow-up não agendado")
+                    result = {
+                        "success": False,
+                        "error": "Phone number is required for follow-up"
+                    }
+                    return None
+                
+                # Gerar mensagem personalizada para follow-up
+                message = f"Oi {name}! Helen da SolarPrime aqui. "
+                message += f"Vou entrar em contato com você em breve para continuarmos nossa conversa sobre energia solar. "
+                if bill_value > 0:
+                    message += f"Já preparei uma análise especial para sua conta de R$ {bill_value}. "
+                message += "Até logo! ☀️"
+                
+                # Calcular delay em horas baseado no contexto
+                urgency = context.get("urgency_level", "normal")
+                if urgency == "alta":
+                    delay_hours = 24
+                elif urgency == "média":
+                    delay_hours = 72
+                else:
+                    delay_hours = 168  # 7 dias
+                
+                # Chamar com argumentos corretos
+                result = await followup_service.schedule_followup(
+                    phone_number=phone,
+                    message=message,
+                    delay_hours=delay_hours,
+                    lead_info=lead_info
+                )
+            
+            else:
+                result = None
+            
+            if result and result.get("success"):
+                emoji_logger.service_event(
+                    f"✅ {service_name} executado com sucesso",
+                    result=result.get("message", "")
+                )
+                return {
+                    "service": service_name,
+                    "success": True,
+                    "data": result
+                }
+            
+        except Exception as e:
+            emoji_logger.service_error(
+                f"Erro ao executar {service_name}: {e}"
+            )
+        
+        return None
     
     async def _parse_and_execute_tools(self, response: str, lead_info: dict, context: dict) -> dict:
         """
@@ -242,10 +645,9 @@ class AgenticSDRStateless:
         
         # Calendar tools
         if service_name == "calendar":
-            if not self.team_coordinator.services.get("calendar"):
-                raise ValueError("Calendar service não disponível")
-            
-            calendar_service = self.team_coordinator.services["calendar"]
+            # Instanciar CalendarService diretamente
+            calendar_service = CalendarServiceReal()
+            await calendar_service.initialize()
             
             if method_name == "check_availability":
                 return await calendar_service.check_availability(
@@ -282,10 +684,9 @@ class AgenticSDRStateless:
         
         # CRM tools
         elif service_name == "crm":
-            if not self.team_coordinator.services.get("crm"):
-                raise ValueError("CRM service não disponível")
-            
-            crm_service = self.team_coordinator.services["crm"]
+            # Instanciar CRMService diretamente
+            crm_service = CRMServiceReal()
+            await crm_service.initialize()
             
             if method_name == "update_stage":
                 stage = params.get("stage", "").lower()
@@ -304,10 +705,8 @@ class AgenticSDRStateless:
         
         # Follow-up tools
         elif service_name == "followup":
-            if not self.team_coordinator.services.get("followup"):
-                raise ValueError("Follow-up service não disponível")
-            
-            followup_service = self.team_coordinator.services["followup"]
+            # Instanciar FollowUpService diretamente
+            followup_service = FollowUpServiceReal()
             
             if method_name == "schedule":
                 hours = int(params.get("hours", 24))
@@ -320,587 +719,3 @@ class AgenticSDRStateless:
                 )
         
         raise ValueError(f"Tool não reconhecido: {service_method}")
-    
-    async def _generate_response(self,
-                                message: str,
-                                context: Dict[str, Any],
-                                lead_info: Dict[str, Any],
-                                service_results: List[Dict[str, Any]],
-                                media_context: str,
-                                conversation_history: List[Dict],
-                                execution_context: Dict[str, Any]) -> str:
-        """
-        Gera resposta usando o ModelManager com contexto completo
-        """
-        # Buscar conhecimento na base
-        knowledge_context = await self._search_knowledge_base(message)
-        
-        # Construir prompt com histórico completo
-        prompt = self._build_prompt_with_history(
-            message,
-            context,
-            lead_info,
-            service_results,
-            media_context,
-            conversation_history,
-            execution_context
-        )
-        
-        # Adicionar conhecimento
-        if knowledge_context:
-            prompt += knowledge_context
-        
-        # Usar reasoning para casos complexos
-        use_reasoning = (
-            context.get("conversation_stage") in ["negociação", "objeção"] or
-            len(service_results) > 0
-        )
-        
-        # Primeira passagem: gerar resposta com possíveis tool calls
-        initial_response = await self.model_manager.get_response(
-            prompt,
-            system_prompt=self._get_instructions(),
-            use_reasoning=use_reasoning
-        )
-
-        # Verificar e executar tool calls
-        tool_results = await self._parse_and_execute_tools(
-            initial_response, 
-            lead_info,
-            context
-        )
-
-        # Verificar se já temos resultados de serviços do TeamCoordinator
-        has_service_results = len(service_results) > 0
-        
-        # Se houver tool results, re-gerar resposta com os resultados
-        if tool_results:
-            # Adicionar resultados ao contexto
-            tool_results_text = "\n\n=== RESULTADOS DOS TOOLS ===\n"
-            for tool_name, result in tool_results.items():
-                if isinstance(result, dict) and "error" in result:
-                    tool_results_text += f"❌ {tool_name}: Erro - {result['error']}\n"
-                else:
-                    tool_results_text += f"✅ {tool_name}: {str(result)[:500]}\n"
-            
-            # Re-construir prompt com resultados
-            enhanced_prompt = f"{prompt}\n{tool_results_text}\n\nAgora formule a resposta final para o usuário baseada nos resultados acima."
-            
-            # Gerar resposta final
-            response = await self.model_manager.get_response(
-                enhanced_prompt,
-                system_prompt=self._get_instructions(),
-                use_reasoning=use_reasoning
-            )
-        elif has_service_results:
-            # Se temos resultados de serviços mas nenhum tool call, usar resposta inicial
-            # O prompt já inclui os service_results, então a resposta deve considerá-los
-            response = initial_response
-            
-            # VALIDAÇÃO CRÍTICA: Se há resultado de Calendar mas agente alucina, forçar re-geração
-            calendar_result = next((r for r in service_results if r.get("service") == "calendar" and r.get("success")), None)
-            
-            # Lista expandida de termos de alucinação
-            hallucination_terms = [
-                "problemas técnicos", "probleminhas técnicos",
-                "erro", "não consegui", "não consigo",
-                "desculpa", "desculpe", "vixe",
-                "não estou conseguindo", "dificuldade",
-                "falha", "indisponível", "inacessível",
-                "tentar novamente", "tente novamente"
-            ]
-            
-            # Verificar se há alucinação
-            response_lower = response.lower()
-            has_hallucination = any(term in response_lower for term in hallucination_terms)
-            
-            if calendar_result and has_hallucination:
-                emoji_logger.system_warning("🚨 ANTI-ALUCINAÇÃO ATIVADO: Calendar funcionou mas agente alucinando!")
-                
-                # Extrair dados do Calendar
-                calendar_data = calendar_result.get("data", {})
-                calendar_message = calendar_data.get("message", "")
-                
-                # Se não há mensagem específica, extrair do resultado
-                if not calendar_message and calendar_result.get("result"):
-                    calendar_message = calendar_result.get("result")
-                
-                correction_prompt = f"""
-CONTEXTO CRÍTICO - CORREÇÃO OBRIGATÓRIA:
-
-O Google Calendar foi executado COM SUCESSO e retornou horários disponíveis.
-NÃO há problemas técnicos. O sistema está funcionando PERFEITAMENTE.
-
-RESULTADO DO CALENDAR (USE ISTO):
-📅 {calendar_message}
-
-INSTRUÇÕES OBRIGATÓRIAS:
-1. Apresente os horários disponíveis de forma natural e entusiasmada
-2. NUNCA mencione problemas técnicos ou erros
-3. Use exatamente os horários retornados pelo Calendar
-4. Seja positiva e proativa como Helen sempre é
-
-Mensagem do cliente: {message}
-Nome do lead: {lead_info.get('name', 'Cliente')}
-
-RESPONDA AGORA usando os horários do Calendar!
-"""
-                
-                response = await self.model_manager.get_response(
-                    correction_prompt,
-                    system_prompt=self._get_instructions(),
-                    use_reasoning=True  # Usar reasoning para garantir correção
-                )
-                
-                emoji_logger.system_success("✅ Resposta corrigida - alucinação removida")
-        else:
-            response = initial_response
-        
-        if not response:
-            response = self._get_fallback_response(context)
-        
-        # Garantir tags de resposta
-        from app.core.response_formatter import response_formatter
-        response = response_formatter.ensure_response_tags(response)
-        
-        # Validar conteúdo
-        if not response_formatter.validate_response_content(response):
-            emoji_logger.system_warning("⚠️ Resposta inválida - usando fallback")
-            response = response_formatter.get_safe_fallback(
-                context.get("conversation_stage", "início")
-            )
-        
-        return response
-    
-    def _build_prompt_with_history(self,
-                                   message: str,
-                                   context: Dict[str, Any],
-                                   lead_info: Dict[str, Any],
-                                   service_results: List[Dict[str, Any]],
-                                   media_context: str,
-                                   conversation_history: List[Dict],
-                                   execution_context: Dict[str, Any]) -> str:
-        """
-        Constrói prompt com contexto temporal e histórico expandido
-        """
-        prompt_parts = []
-        
-        # 🔥 ADICIONAR CONTEXTO TEMPORAL
-        brasil_tz = pytz.timezone('America/Recife')
-        now = datetime.now(brasil_tz)
-        
-        prompt_parts.extend([
-            f"Data/Hora atual: {now.strftime('%d/%m/%Y %H:%M')} (Recife/PE)",
-            f"Dia da semana: {now.strftime('%A')} ({'dia útil' if now.weekday() < 5 else 'fim de semana'})",
-            f"Período: {'manhã' if now.hour < 12 else 'tarde' if now.hour < 18 else 'noite'}",
-            ""
-        ])
-        
-        # 🔥 INCLUIR HISTÓRICO EXPANDIDO (500 mensagens)
-        if len(conversation_history) > 1:
-            prompt_parts.append("📜 HISTÓRICO DA CONVERSA:")
-            
-            # Usar até 500 mensagens recentes
-            max_history = 500
-            start_idx = max(0, len(conversation_history) - max_history - 1)
-            recent_history = conversation_history[start_idx:-1]
-            
-            # Se há muitas mensagens antigas, adicionar resumo
-            if start_idx > 0:
-                prompt_parts.append(f"📋 Resumo: {start_idx} mensagens anteriores na conversa")
-            
-            # Adicionar mensagens recentes
-            for msg in recent_history:
-                role = "Cliente" if msg.get("role") == "user" else "Helen"
-                content = msg.get("content", "")
-                
-                # Truncamento inteligente
-                if len(content) > 300:
-                    words = content[:300].split()
-                    if len(words) > 1:
-                        content = ' '.join(words[:-1]) + "..."
-                    else:
-                        content = content[:300] + "..."
-                
-                prompt_parts.append(f"{role}: {content}")
-            
-            prompt_parts.append("")  # Linha em branco
-        
-        # Adicionar mensagem atual e informações factuais
-        prompt_parts.append(f"Mensagem atual do cliente: {message}")
-        
-        # Informações do lead
-        if lead_info.get("name"):
-            prompt_parts.append(f"Nome do lead: {lead_info['name']}")
-        
-        if lead_info.get("bill_value"):
-            prompt_parts.append(f"Valor da conta: R$ {lead_info['bill_value']}")
-        
-        if lead_info.get("chosen_flow"):
-            prompt_parts.append(f"Fluxo escolhido: {lead_info['chosen_flow']}")
-        
-        # Resultados de serviços (TeamCoordinator)
-        if service_results:
-            prompt_parts.append("\n🚨 === RESULTADOS DE SERVIÇOS EXECUTADOS === 🚨")
-            prompt_parts.append("ATENÇÃO: Os serviços abaixo foram executados COM SUCESSO.")
-            prompt_parts.append("VOCÊ DEVE usar estes resultados na sua resposta!")
-            prompt_parts.append("")
-            
-            for result in service_results:
-                if result.get("service") == "calendar" and result.get("success"):
-                    calendar_data = result.get("data", {})
-                    if calendar_data.get("message"):
-                        prompt_parts.append(f"📅 CALENDAR EXECUTADO COM SUCESSO:")
-                        prompt_parts.append(f"   Resultado: {calendar_data['message']}")
-                        prompt_parts.append("   ✅ USE ESTES HORÁRIOS NA SUA RESPOSTA!")
-                    else:
-                        prompt_parts.append("📅 Calendar: Operação executada com sucesso")
-                elif result.get("service") == "crm" and result.get("success"):
-                    prompt_parts.append("📊 CRM: Lead atualizado com sucesso")
-                elif result.get("service") == "followup" and result.get("success"):
-                    prompt_parts.append("🔄 Follow-up: Agendado com sucesso")
-            
-            prompt_parts.append("")
-            prompt_parts.append("⚠️ REGRA CRÍTICA: NUNCA diga que está com problemas técnicos")
-            prompt_parts.append("se os serviços funcionaram! Use os dados acima!")
-            prompt_parts.append("=== FIM DOS RESULTADOS DE SERVIÇOS ===")
-        
-        # Contexto de mídia
-        if media_context:
-            prompt_parts.append(f"Mídia: {media_context}")
-        
-        return "\n".join(prompt_parts)
-    
-    def _get_instructions(self) -> str:
-        """Carrega o prompt do arquivo externo"""
-        import os
-        
-        try:
-            prompt_path = os.path.join(
-                os.path.dirname(os.path.dirname(__file__)), 
-                "prompts", 
-                "prompt-agente.md"
-            )
-            
-            if os.path.exists(prompt_path):
-                with open(prompt_path, "r", encoding="utf-8") as f:
-                    return f.read()
-            else:
-                emoji_logger.system_warning(f"⚠️ Arquivo de prompt não encontrado: {prompt_path}")
-                return self._get_fallback_instructions()
-                
-        except Exception as e:
-            emoji_logger.system_error(f"❌ Erro ao carregar prompt: {e}")
-            return self._get_fallback_instructions()
-    
-    def _get_fallback_instructions(self) -> str:
-        """Prompt simplificado de fallback"""
-        return """
-        Você é a Helen Vieira, consultora de energia solar da SolarPrime.
-        
-        🎯 OBJETIVO: Qualificar leads e agendar reuniões com o Leonardo.
-        
-        💬 PERSONALIDADE:
-        - Consultora profissional e empática
-        - Tom amigável e acolhedor  
-        - Use emojis com moderação
-        - Seja natural e humanizada
-        
-        📋 PROCESSO:
-        1. Cumprimente e se apresente
-        2. Pergunte sobre a conta de luz
-        3. Explique benefícios da energia solar
-        4. Agende reunião quando qualificado
-        
-        🔴 ESTRUTURA DE RESPOSTA:
-        <RESPOSTA_FINAL>
-        [Sua resposta aqui]
-        </RESPOSTA_FINAL>
-        """
-    
-    def _format_media_context(self, media_result: Dict[str, Any]) -> str:
-        """Formata contexto de mídia para o prompt"""
-        if media_result.get("type") == "image":
-            if media_result.get("analysis", {}).get("is_bill"):
-                value = media_result["analysis"].get("bill_value")
-                if value:
-                    return f"Conta de luz detectada com valor de R$ {value:.2f}"
-                return "Imagem de conta de luz recebida"
-            elif media_result.get("text"):
-                return f"Imagem com texto: {media_result['text'][:100]}..."
-            return "Imagem recebida"
-        
-        elif media_result.get("type") == "audio":
-            if media_result.get("text"):
-                return f"Áudio transcrito: {media_result['text'][:100]}..."
-            return "Áudio recebido"
-        
-        elif media_result.get("type") == "document":
-            if media_result.get("analysis", {}).get("is_bill"):
-                value = media_result["analysis"].get("bill_value")
-                if value:
-                    return f"Conta/Boleto detectado com valor de R$ {value:.2f}"
-                return f"Documento de conta/boleto recebido"
-            elif media_result.get("text"):
-                return f"Documento com texto: {media_result['text'][:100]}..."
-            return f"Documento {media_result.get('metadata', {}).get('doc_type', 'desconhecido')} recebido"
-        
-        return "Mídia recebida"
-    
-    def _get_fallback_response(self, context: Dict[str, Any]) -> str:
-        """Resposta fallback baseada no contexto"""
-        stage = context.get("conversation_stage", "início")
-        
-        responses = {
-            "início": "Olá! 👋 Sou a Helen da SolarPrime. Como posso ajudar você a economizar na conta de luz?",
-            "exploração": "Interessante! Me conta mais sobre sua situação atual com energia elétrica.",
-            "qualificação": "Quanto você costuma pagar na conta de luz? Isso me ajuda a calcular sua economia.",
-            "negociação": "Entendo suas preocupações. Que tal conversarmos melhor sobre isso?",
-            "acompanhamento": "Fico à disposição para qualquer dúvida! Quando podemos conversar novamente?"
-        }
-        
-        response = responses.get(stage, "Como posso ajudar você hoje? 😊")
-        return f"<RESPOSTA_FINAL>{response}</RESPOSTA_FINAL>"
-    
-    def _detect_lead_changes(self, old_info: Dict[str, Any], new_info: Dict[str, Any]) -> Dict[str, Any]:
-        """Detecta mudanças nas informações do lead"""
-        changes = {}
-        
-        important_fields = [
-            'name', 'email', 'bill_value', 'qualification_score',
-            'current_stage', 'chosen_flow', 'phone', 'company',
-            'address', 'cpf', 'consumption_kwh'
-        ]
-        
-        for field in important_fields:
-            old_value = old_info.get(field)
-            new_value = new_info.get(field)
-            
-            if new_value is not None and old_value != new_value:
-                changes[field] = new_value
-                
-                if field == 'name':
-                    emoji_logger.conversation_event(f"🎯 NOME DETECTADO: {new_value}")
-                
-                emoji_logger.service_event(
-                    f"🔄 Campo alterado: {field}",
-                    old=old_value,
-                    new=new_value
-                )
-        
-        return changes
-    
-    async def _sync_lead_changes(self, changes: Dict[str, Any], phone: str, lead_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Sincroniza mudanças com o CRM e Supabase"""
-        if not changes or not phone:
-            return None
-        
-        sync_triggers = [
-            'bill_value', 'qualification_score', 'current_stage',
-            'chosen_flow', 'name', 'email', 'company'
-        ]
-        
-        should_sync = any(field in changes for field in sync_triggers)
-        
-        if should_sync:
-            emoji_logger.service_event(
-                "🔄 Sincronizando mudanças com CRM e Supabase",
-                fields=list(changes.keys())
-            )
-            
-            # 1. Sincronizar com Supabase primeiro
-            try:
-                from app.integrations.supabase_client import supabase_client
-                
-                # Buscar lead existente no Supabase
-                existing_lead = await supabase_client.get_lead_by_phone(phone)
-                
-                if existing_lead:
-                    # Atualizar lead existente
-                    supabase_changes = self._map_to_supabase_fields(changes)
-                    await supabase_client.update_lead(existing_lead['id'], supabase_changes)
-                    emoji_logger.supabase_update("leads", 1, changes=list(changes.keys()))
-                else:
-                    # Criar novo lead no Supabase
-                    lead_data = self._prepare_lead_for_supabase(lead_info, phone, changes)
-                    await supabase_client.create_lead(lead_data)
-                    emoji_logger.supabase_create("leads", 1)
-                    
-            except Exception as e:
-                emoji_logger.service_error(f"Erro ao sincronizar com Supabase: {e}")
-            
-            # 2. Sincronizar com CRM (como antes)
-            try:
-                sync_data = lead_info.copy()
-                sync_data['phone'] = phone
-                sync_data.update(changes)  # Mescla as alterações
-                
-                result = await self.team_coordinator.sync_lead_to_crm(sync_data)
-                
-                if result.get("success"):
-                    emoji_logger.system_success("✅ Lead sincronizado com CRM")
-                    return result
-                else:
-                    emoji_logger.service_warning(f"Sync parcial: {result.get('message')}")
-                    
-            except Exception as e:
-                emoji_logger.service_error(f"Erro no sync CRM: {e}")
-        
-        return None
-    
-    def _map_to_supabase_fields(self, changes: Dict[str, Any]) -> Dict[str, Any]:
-        """Mapeia campos do lead_info para campos do Supabase
-        
-        Campos que vão direto para tabela leads:
-        - name, email, bill_value, qualification_score, current_stage, chosen_flow
-        
-        Campos que vão para preferences JSONB:
-        - location, property_type, interests, objections, has_bill_image
-        """
-        # Importar função de conversão segura
-        from app.utils.safe_conversions import safe_int_conversion
-        
-        # Mapeamento de campos diretos
-        field_mapping = {
-            'name': 'name',
-            'email': 'email',
-            'bill_value': 'bill_value',
-            'qualification_score': 'qualification_score',
-            'current_stage': 'current_stage',
-            'chosen_flow': 'chosen_flow',
-            'phone_number': 'phone_number'  # Corrigido: phone → phone_number
-        }
-        
-        # Campos que vão para preferences JSONB
-        preferences_fields = ['location', 'property_type', 'interests', 'objections', 'has_bill_image']
-        
-        supabase_data = {}
-        preferences_data = {}
-        
-        for key, value in changes.items():
-            if key in field_mapping and value is not None:
-                # Campo direto na tabela leads
-                supabase_field = field_mapping[key]
-                
-                # Converter qualification_score para int se necessário
-                if key == 'qualification_score':
-                    value = safe_int_conversion(value, 0)
-                
-                supabase_data[supabase_field] = value
-            elif key == 'preferences' and isinstance(value, dict):
-                # Já é um objeto preferences completo
-                preferences_data.update(value)
-            elif key in preferences_fields and value is not None:
-                # Campo individual que vai para preferences
-                preferences_data[key] = value
-        
-        # Adicionar preferences se houver dados
-        if preferences_data:
-            supabase_data['preferences'] = preferences_data
-        
-        return supabase_data
-    
-    def _prepare_lead_for_supabase(self, lead_info: Dict[str, Any], phone: str, changes: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepara dados completos do lead para criação no Supabase
-        
-        Separa campos diretos da tabela leads e campos que vão para preferences JSONB
-        """
-        # Importar função de conversão segura
-        from app.utils.safe_conversions import safe_int_conversion
-        
-        # Mesclar lead_info com mudanças
-        complete_data = lead_info.copy()
-        complete_data.update(changes)
-        
-        # Preparar dados de preferences
-        preferences = complete_data.get('preferences', {})
-        
-        # Adicionar campos extras em preferences se existirem
-        for field in ['location', 'property_type', 'interests', 'objections', 'has_bill_image']:
-            if field in complete_data and complete_data[field] is not None:
-                preferences[field] = complete_data[field]
-        
-        # Mapear para campos do Supabase (apenas campos que existem na tabela)
-        lead_data = {
-            'phone_number': phone,
-            'name': complete_data.get('name'),
-            'email': complete_data.get('email'),
-            'bill_value': complete_data.get('bill_value'),
-            'qualification_score': safe_int_conversion(complete_data.get('qualification_score', 0), 0),  # Converter para int
-            'qualification_status': 'PENDING',  # Status inicial padrão do banco
-            'current_stage': complete_data.get('current_stage', 'INITIAL_CONTACT'),  # Valor padrão do banco
-            'chosen_flow': complete_data.get('chosen_flow'),
-            'interested': True  # Valor padrão
-        }
-        
-        # Adicionar preferences se houver dados
-        if preferences:
-            lead_data['preferences'] = preferences
-        
-        # Remover campos None para não sobrescrever dados válidos
-        return {k: v for k, v in lead_data.items() if v is not None}
-    
-    async def _save_message_to_db(self, conversation_id: str, message: Dict[str, Any]):
-        """Salva mensagem no banco de dados"""
-        try:
-            from app.integrations.supabase_client import supabase_client
-            await supabase_client.save_message({
-                "conversation_id": conversation_id,
-                "role": message["role"],
-                "content": message["content"],
-                "created_at": message["timestamp"]
-            })
-            emoji_logger.system_event(f"💾 Mensagem salva ({message['role']})")
-        except Exception as e:
-            emoji_logger.system_warning(f"⚠️ Erro ao salvar mensagem: {e}")
-    
-    async def _search_knowledge_base(self, query: str) -> str:
-        """Busca conhecimento relevante na base"""
-        try:
-            from app.services.knowledge_service import KnowledgeService
-            
-            knowledge_service = KnowledgeService()
-            results = await knowledge_service.search_knowledge_base(query, max_results=500)
-            
-            if results:
-                knowledge_context = "\n\n📚 CONHECIMENTO RELEVANTE DA SOLARPRIME:\n"
-                for item in results:
-                    knowledge_context += f"- {item.get('question', '')}: {item.get('answer', '')}\n"
-                
-                emoji_logger.system_event(f"🧠 Knowledge base: {len(results)} itens encontrados")
-                return knowledge_context
-            
-        except Exception as e:
-            emoji_logger.system_warning(f"⚠️ Erro ao buscar knowledge base: {e}")
-        
-        return ""
-    
-    def get_status(self) -> Dict[str, Any]:
-        """Retorna status do agent (sem estado interno)"""
-        return {
-            "initialized": self.is_initialized,
-            "modules": {
-                "model_manager": self.model_manager.get_model_info(),
-                "multimodal": self.multimodal.is_enabled(),
-                "team_coordinator": self.team_coordinator.get_service_status()
-            },
-            "architecture": "stateless",
-            "thread_safe": True,
-            "multi_tenant": True
-        }
-
-# ============= FACTORY FUNCTIONS =============
-
-async def create_stateless_agent() -> AgenticSDRStateless:
-    """
-    Cria nova instância stateless do AgenticSDR
-    Cada requisição deve criar sua própria instância
-    
-    Returns:
-        Nova instância do AgenticSDRStateless
-    """
-    emoji_logger.system_event("🏭 Criando instância stateless do AgenticSDR...")
-    agent = AgenticSDRStateless()
-    await agent.initialize()
-    emoji_logger.system_ready("✅ AgenticSDR Stateless pronto")
-    return agent
