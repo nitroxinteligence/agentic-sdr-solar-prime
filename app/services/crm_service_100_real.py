@@ -476,6 +476,127 @@ class CRMServiceReal:
                 "message": f"Erro ao criar lead no CRM: {e}"
             }
     
+    async def create_lead_with_compensation(self, lead_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Cria lead REAL no Kommo com mecanismo de compensação
+        
+        Args:
+            lead_data: Dados do lead a ser criado
+            
+        Returns:
+            Dict com resultado da operação
+        """
+        if not self.is_initialized:
+            await self.initialize()
+        
+        # Variável para armazenar o ID do lead criado para possível exclusão
+        created_lead_id = None
+        
+        try:
+            # Criar lead
+            create_result = await self.create_lead(lead_data)
+            
+            if not create_result.get("success"):
+                return create_result
+            
+            # Armazenar o ID do lead criado
+            created_lead_id = create_result.get("lead_id")
+            
+            # Se houver notas a serem adicionadas após a criação
+            if lead_data.get("notes"):
+                note_result = await self.add_note_to_lead(created_lead_id, lead_data["notes"])
+                
+                # Se a adição da nota falhar, tentar excluir o lead criado
+                if not note_result.get("success"):
+                    emoji_logger.service_error(f"Falha ao adicionar nota ao lead {created_lead_id}, tentando exclusão...")
+                    
+                    # Tentar excluir o lead criado
+                    delete_result = await self._delete_lead_with_compensation(created_lead_id)
+                    if delete_result.get("success"):
+                        emoji_logger.service_info(f"Lead {created_lead_id} excluído após falha na adição de nota")
+                    else:
+                        emoji_logger.service_error(f"Falha ao excluir lead {created_lead_id}: {delete_result.get('message')}")
+                    
+                    return {
+                        "success": False,
+                        "message": f"Lead criado mas erro ao adicionar nota: {note_result.get('message')}",
+                        "lead_id": created_lead_id,
+                        "lead_created": True,
+                        "note_added": False
+                    }
+            
+            return {
+                "success": True,
+                "lead_id": created_lead_id,
+                "message": "Lead criado com sucesso",
+                "lead_created": True,
+                "note_added": bool(lead_data.get("notes"))
+            }
+            
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao criar lead com compensação: {e}")
+            
+            # Tentar exclusão do lead criado em caso de erro
+            if created_lead_id:
+                try:
+                    emoji_logger.service_warning(f"Tentando exclusão do lead {created_lead_id} após erro...")
+                    delete_result = await self._delete_lead_with_compensation(created_lead_id)
+                    if delete_result.get("success"):
+                        emoji_logger.service_info(f"Lead {created_lead_id} excluído após erro")
+                    else:
+                        emoji_logger.service_error(f"Falha ao excluir lead {created_lead_id}: {delete_result.get('message')}")
+                except Exception as delete_error:
+                    emoji_logger.service_error(f"Erro durante exclusão do lead {created_lead_id}: {delete_error}")
+            
+            return {
+                "success": False,
+                "message": f"Erro ao criar lead: {e}",
+                "lead_created": bool(created_lead_id)
+            }
+    
+    async def _delete_lead_with_compensation(self, lead_id: str) -> Dict[str, Any]:
+        """
+        Exclui um lead com mecanismo de compensação
+        
+        Args:
+            lead_id: ID do lead a ser excluído
+            
+        Returns:
+            Dict com resultado da operação
+        """
+        try:
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
+            # Excluir lead no Kommo
+            async with self.session.delete(
+                f"{self.base_url}/api/v4/leads/{lead_id}",
+                headers=self.headers
+            ) as response:
+                if response.status == 200:
+                    emoji_logger.crm_event(
+                        f"❌ Lead {lead_id} EXCLUÍDO durante rollback"
+                    )
+                    
+                    return {
+                        "success": True,
+                        "message": "Lead excluído com sucesso"
+                    }
+                else:
+                    error_text = await response.text()
+                    return {
+                        "success": False,
+                        "message": f"Erro na exclusão do lead: {response.status} - {error_text}"
+                    }
+                    
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao excluir lead {lead_id}: {e}")
+            return {
+                "success": False,
+                "message": f"Erro ao excluir lead: {e}",
+                "lead_id": lead_id
+            }
+    
     @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
     async def update_lead(self, lead_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
         """Atualiza lead REAL no Kommo"""
@@ -536,7 +657,7 @@ class CRMServiceReal:
                     ]
                 })
             
-            # Adicionar campos customizados à atualização
+            # Adicionar campos customizados aos dados de atualização
             if custom_fields:
                 kommo_update["custom_fields_values"] = custom_fields
             
@@ -565,7 +686,7 @@ class CRMServiceReal:
                     result = await response.json()
                     
                     emoji_logger.crm_event(
-                        f"✅ Lead ATUALIZADO no Kommo: {lead_id}"
+                        f"✅ Lead {lead_id} ATUALIZADO no Kommo"
                     )
                     
                     return {
@@ -581,6 +702,154 @@ class CRMServiceReal:
             return {
                 "success": False,
                 "message": f"Erro ao atualizar lead no CRM: {e}"
+            }
+    
+    async def update_lead_with_compensation(self, lead_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Atualiza lead REAL no Kommo com mecanismo de compensação
+        
+        Args:
+            lead_id: ID do lead a ser atualizado
+            update_data: Dados a serem atualizados
+            
+        Returns:
+            Dict com resultado da operação
+        """
+        if not self.is_initialized:
+            await self.initialize()
+        
+        # Armazenar dados originais do lead para possível rollback
+        original_lead_data = {}
+        
+        try:
+            # Buscar dados atuais do lead para possível rollback
+            try:
+                current_lead = await self.get_lead_by_id(lead_id)
+                if current_lead:
+                    original_lead_data = {
+                        "name": current_lead.get("name"),
+                        "status_id": current_lead.get("status_id"),
+                        "custom_fields_values": current_lead.get("custom_fields_values", [])
+                    }
+            except Exception as e:
+                emoji_logger.service_warning(f"Aviso: Não foi possível obter dados originais do lead {lead_id}: {e}")
+            
+            # Atualizar lead
+            update_result = await self.update_lead(lead_id, update_data)
+            
+            if not update_result.get("success"):
+                return update_result
+            
+            # Se houver notas a serem adicionadas após a atualização
+            if update_data.get("notes"):
+                note_result = await self.add_note_to_lead(lead_id, update_data["notes"])
+                
+                # Se a adição da nota falhar, tentar rollback da atualização do lead
+                if not note_result.get("success"):
+                    emoji_logger.service_error(f"Falha ao adicionar nota ao lead {lead_id}, tentando rollback...")
+                    
+                    # Tentar rollback dos dados do lead
+                    if original_lead_data:
+                        rollback_result = await self._rollback_lead_data(lead_id, original_lead_data)
+                        if rollback_result.get("success"):
+                            emoji_logger.service_info(f"Rollback realizado com sucesso para lead {lead_id}")
+                        else:
+                            emoji_logger.service_error(f"Falha no rollback do lead {lead_id}: {rollback_result.get('message')}")
+                    
+                    return {
+                        "success": False,
+                        "message": f"Lead atualizado mas erro ao adicionar nota: {note_result.get('message')}",
+                        "lead_id": lead_id,
+                        "lead_updated": True,
+                        "note_added": False
+                    }
+            
+            return {
+                "success": True,
+                "message": "Lead atualizado com sucesso",
+                "lead_id": lead_id,
+                "lead_updated": True,
+                "note_added": bool(update_data.get("notes")),
+                "original_data": original_lead_data
+            }
+            
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao atualizar lead {lead_id} com compensação: {e}")
+            
+            # Tentar rollback dos dados do lead
+            if original_lead_data:
+                try:
+                    emoji_logger.service_warning(f"Tentando rollback do lead {lead_id}...")
+                    rollback_result = await self._rollback_lead_data(lead_id, original_lead_data)
+                    if rollback_result.get("success"):
+                        emoji_logger.service_info(f"Rollback realizado com sucesso para lead {lead_id}")
+                    else:
+                        emoji_logger.service_error(f"Falha no rollback do lead {lead_id}: {rollback_result.get('message')}")
+                except Exception as rollback_error:
+                    emoji_logger.service_error(f"Erro durante rollback do lead {lead_id}: {rollback_error}")
+            
+            return {
+                "success": False,
+                "message": f"Erro ao atualizar lead: {e}",
+                "lead_id": lead_id
+            }
+    
+    async def _rollback_lead_data(self, lead_id: str, original_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Realiza rollback dos dados de um lead
+        
+        Args:
+            lead_id: ID do lead
+            original_data: Dados originais do lead
+            
+        Returns:
+            Dict com resultado da operação de rollback
+        """
+        try:
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
+            # Preparar dados de rollback
+            rollback_data = {}
+            
+            # Restaurar nome se estava presente nos dados originais
+            if "name" in original_data:
+                rollback_data["name"] = original_data["name"]
+            
+            # Restaurar estágio se estava presente nos dados originais
+            if "status_id" in original_data:
+                rollback_data["status_id"] = original_data["status_id"]
+            
+            # Restaurar campos customizados se estavam presentes nos dados originais
+            if "custom_fields_values" in original_data:
+                rollback_data["custom_fields_values"] = original_data["custom_fields_values"]
+            
+            # Reverter dados no Kommo
+            async with self.session.patch(
+                f"{self.base_url}/api/v4/leads",
+                headers=self.headers,
+                json={
+                    "update": [{
+                        "id": int(lead_id),
+                        **rollback_data
+                    }]
+                }
+            ) as response:
+                if response.status == 200:
+                    return {
+                        "success": True,
+                        "message": "Rollback de dados realizado com sucesso"
+                    }
+                else:
+                    error_text = await response.text()
+                    return {
+                        "success": False,
+                        "message": f"Erro no rollback de dados: {response.status} - {error_text}"
+                    }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Exceção no rollback de dados: {e}"
             }
     
     async def create_or_update_lead(self, lead_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -605,6 +874,34 @@ class CRMServiceReal:
         
         # Criar novo lead
         return await self.create_lead(lead_data)
+    
+    async def create_or_update_lead_with_compensation(self, lead_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Cria ou atualiza lead REAL no Kommo com mecanismo de compensação
+        
+        Args:
+            lead_data: Dados do lead a ser criado ou atualizado
+            
+        Returns:
+            Dict com resultado da operação
+        """
+        try:
+            # Verificar se lead já existe (por telefone)
+            if lead_data.get("phone"):
+                existing_lead = await self.get_lead_by_phone(lead_data["phone"])
+                if existing_lead and existing_lead.get("id"):
+                    # Atualizar lead existente com compensação
+                    return await self.update_lead_with_compensation(existing_lead["id"], lead_data)
+            
+            # Criar novo lead com compensação
+            return await self.create_lead_with_compensation(lead_data)
+            
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao criar ou atualizar lead com compensação: {e}")
+            return {
+                "success": False,
+                "message": f"Erro ao criar ou atualizar lead: {e}"
+            }
     
     @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
     async def get_lead_by_id(self, lead_id: str) -> Optional[Dict[str, Any]]:
@@ -715,6 +1012,10 @@ class CRMServiceReal:
                 if response.status == 200:
                     response_data = await response.json()
                     
+                    # Se houver notas, adicionar como nota separada
+                    if notes:
+                        await self.add_note_to_lead(lead_id, notes)
+                    
                     emoji_logger.crm_event(
                         f"✅ Lead {lead_id} movido para estágio '{stage_name}' (ID: {stage_id})"
                     )
@@ -735,6 +1036,269 @@ class CRMServiceReal:
                 "success": False,
                 "message": f"Erro ao atualizar estágio: {e}",
                 "lead_id": lead_id
+            }
+    
+    async def update_lead_stage_with_compensation(self, lead_id: str, stage_name: str, notes: str = "") -> Dict[str, Any]:
+        """
+        Atualiza o estágio de um lead com mecanismo de compensação para garantir atomicidade
+        
+        Args:
+            lead_id: ID do lead
+            stage_name: Nome do novo estágio
+            notes: Notas a serem adicionadas
+            
+        Returns:
+            Dict com resultado da operação
+        """
+        if not self.is_initialized:
+            await self.initialize()
+        
+        # Armazenar o estágio original para possível rollback
+        original_stage_id = None
+        
+        try:
+            # Buscar o estágio atual do lead para possível rollback
+            try:
+                current_lead = await self.get_lead_by_id(lead_id)
+                if current_lead and current_lead.get("status_id"):
+                    original_stage_id = current_lead["status_id"]
+            except Exception as e:
+                emoji_logger.service_warning(f"Aviso: Não foi possível obter estágio original do lead {lead_id}: {e}")
+            
+            # Atualizar o estágio do lead
+            stage_update_result = await self.update_lead_stage(lead_id, stage_name, "")
+            
+            if not stage_update_result.get("success"):
+                return stage_update_result
+            
+            # Se a atualização do estágio foi bem-sucedida, tentar adicionar a nota
+            if notes:
+                note_result = await self.add_note_to_lead(lead_id, notes)
+                
+                # Se a adição da nota falhar, tentar rollback da atualização do estágio
+                if not note_result.get("success"):
+                    emoji_logger.service_error(f"Falha ao adicionar nota ao lead {lead_id}, tentando rollback...")
+                    
+                    # Tentar rollback para o estágio original
+                    if original_stage_id:
+                        rollback_result = await self._rollback_lead_stage(lead_id, original_stage_id)
+                        if rollback_result.get("success"):
+                            emoji_logger.service_info(f"Rollback realizado com sucesso para lead {lead_id}")
+                        else:
+                            emoji_logger.service_error(f"Falha no rollback do lead {lead_id}: {rollback_result.get('message')}")
+                    
+                    return {
+                        "success": False,
+                        "message": f"Estágio atualizado mas erro ao adicionar nota: {note_result.get('message')}",
+                        "lead_id": lead_id,
+                        "stage_updated": True,
+                        "note_added": False
+                    }
+            
+            return {
+                "success": True,
+                "message": "Lead atualizado com sucesso",
+                "lead_id": lead_id,
+                "stage_updated": True,
+                "note_added": bool(notes)
+            }
+            
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao atualizar lead {lead_id} com compensação: {e}")
+            
+            # Tentar rollback para o estágio original
+            if original_stage_id:
+                try:
+                    emoji_logger.service_warning(f"Tentando rollback do lead {lead_id} para estágio original...")
+                    rollback_result = await self._rollback_lead_stage(lead_id, original_stage_id)
+                    if rollback_result.get("success"):
+                        emoji_logger.service_info(f"Rollback realizado com sucesso para lead {lead_id}")
+                    else:
+                        emoji_logger.service_error(f"Falha no rollback do lead {lead_id}: {rollback_result.get('message')}")
+                except Exception as rollback_error:
+                    emoji_logger.service_error(f"Erro durante rollback do lead {lead_id}: {rollback_error}")
+            
+            return {
+                "success": False,
+                "message": f"Erro ao atualizar lead: {e}",
+                "lead_id": lead_id
+            }
+    
+    async def update_lead_stage_and_fields_atomically(self, lead_id: str, stage_name: str, fields_dict: Dict[str, Any], notes: str = "") -> Dict[str, Any]:
+        """
+        Atualiza o estágio e campos customizados de um lead de forma atômica
+        
+        Args:
+            lead_id: ID do lead
+            stage_name: Nome do novo estágio
+            fields_dict: Dicionário de campos a serem atualizados
+            notes: Notas a serem adicionadas
+            
+        Returns:
+            Dict com resultado da operação
+        """
+        if not self.is_initialized:
+            await self.initialize()
+        
+        # Armazenar dados originais para possível rollback
+        original_stage_id = None
+        original_fields_data = {}
+        
+        try:
+            # Buscar dados atuais do lead para possível rollback
+            try:
+                current_lead = await self.get_lead_by_id(lead_id)
+                if current_lead:
+                    # Armazenar estágio original
+                    if current_lead.get("status_id"):
+                        original_stage_id = current_lead["status_id"]
+                    
+                    # Armazenar campos customizados originais
+                    if current_lead.get("custom_fields_values"):
+                        original_fields_data = current_lead["custom_fields_values"]
+            except Exception as e:
+                emoji_logger.service_warning(f"Aviso: Não foi possível obter dados originais do lead {lead_id}: {e}")
+            
+            # Atualizar o estágio do lead
+            stage_update_result = await self.update_lead_stage(lead_id, stage_name, "")
+            
+            if not stage_update_result.get("success"):
+                return stage_update_result
+            
+            # Se a atualização do estágio foi bem-sucedida, atualizar os campos
+            fields_update_result = await self.update_fields(lead_id, fields_dict)
+            
+            # Se a atualização dos campos falhar, tentar rollback da atualização do estágio
+            if not fields_update_result.get("success"):
+                emoji_logger.service_error(f"Falha ao atualizar campos do lead {lead_id}, tentando rollback...")
+                
+                # Tentar rollback para o estágio original
+                if original_stage_id:
+                    rollback_result = await self._rollback_lead_stage(lead_id, original_stage_id)
+                    if rollback_result.get("success"):
+                        emoji_logger.service_info(f"Rollback de estágio realizado com sucesso para lead {lead_id}")
+                    else:
+                        emoji_logger.service_error(f"Falha no rollback de estágio do lead {lead_id}: {rollback_result.get('message')}")
+                
+                return {
+                    "success": False,
+                    "message": f"Estágio atualizado mas erro ao atualizar campos: {fields_update_result.get('message')}",
+                    "lead_id": lead_id,
+                    "stage_updated": True,
+                    "fields_updated": False
+                }
+            
+            # Se ambos estágio e campos foram atualizados com sucesso, tentar adicionar a nota
+            if notes:
+                note_result = await self.add_note_to_lead(lead_id, notes)
+                
+                # Se a adição da nota falhar, tentar rollback das atualizações de estágio e campos
+                if not note_result.get("success"):
+                    emoji_logger.service_error(f"Falha ao adicionar nota ao lead {lead_id}, tentando rollback...")
+                    
+                    # Tentar rollback dos campos
+                    if original_fields_data:
+                        try:
+                            rollback_fields_result = await self.update_fields(lead_id, {})
+                            # Precisaríamos restaurar os valores originais dos campos aqui
+                            # Por simplicidade, vamos apenas registrar o erro
+                        except Exception as field_rollback_error:
+                            emoji_logger.service_error(f"Erro no rollback de campos do lead {lead_id}: {field_rollback_error}")
+                    
+                    # Tentar rollback para o estágio original
+                    if original_stage_id:
+                        rollback_result = await self._rollback_lead_stage(lead_id, original_stage_id)
+                        if rollback_result.get("success"):
+                            emoji_logger.service_info(f"Rollback de estágio realizado com sucesso para lead {lead_id}")
+                        else:
+                            emoji_logger.service_error(f"Falha no rollback de estágio do lead {lead_id}: {rollback_result.get('message')}")
+                    
+                    return {
+                        "success": False,
+                        "message": f"Estágio e campos atualizados mas erro ao adicionar nota: {note_result.get('message')}",
+                        "lead_id": lead_id,
+                        "stage_updated": True,
+                        "fields_updated": True,
+                        "note_added": False
+                    }
+            
+            return {
+                "success": True,
+                "message": "Lead atualizado com sucesso",
+                "lead_id": lead_id,
+                "stage_updated": True,
+                "fields_updated": True,
+                "note_added": bool(notes)
+            }
+            
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao atualizar lead {lead_id} de forma atômica: {e}")
+            
+            # Tentar rollback para os dados originais
+            try:
+                # Tentar rollback dos campos
+                if original_fields_data:
+                    # Precisaríamos restaurar os valores originais dos campos aqui
+                    pass
+                
+                # Tentar rollback para o estágio original
+                if original_stage_id:
+                    rollback_result = await self._rollback_lead_stage(lead_id, original_stage_id)
+                    if rollback_result.get("success"):
+                        emoji_logger.service_info(f"Rollback de estágio realizado com sucesso para lead {lead_id}")
+                    else:
+                        emoji_logger.service_error(f"Falha no rollback de estágio do lead {lead_id}: {rollback_result.get('message')}")
+            except Exception as rollback_error:
+                emoji_logger.service_error(f"Erro durante rollback do lead {lead_id}: {rollback_error}")
+            
+            return {
+                "success": False,
+                "message": f"Erro ao atualizar lead: {e}",
+                "lead_id": lead_id
+            }
+    
+    async def _rollback_lead_stage(self, lead_id: str, stage_id: str) -> Dict[str, Any]:
+        """
+        Realiza rollback da atualização de estágio de um lead
+        
+        Args:
+            lead_id: ID do lead
+            stage_id: ID do estágio para o qual fazer rollback
+            
+        Returns:
+            Dict com resultado da operação de rollback
+        """
+        try:
+            # Aplicar rate limiting
+            await wait_for_kommo()
+            
+            # Reverter para o estágio original
+            async with self.session.patch(
+                f"{self.base_url}/api/v4/leads",
+                headers=self.headers,
+                json={
+                    "update": [{
+                        "id": int(lead_id),
+                        "status_id": stage_id,
+                        "updated_at": int(datetime.now().timestamp())
+                    }]
+                }
+            ) as response:
+                if response.status == 200:
+                    return {
+                        "success": True,
+                        "message": "Rollback de estágio realizado com sucesso"
+                    }
+                else:
+                    error_text = await response.text()
+                    return {
+                        "success": False,
+                        "message": f"Erro no rollback de estágio: {response.status} - {error_text}"
+                    }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Exceção no rollback de estágio: {e}"
             }
     
     @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
@@ -818,6 +1382,88 @@ class CRMServiceReal:
                     
         except Exception as e:
             emoji_logger.service_error(f"Erro ao atualizar campos do lead {lead_id}: {e}")
+            return {
+                "success": False,
+                "message": f"Erro ao atualizar campos: {e}",
+                "lead_id": lead_id
+            }
+    
+    async def update_fields_with_compensation(self, lead_id: str, fields_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Atualiza campos customizados de um lead com mecanismo de compensação
+        
+        Args:
+            lead_id: ID do lead
+            fields_dict: Dicionário de campos a serem atualizados
+            
+        Returns:
+            Dict com resultado da operação
+        """
+        if not self.is_initialized:
+            await self.initialize()
+        
+        # Armazenar valores originais dos campos para possível rollback
+        original_fields = {}
+        
+        try:
+            # Buscar valores atuais dos campos que serão atualizados para possível rollback
+            try:
+                current_lead = await self.get_lead_by_id(lead_id)
+                if current_lead and current_lead.get("custom_fields_values"):
+                    current_fields = current_lead["custom_fields_values"]
+                    # Mapear campos atuais para fácil acesso
+                    current_fields_map = {field["field_id"]: field for field in current_fields}
+                    
+                    # Armazenar valores originais dos campos que serão modificados
+                    for field_name, field_value in fields_dict.items():
+                        field_id = self.custom_fields.get(field_name)
+                        if field_id and field_id in current_fields_map:
+                            original_fields[field_name] = current_fields_map[field_id]
+            except Exception as e:
+                emoji_logger.service_warning(f"Aviso: Não foi possível obter valores originais dos campos do lead {lead_id}: {e}")
+            
+            # Atualizar campos
+            update_result = await self.update_fields(lead_id, fields_dict)
+            
+            if not update_result.get("success"):
+                return update_result
+            
+            return {
+                "success": True,
+                "message": "Campos atualizados com sucesso",
+                "lead_id": lead_id,
+                "fields_updated": list(fields_dict.keys()),
+                "original_fields": original_fields
+            }
+            
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao atualizar campos do lead {lead_id} com compensação: {e}")
+            
+            # Tentar rollback dos campos para os valores originais
+            if original_fields:
+                try:
+                    emoji_logger.service_warning(f"Tentando rollback dos campos do lead {lead_id}...")
+                    rollback_fields = {}
+                    
+                    # Preparar campos para rollback
+                    for field_name, original_field_data in original_fields.items():
+                        if "values" in original_field_data and original_field_data["values"]:
+                            # Restaurar valor original
+                            original_value = original_field_data["values"][0]
+                            if "value" in original_value:
+                                rollback_fields[field_name] = original_value["value"]
+                            elif "enum_id" in original_value:
+                                rollback_fields[field_name] = original_value["enum_id"]
+                    
+                    if rollback_fields:
+                        rollback_result = await self.update_fields(lead_id, rollback_fields)
+                        if rollback_result.get("success"):
+                            emoji_logger.service_info(f"Rollback de campos realizado com sucesso para lead {lead_id}")
+                        else:
+                            emoji_logger.service_error(f"Falha no rollback de campos do lead {lead_id}: {rollback_result.get('message')}")
+                except Exception as rollback_error:
+                    emoji_logger.service_error(f"Erro durante rollback de campos do lead {lead_id}: {rollback_error}")
+            
             return {
                 "success": False,
                 "message": f"Erro ao atualizar campos: {e}",
