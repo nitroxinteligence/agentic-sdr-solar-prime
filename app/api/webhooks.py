@@ -1,23 +1,24 @@
 """
-Webhooks API - Recebe eventos da Evolution API
+Webhooks API - Recebe eventos externos (WhatsApp, Kommo)
+Processa mensagens recebidas e eventos do CRM
 """
-from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
-from typing import Dict, Any, Optional, List, Union
-import asyncio
-import base64
+
+from datetime import datetime, timezone
+from typing import Dict, Any, Optional
 import json
+import asyncio
 import re
-from datetime import datetime
+
+from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from loguru import logger
+
+from app.config import settings
 from app.utils.logger import emoji_logger
-from app.integrations.supabase_client import supabase_client
+from app.integrations.supabase_client import SupabaseClient
 from app.integrations.redis_client import redis_client
 from app.integrations.evolution import evolution_client
-from app.agents import create_stateless_agent  # Import do agente stateless
-from app.config import settings
-from app.services.message_buffer import MessageBuffer, set_message_buffer
-from app.services.message_splitter import MessageSplitter, set_message_splitter
-from app.utils.agno_media_detection import AGNOMediaDetector
+from app.agents.agentic_sdr_refactored import get_agentic_agent
+from app.services.message_buffer import MessageBuffer
 
 router = APIRouter(prefix="/webhook", tags=["webhooks"])  # Mudado para /webhook (sem 's')
 
@@ -1790,7 +1791,7 @@ async def kommo_webhook(request: Request):
 async def process_kommo_note_added(data: Dict[str, Any]):
     """
     Processa evento de nota adicionada no Kommo
-    Se foi adicionada por humano, ativa pausa no agente
+    Se foi adicionada por humano, ativa pausa no agente e cria nota com contexto da conversa
     """
     try:
         # Extrair informações do evento
@@ -1809,7 +1810,10 @@ async def process_kommo_note_added(data: Dict[str, Any]):
         # Buscar telefone do lead no Kommo
         try:
             from app.services.crm_service_100_real import CRMServiceReal
+            from app.integrations.supabase_client import SupabaseClient
+            
             crm = CRMServiceReal()
+            supabase_client = SupabaseClient()
             await crm.initialize()
             
             lead_info = await crm.get_lead_by_id(entity_id)
@@ -1826,6 +1830,31 @@ async def process_kommo_note_added(data: Dict[str, Any]):
                 if "atendimento humano" in note_text.lower():
                     emoji_logger.system_info(f"🤝 Nota contém 'Atendimento Humano' - transbordo permanente ativado")
                     # O bloqueio permanente já é feito pelo estágio no pipeline
+                
+                # Criar nota automática com contexto da conversa
+                try:
+                    # Buscar dados da conversa no Supabase
+                    conversation_data = await supabase_client.get_conversation_by_phone(phone)
+                    
+                    if conversation_data:
+                        # Gerar resumo da conversa
+                        conversation_summary = await _generate_conversation_summary(conversation_data, lead_info)
+                        
+                        # Adicionar nota automática no Kommo com o contexto
+                        context_note = f"""🤖 [CONTEXTO AUTOMÁTICO - SDR IA]
+
+Histórico da conversa com o lead:
+{conversation_summary}
+
+--------
+Esta nota foi criada automaticamente pelo SDR IA para fornecer contexto sobre a interação com o lead antes da intervenção humana.
+"""
+                        # Adicionar nota ao lead no Kommo
+                        await crm.add_note_to_lead(entity_id, context_note)
+                        emoji_logger.system_info(f"📄 Nota de contexto adicionada automaticamente ao lead {entity_id}")
+                
+                except Exception as context_error:
+                    emoji_logger.system_error("Context Transfer", f"Erro ao criar nota de contexto: {context_error}")
             
             await crm.close()
             
@@ -1834,6 +1863,59 @@ async def process_kommo_note_added(data: Dict[str, Any]):
             
     except Exception as e:
         emoji_logger.system_error("Kommo Note Added", str(e))
+
+async def _generate_conversation_summary(conversation_data: Dict[str, Any], lead_info: Dict[str, Any]) -> str:
+    """
+    Gera um resumo da conversa com o lead para transferência de contexto
+    
+    Args:
+        conversation_data: Dados da conversa do Supabase
+        lead_info: Informações do lead do Kommo
+        
+    Returns:
+        String com o resumo da conversa
+    """
+    try:
+        summary_lines = []
+        
+        # Informações básicas do lead
+        summary_lines.append(f"Nome: {lead_info.get('name', 'N/A')}")
+        summary_lines.append(f"Telefone: {lead_info.get('phone', 'N/A')}")
+        
+        # Dados de qualificação se disponíveis
+        if lead_info.get('bill_value'):
+            summary_lines.append(f"Valor da conta: R$ {lead_info['bill_value']}")
+        if lead_info.get('chosen_flow'):
+            summary_lines.append(f"Fluxo escolhido: {lead_info['chosen_flow']}")
+        if lead_info.get('qualification_score') is not None:
+            summary_lines.append(f"Score de qualificação: {lead_info['qualification_score']}/100")
+        
+        summary_lines.append("")
+        
+        # Histórico de mensagens
+        messages = conversation_data.get('messages', [])
+        if messages:
+            # Limitar a 10 últimas mensagens para manter o resumo conciso
+            recent_messages = messages[-10:] if len(messages) > 10 else messages
+            
+            summary_lines.append("Histórico de mensagens (últimas 10):")
+            for msg in recent_messages:
+                role = "👤 Lead" if msg.get('role') == 'user' else "🤖 IA"
+                timestamp = msg.get('timestamp', '')[:19] if msg.get('timestamp') else ''
+                content = msg.get('content', '')[:100] + "..." if len(msg.get('content', '')) > 100 else msg.get('content', '')
+                
+                if timestamp:
+                    summary_lines.append(f"[{timestamp}] {role}: {content}")
+                else:
+                    summary_lines.append(f"{role}: {content}")
+        else:
+            summary_lines.append("Nenhuma mensagem registrada na conversa.")
+        
+        return "\n".join(summary_lines)
+        
+    except Exception as e:
+        emoji_logger.system_error("Conversation Summary", f"Erro ao gerar resumo da conversa: {e}")
+        return "Erro ao gerar resumo da conversa."
 
 async def process_kommo_lead_status_changed(data: Dict[str, Any]):
     """

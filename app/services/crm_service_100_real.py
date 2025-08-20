@@ -1525,6 +1525,13 @@ class CRMServiceReal:
     async def add_note_to_lead(self, lead_id: str, note_text: str) -> Dict[str, Any]:
         """
         Adiciona nota ao lead no Kommo
+        
+        Args:
+            lead_id: ID do lead
+            note_text: Texto da nota
+            
+        Returns:
+            Dict com resultado da operação
         """
         if not self.is_initialized:
             await self.initialize()

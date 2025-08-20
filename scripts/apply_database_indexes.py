@@ -32,10 +32,15 @@ async def main():
         success = await db.apply_database_indexes()
         
         if success:
-            emoji_logger.system_ready("🎉 Database indexes applied successfully!")
+            emoji_logger.system_ready("🎉 Database index recommendations generated successfully!")
+            emoji_logger.system_info("📋 Please create these indexes manually in your Supabase dashboard:")
+            emoji_logger.system_info("   1. Go to your Supabase project dashboard")
+            emoji_logger.system_info("   2. Navigate to Table Editor")
+            emoji_logger.system_info("   3. Open the SQL editor")
+            emoji_logger.system_info("   4. Run each of the recommended CREATE INDEX statements")
             return 0
         else:
-            emoji_logger.system_error("❌ Failed to apply database indexes")
+            emoji_logger.system_error("❌ Failed to generate database index recommendations")
             return 1
             
     except Exception as e:

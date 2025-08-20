@@ -186,22 +186,56 @@ class SupabaseClient:
             emoji_logger.supabase_error(f"Erro ao atualizar conversa: {str(e)}", table="conversations")
             raise
     
-    async def get_conversation_emotional_state(self, conversation_id: str) -> str:
-        """Obtém o estado emocional atual da conversa"""
-        try:
-            response = self.client.table('conversations').select('emotional_state').eq('id', conversation_id).execute()
+    async def get_conversation_by_phone(self, phone: str) -> Optional[Dict[str, Any]]:
+        """
+        Busca dados da conversa por número de telefone
+        
+        Args:
+            phone: Número de telefone do lead
             
-            if response.data and len(response.data) > 0:
-                emotional_state = response.data[0].get('emotional_state', 'ENTUSIASMADA')
-                emoji_logger.system_debug(f"Estado emocional recuperado: {emotional_state}")
-                return emotional_state
-            else:
-                emoji_logger.system_warning(f"Conversa {conversation_id} não encontrada, usando estado padrão")
-                return 'ENTUSIASMADA'
+        Returns:
+            Dict com dados da conversa ou None se não encontrado
+        """
+        try:
+            # Buscar lead pelo telefone
+            lead_result = self.client.table('leads').select('id').eq('phone_number', phone).execute()
+            
+            if not lead_result.data:
+                return None
                 
+            lead_id = lead_result.data[0]['id']
+            
+            # Buscar conversa associada ao lead
+            conversation_result = self.client.table('conversations').select(
+                'id, messages, emotional_state, current_stage, qualification_score, created_at, updated_at'
+            ).eq('lead_id', lead_id).execute()
+            
+            if conversation_result.data:
+                return conversation_result.data[0]
+                
+            return None
+            
         except Exception as e:
-            emoji_logger.supabase_error(f"Erro ao buscar estado emocional: {str(e)}", table="conversations")
-            return 'ENTUSIASMADA'
+            logger.error(f"Erro ao buscar conversa por telefone {phone}: {str(e)}")
+            return None
+    
+    async def get_conversation_emotional_state(self, conversation_id: str) -> str:
+        """
+        Obtém estado emocional atual da conversa
+        """
+        try:
+            result = self.client.table('conversations').select('emotional_state').eq(
+                'id', conversation_id
+            ).execute()
+            
+            if result.data:
+                return result.data[0].get('emotional_state', 'neutro')
+            
+            return 'neutro'
+            
+        except Exception as e:
+            logger.error(f"Erro ao obter estado emocional: {str(e)}")
+            return 'neutro'
     
     async def update_conversation_emotional_state(self, conversation_id: str, emotional_state: str) -> None:
         """Atualiza o estado emocional da conversa com validação"""
@@ -814,6 +848,36 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Erro ao buscar lead por ID: {e}")
             return None
+
+    async def apply_database_indexes(self):
+        """
+        Apply database indexes for improved query performance
+        """
+        try:
+            # Since we can't execute raw SQL directly, we'll log the recommended indexes
+            # These should be created manually in the Supabase dashboard or via migration
+            
+            recommended_indexes = [
+                "CREATE INDEX IF NOT EXISTS idx_follow_ups_scheduled_at ON follow_ups (scheduled_at);",
+                "CREATE INDEX IF NOT EXISTS idx_follow_ups_status_scheduled_at ON follow_ups (status, scheduled_at);",
+                "CREATE INDEX IF NOT EXISTS idx_follow_ups_lead_id ON follow_ups (lead_id);",
+                "CREATE INDEX IF NOT EXISTS idx_leads_phone_number ON leads (phone_number);",
+                "CREATE INDEX IF NOT EXISTS idx_leads_qualifications_lead_id ON leads_qualifications (lead_id);",
+                "CREATE INDEX IF NOT EXISTS idx_conversations_lead_id ON conversations (lead_id);",
+                "CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations (updated_at);"
+            ]
+            
+            logger.info("📋 Recommended database indexes (should be created manually in Supabase):")
+            for i, index_sql in enumerate(recommended_indexes, 1):
+                logger.info(f"  {i}. {index_sql}")
+            
+            logger.info("🎉 Database index recommendations logged successfully!")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to generate database index recommendations: {e}")
+            return False
+
 
 # Singleton global
 supabase_client = SupabaseClient()
