@@ -474,28 +474,74 @@ class SupabaseClient:
     
     # ============= KNOWLEDGE BASE =============
     
-    async def search_knowledge(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Busca na base de conhecimento"""
+    async def apply_database_indexes(self):
+        """
+        Apply database indexes for improved query performance
+        """
         try:
-            # Busca full-text em português
-            result = self.client.rpc('search_knowledge', {
-                'search_query': query,
-                'result_limit': limit
-            }).execute()
+            # Index creation queries
+            index_queries = [
+                # Index on follow_ups.scheduled_at for faster retrieval of pending follow-ups
+                """
+                CREATE INDEX IF NOT EXISTS idx_follow_ups_scheduled_at 
+                ON follow_ups (scheduled_at);
+                """,
+                
+                # Composite index on follow_ups.status and follow_ups.scheduled_at 
+                # for efficient querying of pending follow-ups
+                """
+                CREATE INDEX IF NOT EXISTS idx_follow_ups_status_scheduled_at 
+                ON follow_ups (status, scheduled_at);
+                """,
+                
+                # Index on follow_ups.lead_id for faster lookup of follow-ups by lead
+                """
+                CREATE INDEX IF NOT EXISTS idx_follow_ups_lead_id 
+                ON follow_ups (lead_id);
+                """,
+                
+                # Index on leads.phone_number for faster lookup of leads by phone
+                """
+                CREATE INDEX IF NOT EXISTS idx_leads_phone_number 
+                ON leads (phone_number);
+                """,
+                
+                # Index on leads_qualifications.lead_id for faster lookup of qualifications by lead
+                """
+                CREATE INDEX IF NOT EXISTS idx_leads_qualifications_lead_id 
+                ON leads_qualifications (lead_id);
+                """,
+                
+                # Index on conversations.lead_id for faster lookup of conversations by lead
+                """
+                CREATE INDEX IF NOT EXISTS idx_conversations_lead_id 
+                ON conversations (lead_id);
+                """,
+                
+                # Index on conversations.updated_at for faster lookup of recent conversations
+                """
+                CREATE INDEX IF NOT EXISTS idx_conversations_updated_at 
+                ON conversations (updated_at);
+                """
+            ]
             
-            return result.data or []
+            # Apply each index creation query
+            for i, query in enumerate(index_queries, 1):
+                try:
+                    # Execute the raw SQL query
+                    self.client.execute_sql(query)
+                    logger.info(f"✅ Database index {i}/{len(index_queries)} applied successfully")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to apply database index {i}: {e}")
+                    # Continue with other indexes even if one fails
+                    continue
+            
+            logger.info("🎉 All database indexes applied successfully!")
+            return True
             
         except Exception as e:
-            logger.error(f"Erro ao buscar conhecimento: {str(e)}")
-            # Fallback para busca simples
-            try:
-                result = self.client.table('knowledge_base').select("*").ilike(
-                    'content', f'%{query}%'
-                ).limit(limit).execute()
-                
-                return result.data or []
-            except:
-                return []
+            logger.error(f"❌ Failed to apply database indexes: {e}")
+            return False
     
     async def add_knowledge(self, knowledge_data: Dict[str, Any]) -> Dict[str, Any]:
         """Adiciona item à base de conhecimento"""
@@ -653,15 +699,90 @@ class SupabaseClient:
     async def save_qualification(self, qualification_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Salva resultado de qualificação"""
         try:
-            response = self.client.table("leads_qualifications").insert(qualification_data).execute()
+            # Adicionar timestamps
+            qualification_data['created_at'] = datetime.now().isoformat()
+            qualification_data['updated_at'] = datetime.now().isoformat()
             
-            if response.data:
-                return response.data[0]
-            return None
+            result = self.client.table('leads_qualifications').insert(qualification_data).execute()
+            
+            if result.data:
+                logger.info(f"✅ Qualificação salva para lead {qualification_data['lead_id']}")
+                return result.data[0]
+            
+            raise Exception("Erro ao salvar qualificação")
             
         except Exception as e:
-            logger.error(f"Erro ao salvar qualificação: {e}")
-            return None
+            logger.error(f"Erro ao salvar qualificação: {str(e)}")
+            raise
+    
+    async def apply_database_indexes(self):
+        """
+        Apply database indexes for improved query performance
+        """
+        try:
+            # Index creation queries
+            index_queries = [
+                # Index on follow_ups.scheduled_at for faster retrieval of pending follow-ups
+                """
+                CREATE INDEX IF NOT EXISTS idx_follow_ups_scheduled_at 
+                ON follow_ups (scheduled_at);
+                """,
+                
+                # Composite index on follow_ups.status and follow_ups.scheduled_at 
+                # for efficient querying of pending follow-ups
+                """
+                CREATE INDEX IF NOT EXISTS idx_follow_ups_status_scheduled_at 
+                ON follow_ups (status, scheduled_at);
+                """,
+                
+                # Index on follow_ups.lead_id for faster lookup of follow-ups by lead
+                """
+                CREATE INDEX IF NOT EXISTS idx_follow_ups_lead_id 
+                ON follow_ups (lead_id);
+                """,
+                
+                # Index on leads.phone_number for faster lookup of leads by phone
+                """
+                CREATE INDEX IF NOT EXISTS idx_leads_phone_number 
+                ON leads (phone_number);
+                """,
+                
+                # Index on leads_qualifications.lead_id for faster lookup of qualifications by lead
+                """
+                CREATE INDEX IF NOT EXISTS idx_leads_qualifications_lead_id 
+                ON leads_qualifications (lead_id);
+                """,
+                
+                # Index on conversations.lead_id for faster lookup of conversations by lead
+                """
+                CREATE INDEX IF NOT EXISTS idx_conversations_lead_id 
+                ON conversations (lead_id);
+                """,
+                
+                # Index on conversations.updated_at for faster lookup of recent conversations
+                """
+                CREATE INDEX IF NOT EXISTS idx_conversations_updated_at 
+                ON conversations (updated_at);
+                """
+            ]
+            
+            # Apply each index creation query
+            for i, query in enumerate(index_queries, 1):
+                try:
+                    # Execute the raw SQL query
+                    self.client.execute_sql(query)
+                    logger.info(f"✅ Database index {i}/{len(index_queries)} applied successfully")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to apply database index {i}: {e}")
+                    # Continue with other indexes even if one fails
+                    continue
+            
+            logger.info("🎉 All database indexes applied successfully!")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to apply database indexes: {e}")
+            return False
     
     async def get_latest_qualification(self, lead_id: str) -> Optional[Dict[str, Any]]:
         """Obtém última qualificação do lead"""
