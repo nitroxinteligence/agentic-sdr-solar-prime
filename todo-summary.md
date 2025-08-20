@@ -18,7 +18,7 @@
 
 ### 2.1. Spam Prevention in Follow-ups
 - **Issue**: There's no mechanism to limit the number of follow-ups sent to a lead in a given time period.
-- **Recommendation**: Implement a rate-limiting mechanism for follow-ups per lead, with a default limit of 3 per week unless reset by user interaction.
+- **Recommendation**: Implement a rate-limiting mechanism for follow-ups per lead, with a default limit of 3 per week unless reset by user interaction. **(A GRANDE RECOMENDAÇAO AQUI É TER DOIS FOLLOW-UPS DE REENGAJAMENTO: 30min APÓS O LEAD PARAR DE RESPONDER E 24h SE O LEAD NAO RESPONDER AO PRIMEIRO FOLLOW-UP, CASO O LEAD NAO RESPONDA A NENHUM DOS FOLLOW-UPS, MOVE O CARD DO LEAD PARA O ESTÁGIO "NÃO INTERESSADO" NO KOMMOCRM, APENAS ISSO E O FOLLOW-UP DE LEMBRETE É QUANDO O AGENTE AGENDA UMA REUNIAO COM O LEAD, O CARD DO LEAD NO KOMMOCRM É MOVIDO PARA O ESTÁGIO "REUNIÃO AGENDADA", NISSO O AGENTE FAZ O LEMBRETE DE 24H ANTES DA REUNIAO E 2H ANTES DA REUNIAO, APENAS ISSO!)**
 
 ### 2.2. Error Handling Centralization
 - **Issue**: Error handling is scattered throughout the codebase, making it difficult to maintain consistency.

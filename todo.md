@@ -129,7 +129,3 @@
 - **Documentação**: Adicionar docstrings mais detalhadas às funções e classes, explicando seus propósitos, parâmetros e retornos.
 - **Testes**: Implementar testes unitários e de integração para as principais funcionalidades, especialmente para os serviços críticos como `CalendarServiceReal`, `CRMServiceReal` e `FollowUpServiceReal`. Deveriam ser criados testes específicos para os cenários de concorrência e tratamento de erros.
 - **Monitoramento**: Implementar métricas e alertas para monitorar a saúde dos serviços e a performance do sistema.
-
-## 8. Summary
-
-For a complete summary of the main issues and recommendations, please refer to the `todo-summary.md` file. This file categorizes the identified issues by priority and provides a clear overview of what needs to be addressed to improve the system's reliability, performance, and maintainability.
