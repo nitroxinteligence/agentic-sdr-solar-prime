@@ -5,10 +5,13 @@ Funcionalidades habilitadas: Google Meet + Participantes + Convites
 
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
+import asyncio
+import uuid
 from googleapiclient.errors import HttpError
 from app.utils.logger import emoji_logger
 from app.config import settings
 from app.integrations.google_oauth_handler import get_oauth_handler
+from app.integrations.redis_client import redis_client
 
 class CalendarServiceReal:
     """
@@ -28,6 +31,9 @@ class CalendarServiceReal:
             "end_hour": 17,    # 17:00
             "weekdays": [0, 1, 2, 3, 4]  # Segunda(0) a Sexta(4)
         }
+        
+        # Lock timeout in seconds
+        self.lock_timeout = 30
         
     async def initialize(self):
         """Inicializa conexão REAL com Google Calendar usando OAuth 2.0"""
@@ -102,12 +108,188 @@ class CalendarServiceReal:
         
         return f"{days_str}, das {self.business_hours['start_hour']}h às {self.business_hours['end_hour']}h"
     
+    async def _acquire_lock(self, lock_key: str) -> bool:
+        """
+        Adquire um lock distribuído usando Redis
+        
+        Args:
+            lock_key: Chave única para o lock
+            
+        Returns:
+            True se o lock foi adquirido, False caso contrário
+        """
+        try:
+            # Gerar um valor único para o lock (para identificar o proprietário)
+            lock_value = str(uuid.uuid4())
+            
+            # Tentar adquirir o lock com NX (só se não existir) e EX (tempo de expiração)
+            result = await redis_client.redis_client.set(
+                f"calendar_lock:{lock_key}",
+                lock_value,
+                nx=True,
+                ex=self.lock_timeout
+            )
+            
+            if result:
+                # Armazenar o valor do lock para liberação posterior
+                self._lock_value = lock_value
+                self._lock_key = lock_key
+                return True
+            else:
+                return False
+                
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao adquirir lock: {e}")
+            return False
+    
+    async def _release_lock(self) -> bool:
+        """
+        Libera o lock distribuído
+        
+        Returns:
+            True se o lock foi liberado, False caso contrário
+        """
+        try:
+            if not hasattr(self, '_lock_key') or not hasattr(self, '_lock_value'):
+                return False
+                
+            lock_key = f"calendar_lock:{self._lock_key}"
+            lock_value = self._lock_value
+            
+            # Usar um script Lua para liberar o lock apenas se for o proprietário
+            # Isso evita liberar o lock de outro processo
+            lua_script = """
+            if redis.call("get", KEYS[1]) == ARGV[1] then
+                return redis.call("del", KEYS[1])
+            else
+                return 0
+            end
+            """
+            
+            result = await redis_client.redis_client.eval(
+                lua_script,
+                keys=[lock_key],
+                args=[lock_value]
+            )
+            
+            # Limpar variáveis do lock
+            if hasattr(self, '_lock_key'):
+                delattr(self, '_lock_key')
+            if hasattr(self, '_lock_value'):
+                delattr(self, '_lock_value')
+                
+            return result == 1
+            
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao liberar lock: {e}")
+            return False
+    
+    async def _schedule_meeting_with_retry(self, event_data: Dict[str, Any], max_retries: int = 3) -> Dict[str, Any]:
+        """
+        Agenda reunião com retry em caso de conflitos (HttpError 409)
+        
+        Args:
+            event_data: Dados do evento a ser criado
+            max_retries: Número máximo de tentativas
+            
+        Returns:
+            Dict com resultado do agendamento
+        """
+        import random
+        
+        for attempt in range(max_retries):
+            try:
+                # Criar evento no Google Calendar
+                created_event = self.service.events().insert(
+                    calendarId=self.calendar_id,
+                    body=event_data,
+                    conferenceDataVersion=1,  # Sempre 1 para Google Meet com OAuth
+                    sendUpdates='all' if event_data.get('attendees') else 'none'
+                ).execute()
+                
+                return created_event
+                
+            except HttpError as e:
+                status_code = e.resp.status if hasattr(e, 'resp') else 'unknown'
+                
+                # Se for conflito de horário (409) e ainda tiver tentativas
+                if status_code == 409 and attempt < max_retries - 1:
+                    # Esperar um tempo aleatório antes de tentar novamente (backoff exponencial)
+                    delay = (2 ** attempt) + random.uniform(0, 1)
+                    emoji_logger.service_warning(f"⚠️ Conflito de horário detectado, tentando novamente em {delay:.2f}s (tentativa {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    # Relançar a exceção se não for 409 ou se já esgotou as tentativas
+                    raise e
+        
+        # Isso não deve ser alcançado, mas está aqui para segurança
+        raise Exception("Número máximo de tentativas excedido")
+    
+    async def _rollback_reschedule(self, 
+                                  original_meeting_id: str, 
+                                  original_event_data: Optional[Dict[str, Any]], 
+                                  lead_info: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Realiza rollback de uma operação de reagendamento que falhou
+        
+        Args:
+            original_meeting_id: ID da reunião original
+            original_event_data: Dados do evento original
+            lead_info: Informações do lead
+            
+        Returns:
+            Dict com resultado do rollback
+        """
+        try:
+            # Se não temos os dados do evento original, não podemos fazer rollback
+            if not original_event_data:
+                return {
+                    "success": False,
+                    "message": "Dados do evento original não disponíveis para rollback"
+                }
+            
+            # Tentar recriar o evento original
+            recreated_event = self.service.events().insert(
+                calendarId=self.calendar_id,
+                body=original_event_data,
+                conferenceDataVersion=1,
+                sendUpdates='all' if original_event_data.get('attendees') else 'none'
+            ).execute()
+            
+            emoji_logger.service_info(f"✅ Evento recriado no rollback: {recreated_event.get('id')}")
+            
+            return {
+                "success": True,
+                "message": "Evento original recriado com sucesso",
+                "recreated_event_id": recreated_event.get('id')
+            }
+            
+        except Exception as e:
+            emoji_logger.service_error(f"❌ Erro no rollback: {e}")
+            return {
+                "success": False,
+                "message": f"Erro ao recriar evento original: {e}"
+            }
+    
     async def check_availability(self, date_request: str) -> Dict[str, Any]:
         """
         Verifica disponibilidade REAL no Google Calendar
         """
         if not self.is_initialized:
             await self.initialize()
+        
+        # Adquirir lock para verificar disponibilidade
+        # Usamos um lock mais amplo para evitar race conditions na verificação
+        lock_key = f"availability:check"
+        if not await self._acquire_lock(lock_key):
+            emoji_logger.service_warning("⚠️ Não foi possível adquirir lock para verificar disponibilidade")
+            return {
+                "success": False,
+                "error": "lock_not_acquired",
+                "message": "Sistema ocupado. Por favor, tente novamente em alguns segundos.",
+                "details": "Não foi possível adquirir lock para verificação de disponibilidade"
+            }
         
         try:
             # Determinar data baseada no request
@@ -177,6 +359,9 @@ class CalendarServiceReal:
                 "success": False,
                 "message": "Erro ao processar solicitação"
             }
+        finally:
+            # Liberar o lock independentemente do resultado
+            await self._release_lock()
     
     async def schedule_meeting(self, 
                               date: str, 
@@ -187,6 +372,19 @@ class CalendarServiceReal:
         """
         if not self.is_initialized:
             await self.initialize()
+        
+        # Criar chave única para o lock baseada na data e hora
+        lock_key = f"schedule:{date}:{time}"
+        
+        # Adquirir lock para prevenir race conditions
+        if not await self._acquire_lock(lock_key):
+            emoji_logger.service_warning(f"⚠️ Não foi possível adquirir lock para agendamento em {date} às {time}")
+            return {
+                "success": False,
+                "error": "lock_not_acquired",
+                "message": "Sistema ocupado. Por favor, tente novamente em alguns segundos.",
+                "details": "Não foi possível adquirir lock para agendamento"
+            }
         
         try:
             # Converter data e hora
@@ -211,8 +409,12 @@ class CalendarServiceReal:
                     return {
                         "success": False,
                         "error": "weekend_not_allowed",
-                        "message": f"Ops! Não agendamos reuniões aos finais de semana. 🚫\n\n" +
-                                  f"O Leonardo atende apenas em dias úteis ({self.format_business_hours_message()}).\n\n" +
+                        "message": f"Ops! Não agendamos reuniões aos finais de semana. 🚫
+
+" +
+                                  f"O Leonardo atende apenas em dias úteis ({self.format_business_hours_message()}).
+
+" +
                                   f"Que tal {weekday_names[next_business.weekday()]}, {next_business.strftime('%d/%m')}? " +
                                   f"Posso verificar os horários disponíveis para você! 😊",
                         "suggested_date": next_business.strftime("%Y-%m-%d"),
@@ -226,8 +428,12 @@ class CalendarServiceReal:
                     return {
                         "success": False,
                         "error": "outside_business_hours",
-                        "message": f"Ops! Esse horário está fora do nosso expediente. ⏰\n\n" +
-                                  f"O Leonardo atende {self.format_business_hours_message()}.\n\n" +
+                        "message": f"Ops! Esse horário está fora do nosso expediente. ⏰
+
+" +
+                                  f"O Leonardo atende {self.format_business_hours_message()}.
+
+" +
                                   f"Posso verificar os horários disponíveis dentro do expediente para você! 😊",
                         "requested_time": time,
                         "business_hours": self.format_business_hours_message()
@@ -318,14 +524,9 @@ Equipe SolarPrime
             }
             emoji_logger.service_info("📹 Google Meet será criado automaticamente")
             
-            # Criar evento no Google Calendar
+            # Criar evento no Google Calendar com retry em caso de conflitos
             # Com OAuth sempre usa conferenceDataVersion=1 para criar Google Meet
-            created_event = self.service.events().insert(
-                calendarId=self.calendar_id,
-                body=event,
-                conferenceDataVersion=1,  # Sempre 1 para Google Meet com OAuth
-                sendUpdates='all' if attendees else 'none'  # Enviar convites se houver participantes
-            ).execute()
+            created_event = await self._schedule_meeting_with_retry(event)
             
             emoji_logger.calendar_event(
                 f"✅ Reunião REAL agendada: {created_event.get('id')}"
@@ -346,6 +547,9 @@ Equipe SolarPrime
                 features.append(f"📹 Google Meet: {meet_link}")
             if attendees:
                 features.append(f"👥 {len(attendees)} participante(s) convidado(s)")
+            
+            # Liberar o lock antes de retornar sucesso
+            await self._release_lock()
             
             return {
                 "success": True,
@@ -368,7 +572,7 @@ Equipe SolarPrime
             
             if status_code == 403:
                 emoji_logger.service_error("❌ Erro de permissão Google Calendar - Verificar OAuth")
-                return {
+                result = {
                     "success": False,
                     "error_code": 403,
                     "message": "Erro de permissão. Necessário reautorizar OAuth",
@@ -376,7 +580,7 @@ Equipe SolarPrime
                 }
             elif status_code == 404:
                 emoji_logger.service_error("❌ Calendário não encontrado")
-                return {
+                result = {
                     "success": False,
                     "error_code": 404,
                     "message": "Calendário não encontrado",
@@ -384,7 +588,7 @@ Equipe SolarPrime
                 }
             elif status_code == 409:
                 emoji_logger.service_error("⚠️ Conflito de horário detectado")
-                return {
+                result = {
                     "success": False,
                     "error_code": 409,
                     "message": "Conflito de horário - Horário já ocupado",
@@ -392,7 +596,7 @@ Equipe SolarPrime
                 }
             else:
                 emoji_logger.service_error(f"❌ Erro Google Calendar [{status_code}]: {e}")
-                return {
+                result = {
                     "success": False,
                     "error_code": status_code,
                     "message": f"Erro Google Calendar: {e}",
@@ -400,17 +604,34 @@ Equipe SolarPrime
                 }
         except Exception as e:
             emoji_logger.service_error(f"❌ Erro inesperado ao agendar: {e}")
-            return {
+            result = {
                 "success": False,
                 "error_code": "unknown",
                 "message": f"Erro inesperado: {e}",
                 "details": "Erro interno do sistema"
             }
+        
+        # Liberar o lock em caso de erro
+        await self._release_lock()
+        
+        # Retornar o resultado de erro
+        return result
     
     async def cancel_meeting(self, meeting_id: str) -> Dict[str, Any]:
         """Cancela reunião REAL no Google Calendar"""
         if not self.is_initialized:
             await self.initialize()
+        
+        # Adquirir lock para cancelar a reunião
+        lock_key = f"cancel:{meeting_id}"
+        if not await self._acquire_lock(lock_key):
+            emoji_logger.service_warning(f"⚠️ Não foi possível adquirir lock para cancelar reunião {meeting_id}")
+            return {
+                "success": False,
+                "error": "lock_not_acquired",
+                "message": "Sistema ocupado. Por favor, tente novamente em alguns segundos.",
+                "details": "Não foi possível adquirir lock para cancelamento de reunião"
+            }
         
         try:
             self.service.events().delete(
@@ -462,6 +683,9 @@ Equipe SolarPrime
                 "message": f"Erro inesperado: {e}",
                 "details": f"Event ID: {meeting_id}"
             }
+        finally:
+            # Liberar o lock independentemente do resultado
+            await self._release_lock()
     
     async def reschedule_meeting(self, 
                                 meeting_id: str,
@@ -483,6 +707,22 @@ Equipe SolarPrime
         """
         if not self.is_initialized:
             await self.initialize()
+        
+        # Adquirir lock para toda a operação de reagendamento
+        lock_key = f"reschedule:{meeting_id}"
+        if not await self._acquire_lock(lock_key):
+            emoji_logger.service_warning(f"⚠️ Não foi possível adquirir lock para reagendamento da reunião {meeting_id}")
+            return {
+                "success": False,
+                "error": "lock_not_acquired",
+                "message": "Sistema ocupado. Por favor, tente novamente em alguns segundos.",
+                "details": "Não foi possível adquirir lock para reagendamento"
+            }
+        
+        # Variáveis para armazenar o estado da operação
+        old_event_cancelled = False
+        new_event_created = False
+        new_meeting_id = None
         
         try:
             # Primeiro, buscar detalhes da reunião existente
@@ -517,6 +757,9 @@ Equipe SolarPrime
                     "meeting_id": meeting_id
                 }
             
+            # Marcar que o evento antigo foi cancelado
+            old_event_cancelled = True
+            
             # Preparar informações do lead
             if not lead_info and existing_attendees:
                 # Tentar extrair informações dos participantes existentes
@@ -539,6 +782,8 @@ Equipe SolarPrime
             )
             
             if schedule_result.get("success"):
+                new_event_created = True
+                new_meeting_id = schedule_result.get("meeting_id")
                 emoji_logger.calendar_event(
                     f"✅ Reunião reagendada: {meeting_id} → {schedule_result.get('meeting_id')}"
                 )
@@ -567,35 +812,79 @@ Equipe SolarPrime
                 
         except Exception as e:
             emoji_logger.service_error(f"❌ Erro ao reagendar reunião: {e}")
+            # Tentar rollback se o evento antigo foi cancelado mas o novo não foi criado
+            if old_event_cancelled and not new_event_created:
+                emoji_logger.service_warning(f"⚠️ Tentando rollback: recriar evento {meeting_id}")
+                rollback_result = await self._rollback_reschedule(
+                    meeting_id, 
+                    existing_event if 'existing_event' in locals() else None,
+                    lead_info
+                )
+                
+                if rollback_result.get("success"):
+                    emoji_logger.service_info("✅ Rollback realizado com sucesso")
+                else:
+                    emoji_logger.service_error(f"❌ Falha no rollback: {rollback_result.get('message')}")
+            
             return {
                 "success": False,
                 "message": f"Erro ao reagendar reunião: {e}",
-                "meeting_id": meeting_id
+                "meeting_id": meeting_id,
+                "rollback_attempted": old_event_cancelled and not new_event_created
             }
+        finally:
+            # Liberar o lock independentemente do resultado
+            await self._release_lock()
     
     async def suggest_times(self, lead_info: Dict[str, Any]) -> Dict[str, Any]:
         """Sugere horários disponíveis REAIS"""
-        availability = await self.check_availability("próximos dias")
-        
-        if availability.get("success") and availability.get("available_slots"):
-            slots = availability["available_slots"][:3]
-            
+        # Adquirir lock para sugerir horários
+        lock_key = "suggest_times"
+        if not await self._acquire_lock(lock_key):
+            emoji_logger.service_warning("⚠️ Não foi possível adquirir lock para sugerir horários")
             return {
-                "success": True,
-                "suggested_times": slots,
-                "message": f"Tenho estes horários disponíveis amanhã: {', '.join(slots)}. Qual prefere?",
-                "real": True
+                "success": False,
+                "error": "lock_not_acquired",
+                "message": "Sistema ocupado. Por favor, tente novamente em alguns segundos.",
+                "details": "Não foi possível adquirir lock para sugestão de horários"
             }
         
-        return {
-            "success": False,
-            "message": "Não consegui verificar os horários no momento"
-        }
+        try:
+            availability = await self.check_availability("próximos dias")
+            
+            if availability.get("success") and availability.get("available_slots"):
+                slots = availability["available_slots"][:3]
+                
+                return {
+                    "success": True,
+                    "suggested_times": slots,
+                    "message": f"Tenho estes horários disponíveis amanhã: {', '.join(slots)}. Qual prefere?",
+                    "real": True
+                }
+            
+            return {
+                "success": False,
+                "message": "Não consegui verificar os horários no momento"
+            }
+        finally:
+            # Liberar o lock independentemente do resultado
+            await self._release_lock()
     
     async def check_availability_for_date(self, date_str: str) -> Dict[str, Any]:
         """Verifica disponibilidade para uma data específica"""
         if not self.is_initialized:
             await self.initialize()
+        
+        # Adquirir lock para verificar disponibilidade
+        lock_key = f"availability:date:{date_str}"
+        if not await self._acquire_lock(lock_key):
+            emoji_logger.service_warning(f"⚠️ Não foi possível adquirir lock para verificar disponibilidade na data {date_str}")
+            return {
+                "success": False,
+                "error": "lock_not_acquired",
+                "message": "Sistema ocupado. Por favor, tente novamente em alguns segundos.",
+                "details": "Não foi possível adquirir lock para verificação de disponibilidade"
+            }
         
         try:
             # Converter string de data para datetime
@@ -657,6 +946,9 @@ Equipe SolarPrime
                 "available_slots": [],
                 "message": f"Erro ao verificar disponibilidade: {e}"
             }
+        finally:
+            # Liberar o lock independentemente do resultado
+            await self._release_lock()
     
     async def health_check(self) -> bool:
         """Verifica saúde do serviço"""
