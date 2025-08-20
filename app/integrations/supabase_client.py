@@ -351,6 +351,127 @@ class SupabaseClient:
             logger.error(f"Erro ao atualizar follow-up: {str(e)}")
             raise
     
+    async def update_follow_up_status_with_compensation(
+        self,
+        follow_up_id: str,
+        status: str,
+        executed_at: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        """
+        Atualiza status do follow-up com mecanismo de compensação
+        
+        Args:
+            follow_up_id: ID do follow-up
+            status: Novo status
+            executed_at: Data de execução
+            
+        Returns:
+            Dict com resultado da operação
+        """
+        try:
+            # Armazenar status original para possível rollback
+            original_status = None
+            original_executed_at = None
+            
+            # Buscar dados atuais do follow-up para possível rollback
+            try:
+                current_follow_up = self.client.table('follow_ups').select('*').eq(
+                    'id', follow_up_id
+                ).execute()
+                
+                if current_follow_up.data:
+                    original_status = current_follow_up.data[0].get('status')
+                    original_executed_at = current_follow_up.data[0].get('executed_at')
+            except Exception as e:
+                logger.warning(f"Aviso: Não foi possível obter status original do follow-up {follow_up_id}: {e}")
+            
+            # Atualizar status do follow-up
+            update_data = {
+                'status': status,
+                'updated_at': datetime.now().isoformat()
+            }
+            
+            if executed_at:
+                update_data['executed_at'] = executed_at.isoformat()
+            
+            result = self.client.table('follow_ups').update(update_data).eq(
+                'id', follow_up_id
+            ).execute()
+            
+            if result.data:
+                return {
+                    "success": True,
+                    "data": result.data[0],
+                    "message": "Follow-up atualizado com sucesso",
+                    "follow_up_id": follow_up_id,
+                    "original_status": original_status,
+                    "new_status": status
+                }
+            
+            return {
+                "success": False,
+                "message": "Erro ao atualizar follow-up",
+                "follow_up_id": follow_up_id
+            }
+            
+        except Exception as e:
+            logger.error(f"Erro ao atualizar follow-up {follow_up_id} com compensação: {str(e)}")
+            return {
+                "success": False,
+                "message": f"Erro ao atualizar follow-up: {e}",
+                "follow_up_id": follow_up_id
+            }
+    
+    async def _rollback_follow_up_status(
+        self,
+        follow_up_id: str,
+        original_status: str,
+        original_executed_at: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Realiza rollback do status de um follow-up
+        
+        Args:
+            follow_up_id: ID do follow-up
+            original_status: Status original
+            original_executed_at: Data de execução original
+            
+        Returns:
+            Dict com resultado da operação de rollback
+        """
+        try:
+            # Preparar dados de rollback
+            rollback_data = {
+                'status': original_status,
+                'updated_at': datetime.now().isoformat()
+            }
+            
+            if original_executed_at:
+                rollback_data['executed_at'] = original_executed_at
+            
+            # Reverter status no banco
+            result = self.client.table('follow_ups').update(rollback_data).eq(
+                'id', follow_up_id
+            ).execute()
+            
+            if result.data:
+                return {
+                    "success": True,
+                    "message": "Rollback de status realizado com sucesso"
+                }
+            
+            return {
+                "success": False,
+                "message": "Erro ao realizar rollback de status"
+            }
+            
+        except Exception as e:
+            logger.error(f"Erro ao realizar rollback do follow-up {follow_up_id}: {str(e)}")
+            return {
+                "success": False,
+                "message": f"Erro no rollback: {e}"
+            }
+    
     # ============= KNOWLEDGE BASE =============
     
     async def search_knowledge(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:

@@ -212,25 +212,63 @@ class FollowUpExecutorService:
                         qualification_id=qualification_id
                     )
                     
-                    # Marcar lembrete como executado
-                    await self.db.client.table('follow_ups').update({
-                        'status': 'executed',
-                        'executed_at': now.isoformat()
-                    }).eq('id', reminder['id']).execute()
+                    # Marcar lembrete como executado com compensação
+                    try:
+                        update_result = await self.db.update_follow_up_status_with_compensation(
+                            reminder['id'],
+                            'executed',
+                            executed_at=now
+                        )
+                        
+                        if not update_result.get("success"):
+                            logger.error(f"❌ Erro ao marcar lembrete como executado: {update_result.get('message')}")
+                    except Exception as db_error:
+                        logger.error(f"❌ Erro ao marcar lembrete como executado: {db_error}")
                     
                 except Exception as reminder_error:
                     logger.error(f"Erro ao processar lembrete {reminder['id']}: {reminder_error}")
-                    await self.db.client.table('follow_ups').update({
-                        'status': 'failed',
-                        'executed_at': now.isoformat(),
-                        'error_reason': str(reminder_error)
-                    }).eq('id', reminder['id']).execute()
+                    try:
+                        update_result = await self.db.update_follow_up_status_with_compensation(
+                            reminder['id'],
+                            'failed',
+                            executed_at=now
+                        )
+                        
+                        if not update_result.get("success"):
+                            logger.error(f"❌ Erro ao atualizar status do lembrete no banco: {update_result.get('message')}")
+                    except Exception as db_error:
+                        logger.error(f"❌ Erro ao atualizar status do lembrete no banco: {db_error}")
                 
         except Exception as e:
             logger.error(f"❌ Erro ao processar lembretes de reunião: {e}")
     
     async def _execute_followup_with_retry(self, followup: Dict[str, Any], max_retries: int = 3):
         """Executa um follow-up com retry automático em caso de falha"""
+        # Verificar se o lead já atingiu o limite de follow-ups
+        lead_id = followup.get('lead_id')
+        if lead_id:
+            followup_count = await self._get_lead_followup_count(lead_id)
+            if followup_count >= 3:  # Limite de 3 follow-ups por semana
+                logger.warning(f"⚠️ Limite de follow-ups atingido para lead {lead_id}. Cancelando execução.")
+                # Marcar follow-up como cancelado
+                await self.db.update_follow_up_status(
+                    followup['id'], 
+                    'cancelled',
+                    executed_at=datetime.now(timezone.utc)
+                )
+                return {"success": False, "error": "Follow-up limit reached"}
+            
+            # Verificar se o lead respondeu recentemente (últimas 24 horas)
+            if await self._has_lead_responded_recently(lead_id, 24):
+                logger.info(f"📞 Lead {lead_id} respondeu recentemente. Cancelando follow-up.")
+                # Marcar follow-up como cancelado
+                await self.db.update_follow_up_status(
+                    followup['id'], 
+                    'cancelled',
+                    executed_at=datetime.now(timezone.utc)
+                )
+                return {"success": False, "error": "Lead responded recently"}
+        
         for attempt in range(max_retries):
             try:
                 result = await self._execute_followup(followup)
@@ -257,6 +295,84 @@ class FollowUpExecutorService:
                     await asyncio.sleep(delay)
         
         return {"success": False, "error": "Max retries exceeded"}
+    
+    async def _get_lead_followup_count(self, lead_id: str) -> int:
+        """
+        Obtém o número de follow-ups enviados para um lead na última semana
+        
+        Args:
+            lead_id: ID do lead
+            
+        Returns:
+            Número de follow-ups enviados na última semana
+        """
+        try:
+            # Calcular data de uma semana atrás
+            one_week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+            
+            # Buscar follow-ups executados na última semana
+            result = self.db.client.table('follow_ups').select(
+                'count'
+            ).eq(
+                'lead_id', lead_id
+            ).eq(
+                'status', 'executed'
+            ).gte(
+                'executed_at', one_week_ago.isoformat()
+            ).execute()
+            
+            # Retornar contagem ou 0 se não houver resultados
+            return len(result.data) if result.data else 0
+            
+        except Exception as e:
+            logger.error(f"Erro ao obter contagem de follow-ups para lead {lead_id}: {e}")
+            return 0
+    
+    async def _has_lead_responded_recently(self, lead_id: str, hours: int = 24) -> bool:
+        """
+        Verifica se um lead respondeu recentemente (nas últimas X horas)
+        
+        Args:
+            lead_id: ID do lead
+            hours: Número de horas para verificar
+            
+        Returns:
+            True se o lead respondeu recentemente, False caso contrário
+        """
+        try:
+            # Calcular data de X horas atrás
+            since_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+            
+            # Buscar conversas do lead nas últimas X horas
+            result = self.db.client.table('conversations').select(
+                'messages'
+            ).eq(
+                'lead_id', lead_id
+            ).gte(
+                'updated_at', since_time.isoformat()
+            ).execute()
+            
+            # Verificar se há mensagens do usuário (role: 'user')
+            if result.data:
+                for conversation in result.data:
+                    messages = conversation.get('messages', [])
+                    if isinstance(messages, list):
+                        for message in messages:
+                            if isinstance(message, dict) and message.get('role') == 'user':
+                                message_time = message.get('timestamp')
+                                if message_time:
+                                    try:
+                                        msg_dt = datetime.fromisoformat(message_time.replace('Z', '+00:00'))
+                                        if msg_dt > since_time:
+                                            return True
+                                    except Exception:
+                                        pass
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Erro ao verificar respostas recentes do lead {lead_id}: {e}")
+            return False
     
     async def _execute_followup(self, followup: Dict[str, Any]):
         """Executa um follow-up individual"""
@@ -352,21 +468,24 @@ class FollowUpExecutorService:
                 logger.info(f"📱 DEBUG: Resultado do envio Evolution: {result}")
             
                 if result:
-                    # Marcar como executado
-                    update_result = self.db.client.table('follow_ups').update({
-                        'status': 'executed',
-                        'executed_at': datetime.now(timezone.utc).isoformat(),
-                        'response': json.dumps({'evolution_result': result})
-                    }).eq('id', followup['id']).execute()
-                    
-                    logger.info(f"✅ DEBUG: Follow-up marcado como executado no banco")
+                    logger.info(f"🧠✅ Follow-up EXECUTADO: {followup.get('id')} - {lead.get('name')}")
                     emoji_logger.whatsapp_sent(f"Follow-up enviado para {lead.get('name')}")
                     
-                    # Agendar próximo follow-up se necessário
-                    await self._schedule_next_followup(followup_type, lead, followup)
+                    # Marcar como executado no banco com compensação
+                    try:
+                        update_result = await self.db.update_follow_up_status_with_compensation(
+                            followup['id'], 
+                            'executed',
+                            executed_at=datetime.now(timezone.utc)
+                        )
+                        
+                        if not update_result.get("success"):
+                            logger.error(f"❌ Erro ao atualizar status do follow-up no banco: {update_result.get('message')}")
+                    except Exception as db_error:
+                        logger.error(f"❌ Erro ao atualizar status do follow-up no banco: {db_error}")
                 else:
-                    logger.error(f"❌ DEBUG: Falha no envio via Evolution. Result: {result}")
-                    await self._mark_followup_failed(followup['id'], "Falha no envio")
+                    logger.error(f"❌ Falha ao enviar follow-up para {lead.get('name')}")
+                    await self._mark_follow_up_failed(followup['id'], "Falha no envio via WhatsApp")
                     
             finally:
                 # 🔓 LIBERAR LOCK
@@ -758,18 +877,21 @@ Quer que eu te mostre as opções ideais para seu perfil?
         except Exception as e:
             logger.error(f"Erro ao marcar lead como não interessado: {e}")
     
-    async def _mark_followup_failed(self, followup_id: str, error_reason: str):
+    async def _mark_follow_up_failed(self, follow_up_id: str, error_reason: str):
         """Marca follow-up como falho"""
         try:
-            self.db.client.table('follow_ups').update({
-                'status': 'failed',
-                'executed_at': datetime.now(timezone.utc).isoformat(),
-                'error_reason': error_reason
-            }).eq('id', followup_id).execute()
+            result = await self.db.update_follow_up_status_with_compensation(
+                follow_up_id, 
+                'failed',
+                executed_at=datetime.now(timezone.utc)
+            )
             
-            logger.error(f"❌ Follow-up {followup_id} marcado como falho: {error_reason}")
+            if result.get("success"):
+                logger.error(f"❌ Follow-up {follow_up_id} marcado como falho: {error_reason}")
+            else:
+                logger.error(f"Erro ao marcar follow-up {follow_up_id} como falho: {result.get('message')}")
         except Exception as e:
-            logger.error(f"Erro ao marcar follow-up como falho: {e}")
+            logger.error(f"Erro ao marcar follow-up {follow_up_id} como falho: {e}")
     
     async def create_followup(self, followup_data: Dict[str, Any]) -> Dict[str, Any]:
         """Cria novo follow-up no banco"""
