@@ -1513,7 +1513,7 @@
   <!-- FLUXO D: USINA DE INVESTIMENTO -->
   <flow id="D" name="usina_investimento" trigger="option_4">
     <introduction>
-      Excelente escolha! A usina de investimento é uma modalidade onde você investe em energia solar como um ativo financeiro. Você adquire cotas de uma usina solar e recebe retornos mensais através da geração de energia, sem precisar instalar nada em seu imóvel. É como ter um investimento de renda fixa, mas com rentabilidade superior e ainda contribuindo para energia limpa! Me conta, o que te chamou atenção nessa modalidade? Você busca diversificar investimentos ou já conhece sobre energia solar como ativo?
+      Excelente escolha! A usina de investimento é uma modalidade onde você investe em energia solar como um ativo financeiro. Você adquire cotas de uma usina solar e recebe retornos mensais através da geração de energia, sem precisar instalar nada em seu imóvel. É como ter um investimento de renda fixa, mas com rentabilidade entre 2% a 3% por mês com um investimento mínimo de R$130.000.
     </introduction>
     
     <introduction_variations>

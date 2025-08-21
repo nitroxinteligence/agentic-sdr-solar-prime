@@ -622,10 +622,13 @@ async def process_message_with_agent(
             )
             return
 
-    response_text = await agentic.process_message(
+    response_text, updated_lead_info = await agentic.process_message(
         message=message_content,
         execution_context=execution_context
     )
+
+    if updated_lead_info and updated_lead_info.get("id"):
+        await supabase_client.update_lead(updated_lead_info["id"], updated_lead_info)
 
     final_response = extract_final_response(response_text)
     

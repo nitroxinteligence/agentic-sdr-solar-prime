@@ -88,7 +88,7 @@ class AgenticSDRStateless:
             self,
             message: str,
             execution_context: Dict[str, Any]
-    ) -> str:
+    ) -> tuple[str, Dict[str, Any]]:
         """
         Processa mensagem com contexto isolado
         """
@@ -171,7 +171,7 @@ class AgenticSDRStateless:
             emoji_logger.system_success(
                 f"Resposta gerada: {response[:100]}..."
             )
-            return response_formatter.ensure_response_tags(response)
+            return response_formatter.ensure_response_tags(response), lead_info
 
         except Exception as e:
             import traceback
