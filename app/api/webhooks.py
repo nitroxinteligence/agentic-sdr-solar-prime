@@ -671,10 +671,3 @@ async def process_message_with_agent(
             except Exception as conv_error:
                 emoji_logger.system_error("WEBHOOK", f"❌ Falha ao criar conversa: {conv_error}")
                 return
-
-async def process_message_with_agent(
-    phone: str,
-    message_content: str,
-    original_message: Dict[str, Any],
-    message_id: str
-):
