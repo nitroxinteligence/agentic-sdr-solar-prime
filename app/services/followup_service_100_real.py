@@ -30,43 +30,43 @@ class FollowUpServiceReal:
             "apikey": self.api_key,
             "Content-Type": "application/json"
         }
-        self.session = None
         self.db = SupabaseClient()
         self._session_timeout = aiohttp.ClientTimeout(total=30)
+
+    async def _get_session(self):
+        connector = aiohttp.TCPConnector(
+            limit=10, limit_per_host=5, ttl_dns_cache=300
+        )
+        return aiohttp.ClientSession(
+            connector=connector, timeout=self._session_timeout
+        )
 
     async def initialize(self):
         """Inicializa conexão REAL com Evolution API"""
         if self.is_initialized:
             return
         try:
-            connector = aiohttp.TCPConnector(
-                limit=10, limit_per_host=5, ttl_dns_cache=300
-            )
-            self.session = aiohttp.ClientSession(
-                connector=connector, timeout=self._session_timeout
-            )
             if settings.environment == "development" or settings.debug:
                 emoji_logger.service_ready(
                     "🔧 Evolution API em modo desenvolvimento"
                 )
                 self.is_initialized = True
                 return
-            async with self.session.get(
-                f"{self.evolution_url}/instance/fetchInstances",
-                headers=self.headers
-            ) as response:
-                if response.status == 200:
-                    instances = await response.json()
-                    emoji_logger.service_ready(
-                        f"✅ Evolution API conectada: {len(instances)} instâncias"
-                    )
-                    self.is_initialized = True
-                else:
-                    raise Exception(f"Erro ao conectar: {response.status}")
+            async with await self._get_session() as session:
+                async with session.get(
+                    f"{self.evolution_url}/instance/fetchInstances",
+                    headers=self.headers
+                ) as response:
+                    if response.status == 200:
+                        instances = await response.json()
+                        emoji_logger.service_ready(
+                            f"✅ Evolution API conectada: {len(instances)} instâncias"
+                        )
+                        self.is_initialized = True
+                    else:
+                        raise Exception(f"Erro ao conectar: {response.status}")
         except Exception as e:
             emoji_logger.service_error(f"Erro ao conectar Evolution: {e}")
-            if self.session:
-                await self._close_session_safely()
             raise
 
     async def schedule_followup(
@@ -92,7 +92,7 @@ class FollowUpServiceReal:
                 "status": "pending", "type": "reminder",
                 "created_at": datetime.now().isoformat()
             }
-            result = await self.db.save_followup(followup_data)
+            result = await self.db.create_follow_up(followup_data)
             followup_id = result.get(
                 "id", f"followup_{datetime.now().timestamp()}"
             )
@@ -127,23 +127,24 @@ class FollowUpServiceReal:
                 clean_phone = '55' + clean_phone
             whatsapp_number = f"{clean_phone}@s.whatsapp.net"
             payload = {"number": whatsapp_number, "text": message}
-            async with self.session.post(
-                f"{self.evolution_url}/message/sendText/{self.instance_name}",
-                headers=self.headers, json=payload
-            ) as response:
-                if response.status in [200, 201]:
-                    result = await response.json()
-                    emoji_logger.followup_event(
-                        f"✅ Mensagem REAL enviada para {clean_phone}"
-                    )
-                    return {
-                        "success": True,
-                        "message_id": result.get("key", {}).get("id"),
-                        "message": "Mensagem enviada com sucesso", "real": True
-                    }
-                else:
-                    error = await response.text()
-                    raise Exception(f"Erro {response.status}: {error}")
+            async with await self._get_session() as session:
+                async with session.post(
+                    f"{self.evolution_url}/message/sendText/{self.instance_name}",
+                    headers=self.headers, json=payload
+                ) as response:
+                    if response.status in [200, 201]:
+                        result = await response.json()
+                        emoji_logger.followup_event(
+                            f"✅ Mensagem REAL enviada para {clean_phone}"
+                        )
+                        return {
+                            "success": True,
+                            "message_id": result.get("key", {}).get("id"),
+                            "message": "Mensagem enviada com sucesso", "real": True
+                        }
+                    else:
+                        error = await response.text()
+                        raise Exception(f"Erro {response.status}: {error}")
         except Exception as e:
             emoji_logger.service_error(f"Erro ao enviar mensagem: {e}")
             return {
@@ -176,12 +177,12 @@ class FollowUpServiceReal:
                         followup.get("phone_number", ""), followup["message"]
                     )
                     if result["success"]:
-                        await self.db.update_followup_status(
+                        await self.db.update_follow_up_status(
                             followup["id"], "executed"
                         )
                         executed += 1
                     else:
-                        await self.db.update_followup_status(
+                        await self.db.update_follow_up_status(
                             followup["id"], "failed"
                         )
                         failed += 1
@@ -201,20 +202,7 @@ class FollowUpServiceReal:
 
     async def close(self):
         """Fecha conexões de forma segura"""
-        await self._close_session_safely()
-
-    async def _close_session_safely(self):
-        """Fecha sessão aiohttp de forma segura"""
-        if self.session and not self.session.closed:
-            try:
-                await self.session.close()
-                await asyncio.sleep(0.1)
-            except Exception as e:
-                emoji_logger.service_warning(
-                    f"Aviso ao fechar sessão FollowUp: {e}"
-                )
-            finally:
-                self.session = None
+        pass
 
     async def _get_or_create_supabase_lead_id(
             self, lead_info: Dict[str, Any]

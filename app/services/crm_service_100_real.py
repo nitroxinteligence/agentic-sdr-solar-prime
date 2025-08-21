@@ -68,7 +68,6 @@ class CRMServiceReal:
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json"
         }
-        self.session = None
         self._session_timeout = aiohttp.ClientTimeout(total=30)
         self._stages_cache = None
         self._cache_ttl = 3600
@@ -95,44 +94,45 @@ class CRMServiceReal:
             "Compra com Desconto": 1078620, "Usina Investimento": 1078622
         }
 
+    async def _get_session(self):
+        connector = aiohttp.TCPConnector(
+            limit=10, limit_per_host=5, ttl_dns_cache=300
+        )
+        return aiohttp.ClientSession(
+            connector=connector, timeout=self._session_timeout
+        )
+
     @handle_kommo_errors(max_retries=3, delay=10.0)
     async def initialize(self):
         """Inicializa conexão REAL com Kommo CRM"""
         if self.is_initialized:
             return
         try:
-            connector = aiohttp.TCPConnector(
-                limit=10, limit_per_host=5, ttl_dns_cache=300
-            )
-            self.session = aiohttp.ClientSession(
-                connector=connector, timeout=self._session_timeout
-            )
             await wait_for_kommo()
-            async with self.session.get(
-                f"{self.base_url}/api/v4/account", headers=self.headers
-            ) as response:
-                if response.status == 200:
-                    account = await response.json()
-                    emoji_logger.service_ready(
-                        f"✅ Kommo CRM conectado: {account.get('name', 'CRM')}"
-                    )
-                    await self._fetch_custom_fields()
-                    await self._fetch_pipeline_stages()
-                    self.is_initialized = True
-                else:
-                    error_text = await response.text()
-                    raise KommoAPIException(
-                        f"Erro ao conectar Kommo: {response.status} - {error_text}",
-                        error_code="KOMMO_CONNECTION_ERROR",
-                        details={
-                            "status_code": response.status,
-                            "response": error_text
-                        }
-                    )
+            async with await self._get_session() as session:
+                async with session.get(
+                    f"{self.base_url}/api/v4/account", headers=self.headers
+                ) as response:
+                    if response.status == 200:
+                        account = await response.json()
+                        emoji_logger.service_ready(
+                            f"✅ Kommo CRM conectado: {account.get('name', 'CRM')}"
+                        )
+                        await self._fetch_custom_fields()
+                        await self._fetch_pipeline_stages()
+                        self.is_initialized = True
+                    else:
+                        error_text = await response.text()
+                        raise KommoAPIException(
+                            f"Erro ao conectar Kommo: {response.status} - {error_text}",
+                            error_code="KOMMO_CONNECTION_ERROR",
+                            details={
+                                "status_code": response.status,
+                                "response": error_text
+                            }
+                        )
         except Exception as e:
             emoji_logger.service_error(f"Erro ao conectar Kommo: {e}")
-            if self.session:
-                await self._close_session_safely()
             if not isinstance(e, KommoAPIException):
                 raise KommoAPIException(
                     f"Erro ao conectar Kommo: {e}",
@@ -146,44 +146,45 @@ class CRMServiceReal:
         """Busca IDs dos campos customizados dinamicamente"""
         try:
             await wait_for_kommo()
-            async with self.session.get(
-                f"{self.base_url}/api/v4/leads/custom_fields",
-                headers=self.headers
-            ) as response:
-                if response.status == 200:
-                    fields = await response.json()
-                    field_mapping = {
-                        "whatsapp": "phone", "telefone": "phone",
-                        "phone": "phone", "valor conta energia": "bill_value",
-                        "valor_conta_energia": "bill_value",
-                        "valor da conta": "bill_value",
-                        "valor conta": "bill_value",
-                        "solução solar": "solution_type",
-                        "solucao solar": "solution_type",
-                        "tipo de solução": "solution_type",
-                        "link do evento no google calendar": "calendar_link",
-                        "link do evento": "calendar_link",
-                        "google calendar": "calendar_link",
-                        "calendario": "calendar_link",
-                        "local da instalação": "location",
-                        "local_da_instalação": "location",
-                        "localização": "location", "endereço": "location",
-                        "score qualificação": "score",
-                        "score_qualificação": "score", "score": "score",
-                        "id conversa": "conversation_id",
-                        "id_conversa": "conversation_id"
-                    }
-                    for field in fields.get(
-                            "_embedded", {}
-                    ).get("custom_fields", []):
-                        field_name_lower = field.get("name", "").lower()
-                        for key, mapped_name in field_mapping.items():
-                            if key in field_name_lower:
-                                self.custom_fields[mapped_name] = field.get("id")
-                                break
-                    emoji_logger.service_info(
-                        f"📊 {len(self.custom_fields)} campos customizados mapeados"
-                    )
+            async with await self._get_session() as session:
+                async with session.get(
+                    f"{self.base_url}/api/v4/leads/custom_fields",
+                    headers=self.headers
+                ) as response:
+                    if response.status == 200:
+                        fields = await response.json()
+                        field_mapping = {
+                            "whatsapp": "phone", "telefone": "phone",
+                            "phone": "phone", "valor conta energia": "bill_value",
+                            "valor_conta_energia": "bill_value",
+                            "valor da conta": "bill_value",
+                            "valor conta": "bill_value",
+                            "solução solar": "solution_type",
+                            "solucao solar": "solution_type",
+                            "tipo de solução": "solution_type",
+                            "link do evento no google calendar": "calendar_link",
+                            "link do evento": "calendar_link",
+                            "google calendar": "calendar_link",
+                            "calendario": "calendar_link",
+                            "local da instalação": "location",
+                            "local_da_instalação": "location",
+                            "localização": "location", "endereço": "location",
+                            "score qualificação": "score",
+                            "score_qualificação": "score", "score": "score",
+                            "id conversa": "conversation_id",
+                            "id_conversa": "conversation_id"
+                        }
+                        for field in fields.get(
+                                "_embedded", {}
+                        ).get("custom_fields", []):
+                            field_name_lower = field.get("name", "").lower()
+                            for key, mapped_name in field_mapping.items():
+                                if key in field_name_lower:
+                                    self.custom_fields[mapped_name] = field.get("id")
+                                    break
+                        emoji_logger.service_info(
+                            f"📊 {len(self.custom_fields)} campos customizados mapeados"
+                        )
         except Exception as e:
             emoji_logger.service_warning(
                 f"Erro ao buscar campos customizados: {e}"
@@ -208,32 +209,33 @@ class CRMServiceReal:
             return
         try:
             await wait_for_kommo()
-            async with self.session.get(
-                f"{self.base_url}/api/v4/leads/pipelines",
-                headers=self.headers
-            ) as response:
-                if response.status == 200:
-                    pipelines = await response.json()
-                    for pipeline in pipelines.get(
-                            "_embedded", {}
-                    ).get("pipelines", []):
-                        if pipeline.get("id") == self.pipeline_id:
-                            self.stage_map = {}
-                            for status in pipeline.get(
-                                    "_embedded", {}
-                            ).get("statuses", []):
-                                stage_name = status.get("name", "").lower()
-                                stage_id = status.get("id")
-                                self.stage_map[
-                                    stage_name.replace(" ", "_")
-                                ] = stage_id
-                                self.stage_map[stage_name.upper()] = stage_id
-                            self._stages_cache = self.stage_map
-                            self._cache_timestamp = time.time()
-                            emoji_logger.service_info(
-                                f"📊 {len(self.stage_map)} estágios mapeados"
-                            )
-                            break
+            async with await self._get_session() as session:
+                async with session.get(
+                    f"{self.base_url}/api/v4/leads/pipelines",
+                    headers=self.headers
+                ) as response:
+                    if response.status == 200:
+                        pipelines = await response.json()
+                        for pipeline in pipelines.get(
+                                "_embedded", {}
+                        ).get("pipelines", []):
+                            if pipeline.get("id") == self.pipeline_id:
+                                self.stage_map = {}
+                                for status in pipeline.get(
+                                        "_embedded", {}
+                                ).get("statuses", []):
+                                    stage_name = status.get("name", "").lower()
+                                    stage_id = status.get("id")
+                                    self.stage_map[
+                                        stage_name.replace(" ", "_")
+                                    ] = stage_id
+                                    self.stage_map[stage_name.upper()] = stage_id
+                                self._stages_cache = self.stage_map
+                                self._cache_timestamp = time.time()
+                                emoji_logger.service_info(
+                                    f"📊 {len(self.stage_map)} estágios mapeados"
+                                )
+                                break
         except Exception as e:
             emoji_logger.service_warning(f"Erro ao buscar estágios: {e}")
             missing_stages = [
@@ -295,34 +297,35 @@ class CRMServiceReal:
             if custom_fields:
                 kommo_lead["custom_fields_values"] = custom_fields
             await wait_for_kommo()
-            async with self.session.post(
-                f"{self.base_url}/api/v4/leads",
-                headers=self.headers,
-                json=[kommo_lead]
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    lead_id = result.get(
-                        "_embedded", {}
-                    ).get("leads", [{}])[0].get("id")
-                    emoji_logger.crm_event(
-                        f"✅ Lead CRIADO no Kommo: {kommo_lead['name']} - "
-                        f"ID: {lead_id}"
-                    )
-                    return {
-                        "success": True, "lead_id": lead_id,
-                        "message": "Lead criado com sucesso"
-                    }
-                else:
-                    error_text = await response.text()
-                    raise KommoAPIException(
-                        f"Erro ao criar lead: {response.status} - {error_text}",
-                        error_code="KOMMO_CREATE_LEAD_ERROR",
-                        details={
-                            "status_code": response.status,
-                            "response": error_text
+            async with await self._get_session() as session:
+                async with session.post(
+                    f"{self.base_url}/api/v4/leads",
+                    headers=self.headers,
+                    json=[kommo_lead]
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        lead_id = result.get(
+                            "_embedded", {}
+                        ).get("leads", [{}])[0].get("id")
+                        emoji_logger.crm_event(
+                            f"✅ Lead CRIADO no Kommo: {kommo_lead['name']} - "
+                            f"ID: {lead_id}"
+                        )
+                        return {
+                            "success": True, "lead_id": lead_id,
+                            "message": "Lead criado com sucesso"
                         }
-                    )
+                    else:
+                        error_text = await response.text()
+                        raise KommoAPIException(
+                            f"Erro ao criar lead: {response.status} - {error_text}",
+                            error_code="KOMMO_CREATE_LEAD_ERROR",
+                            details={
+                                "status_code": response.status,
+                                "response": error_text
+                            }
+                        )
         except Exception as e:
             emoji_logger.service_error(f"Erro ao criar lead no Kommo: {e}")
             if not isinstance(e, KommoAPIException):
@@ -381,28 +384,29 @@ class CRMServiceReal:
             if not kommo_update:
                 return {"success": True, "message": "Nenhum dado para atualizar"}
             await wait_for_kommo()
-            async with self.session.patch(
-                f"{self.base_url}/api/v4/leads",
-                headers=self.headers,
-                json={"update": [{"id": int(lead_id), **kommo_update}]}
-            ) as response:
-                if response.status == 200:
-                    emoji_logger.crm_event(
-                        f"✅ Lead {lead_id} ATUALIZADO no Kommo"
-                    )
-                    return {
-                        "success": True, "message": "Lead atualizado com sucesso"
-                    }
-                else:
-                    error_text = await response.text()
-                    raise KommoAPIException(
-                        f"Erro ao atualizar lead: {response.status} - {error_text}",
-                        error_code="KOMMO_UPDATE_LEAD_ERROR",
-                        details={
-                            "status_code": response.status,
-                            "response": error_text
+            async with await self._get_session() as session:
+                async with session.patch(
+                    f"{self.base_url}/api/v4/leads",
+                    headers=self.headers,
+                    json={"update": [{"id": int(lead_id), **kommo_update}]}
+                ) as response:
+                    if response.status == 200:
+                        emoji_logger.crm_event(
+                            f"✅ Lead {lead_id} ATUALIZADO no Kommo"
+                        )
+                        return {
+                            "success": True, "message": "Lead atualizado com sucesso"
                         }
-                    )
+                    else:
+                        error_text = await response.text()
+                        raise KommoAPIException(
+                            f"Erro ao atualizar lead: {response.status} - {error_text}",
+                            error_code="KOMMO_UPDATE_LEAD_ERROR",
+                            details={
+                                "status_code": response.status,
+                                "response": error_text
+                            }
+                        )
         except Exception as e:
             emoji_logger.service_error(f"Erro ao atualizar lead no Kommo: {e}")
             if not isinstance(e, KommoAPIException):
@@ -460,32 +464,33 @@ class CRMServiceReal:
             return json.loads(cached_lead)
         try:
             await wait_for_kommo()
-            async with self.session.get(
-                f"{self.base_url}/api/v4/leads",
-                headers=self.headers,
-                params={"query": clean_phone}
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    leads = result.get("_embedded", {}).get("leads", [])
-                    if leads:
-                        lead = leads[0]
-                        await redis_client.set(
-                            cache_key, json.dumps(lead), ttl=300
+            async with await self._get_session() as session:
+                async with session.get(
+                    f"{self.base_url}/api/v4/leads",
+                    headers=self.headers,
+                    params={"query": clean_phone}
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        leads = result.get("_embedded", {}).get("leads", [])
+                        if leads:
+                            lead = leads[0]
+                            await redis_client.set(
+                                cache_key, json.dumps(lead), ttl=300
+                            )
+                            return lead
+                        return None
+                    else:
+                        error_text = await response.text()
+                        raise KommoAPIException(
+                            f"Erro ao buscar lead por telefone: {response.status} - "
+                            f"{error_text}",
+                            error_code="KOMMO_GET_LEAD_BY_PHONE_ERROR",
+                            details={
+                                "status_code": response.status,
+                                "response": error_text
+                            }
                         )
-                        return lead
-                    return None
-                else:
-                    error_text = await response.text()
-                    raise KommoAPIException(
-                        f"Erro ao buscar lead por telefone: {response.status} - "
-                        f"{error_text}",
-                        error_code="KOMMO_GET_LEAD_BY_PHONE_ERROR",
-                        details={
-                            "status_code": response.status,
-                            "response": error_text
-                        }
-                    )
         except Exception as e:
             emoji_logger.service_error(
                 f"Erro ao buscar lead por telefone {phone}: {e}"
@@ -516,33 +521,34 @@ class CRMServiceReal:
                 "updated_at": int(datetime.now().timestamp())
             }
             await wait_for_kommo()
-            async with self.session.patch(
-                f"{self.base_url}/api/v4/leads",
-                headers=self.headers,
-                json={"update": [{"id": int(lead_id), **update_data}]}
-            ) as response:
-                if response.status == 200:
-                    emoji_logger.crm_event(
-                        f"✅ Lead {lead_id} movido para '{stage_name}'"
-                    )
-                    if notes:
-                        await self.add_note_to_lead(lead_id, notes)
-                    return {
-                        "success": True,
-                        "message": f"Lead movido para {stage_name}",
-                        "stage_id": stage_id, "lead_id": lead_id
-                    }
-                else:
-                    error_text = await response.text()
-                    raise KommoAPIException(
-                        f"Erro ao atualizar estágio: {response.status} - "
-                        f"{error_text}",
-                        error_code="KOMMO_UPDATE_STAGE_ERROR",
-                        details={
-                            "status_code": response.status,
-                            "response": error_text
+            async with await self._get_session() as session:
+                async with session.patch(
+                    f"{self.base_url}/api/v4/leads",
+                    headers=self.headers,
+                    json={"update": [{"id": int(lead_id), **update_data}]}
+                ) as response:
+                    if response.status == 200:
+                        emoji_logger.crm_event(
+                            f"✅ Lead {lead_id} movido para '{stage_name}'"
+                        )
+                        if notes:
+                            await self.add_note_to_lead(lead_id, notes)
+                        return {
+                            "success": True,
+                            "message": f"Lead movido para {stage_name}",
+                            "stage_id": stage_id, "lead_id": lead_id
                         }
-                    )
+                    else:
+                        error_text = await response.text()
+                        raise KommoAPIException(
+                            f"Erro ao atualizar estágio: {response.status} - "
+                            f"{error_text}",
+                            error_code="KOMMO_UPDATE_STAGE_ERROR",
+                            details={
+                                "status_code": response.status,
+                                "response": error_text
+                            }
+                        )
         except Exception as e:
             emoji_logger.service_error(
                 f"Erro ao atualizar estágio do lead {lead_id}: {e}"
@@ -556,22 +562,6 @@ class CRMServiceReal:
             else:
                 raise
 
-    async def _close_session_safely(self):
-        """Fecha sessão HTTP com segurança"""
-        try:
-            if self.session:
-                await self.session.close()
-                self.session = None
-        except Exception as e:
-            emoji_logger.service_warning(f"Aviso ao fechar sessão CRM: {e}")
-
     async def close(self):
         """Fecha conexão com Kommo CRM"""
-        try:
-            if self.session and not self.session.closed:
-                await self.session.close()
-                self.session = None
-            self.is_initialized = False
-        except Exception as e:
-            emoji_logger.service_error(f"Erro ao fechar sessão Kommo: {e}")
-            raise
+        self.is_initialized = False
