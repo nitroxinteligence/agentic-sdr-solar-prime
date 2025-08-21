@@ -259,6 +259,10 @@ class EmojiLogger:
         )
 
     @classmethod
+    def webhook_process(cls, message: str, **kwargs):
+        cls.log_with_emoji("INFO", "webhook_process", message, **kwargs)
+
+    @classmethod
     def system_start(cls, component: str, **kwargs):
         cls.log_with_emoji(
             "INFO", "system_start", f"Iniciando {component}", **kwargs
