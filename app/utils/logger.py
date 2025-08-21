@@ -249,6 +249,16 @@ class EmojiLogger:
         )
 
     @classmethod
+    def evolution_receive(cls, from_number: str, message_type: str, **kwargs):
+        kwargs.update({"sender": from_number, "type": message_type})
+        cls.log_with_emoji(
+            "INFO",
+            "evolution_receive",
+            f"Recebido {message_type} de {from_number}",
+            **kwargs,
+        )
+
+    @classmethod
     def webhook_receive(cls, endpoint: str, source: str, **kwargs):
         kwargs.update({"endpoint": endpoint, "source": source})
         cls.log_with_emoji(
