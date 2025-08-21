@@ -63,7 +63,10 @@ class AgenticSDRStateless:
             self.lead_manager.initialize()
             self.context_analyzer.initialize()
             await self.conversation_monitor.initialize()
-            await self.calendar_service.initialize()
+            try:
+                await self.calendar_service.initialize()
+            except Exception as e:
+                emoji_logger.system_warning(f"Falha ao inicializar CalendarService: {e}. O agente continuará sem funcionalidades de calendário.")
             await self.crm_service.initialize()
             await self.followup_service.initialize()
             

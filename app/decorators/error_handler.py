@@ -48,8 +48,7 @@ def async_handle_errors(retry_policy: str = 'generic', max_retries: int = 3, del
                     
                     # Log retry attempt
                     emoji_logger.system_warning(
-                        "Retry", 
-                        f"Attempt {attempt + 1}/{max_retries + 1} failed for {func.__name__}: {str(e)}"
+                        f"Retry Attempt {attempt + 1}/{max_retries + 1} for {func.__name__}: {str(e)}"
                     )
                     
                     # Calculate delay with exponential backoff

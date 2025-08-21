@@ -48,28 +48,30 @@ class CalendarServiceReal:
             self.service = self.oauth_handler.build_calendar_service()
             
             if not self.service:
-                emoji_logger.service_error("❌ Não foi possível construir serviço - autorização OAuth necessária")
-                raise Exception("OAuth 2.0 não autorizado. Execute /google/auth para autorizar")
+                emoji_logger.service_error("Não foi possível construir serviço - autorização OAuth necessária. Execute /google/auth para autorizar.")
+                return # Não levanta mais exceção, apenas falha em inicializar
             
             # Testar conexão
             if self.calendar_id:
                 calendar = self.service.calendars().get(calendarId=self.calendar_id).execute()
-                emoji_logger.service_ready(f"✅ Google Calendar conectado via OAuth: {calendar.get('summary', 'Calendar')}")
+                emoji_logger.service_ready(f"Google Calendar conectado via OAuth: {calendar.get('summary', 'Calendar')}")
             else:
                 # Usar calendário primário se ID não especificado
                 calendar_list = self.service.calendarList().list().execute()
                 primary_calendar = next((cal for cal in calendar_list.get('items', []) if cal.get('primary')), None)
                 if primary_calendar:
                     self.calendar_id = primary_calendar.get('id')
-                    emoji_logger.service_ready(f"✅ Google Calendar conectado via OAuth: {primary_calendar.get('summary', 'Primary Calendar')}")
+                    emoji_logger.service_ready(f"Google Calendar conectado via OAuth: {primary_calendar.get('summary', 'Primary Calendar')}")
                 else:
-                    raise Exception("Nenhum calendário encontrado")
+                    emoji_logger.service_error("Nenhum calendário primário encontrado na conta do Google.")
+                    return
             
             self.is_initialized = True
             
         except Exception as e:
             emoji_logger.service_error(f"Erro ao conectar Google Calendar: {e}")
-            raise
+            # Não levanta mais exceção, apenas falha em inicializar
+            self.is_initialized = False
     
     def is_business_hours(self, datetime_obj: datetime) -> bool:
         """
