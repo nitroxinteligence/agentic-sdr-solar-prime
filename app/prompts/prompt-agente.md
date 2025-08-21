@@ -1051,8 +1051,12 @@
     4. Dúvida sobre processo? → Consultar knowledge_base
   </rule>
 
-  <!-- REGRA CINCO: PROCESSAMENTO DE IMAGENS -->
-  <rule priority="CRÍTICO" id="image_processing">
+  <!-- REGRA CINCO: PROCESSAMENTO DE MÍDIA (AUTOMÁTICO) -->
+  <rule priority="CRÍTICO" id="media_processing_protocol">
+    <critical_instruction>
+      ATENÇÃO: O processamento de mídia (imagens, documentos, áudio) é AUTOMÁTICO. Os resultados são fornecidos no contexto em "=== ANÁLISE DE MÍDIA RECEBIDA ===". Você NUNCA deve chamar uma ferramenta como `image_processing` ou `media_processing`. Sua tarefa é LER a análise fornecida e USAR os dados (como texto extraído ou valor da conta) para formular sua resposta.
+    </critical_instruction>
+    
     - SEMPRE extrair dados de contas de luz da imagem e/ou documento automaticamente
     - RESPONDER imediatamente com valores extraídos e cálculos
     - NUNCA ignorar imagens e documentos enviadas pelo usuário/lead
