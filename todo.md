@@ -1,89 +1,25 @@
-app/api/health.py:248:6: W292 no newline at end of file
-app/api/webhooks.py:83:1: E302 expected 2 blank lines, found 1
-app/api/webhooks.py:216:80: E501 line too long (80 > 79 characters)
-app/api/webhooks.py:333:1: E302 expected 2 blank lines, found 1
-app/api/webhooks.py:344:1: E302 expected 2 blank lines, found 1
-app/api/webhooks.py:430:80: E501 line too long (80 > 79 characters)
-app/config.py:372:57: W291 trailing whitespace
-app/core/context_analyzer.py:258:80: E501 line too long (81 > 79 characters)
-app/core/context_analyzer.py:261:80: E501 line too long (80 > 79 characters)
-app/core/context_analyzer.py:267:80: E501 line too long (82 > 79 characters)
-app/core/context_analyzer.py:475:80: E501 line too long (82 > 79 characters)
-app/core/context_analyzer.py:477:23: W292 no newline at end of file
-app/core/lead_manager.py:231:80: E501 line too long (80 > 79 characters)
-app/core/model_manager.py:322:10: W292 no newline at end of file
-app/core/multimodal_processor.py:319:80: E501 line too long (85 > 79 characters)
-app/core/multimodal_processor.py:320:80: E501 line too long (80 > 79 characters)
-app/core/multimodal_processor.py:355:80: E501 line too long (81 > 79 characters)
-app/core/response_formatter.py:23:80: E501 line too long (80 > 79 characters)
-app/core/response_formatter.py:138:80: E501 line too long (83 > 79 characters)
-app/decorators/error_handler.py:66:80: E501 line too long (80 > 79 characters)
-app/integrations/evolution.py:76:80: E501 line too long (82 > 79 characters)
-app/integrations/evolution.py:94:80: E501 line too long (82 > 79 characters)
-app/integrations/evolution.py:99:80: E501 line too long (80 > 79 characters)
-app/integrations/evolution.py:108:80: E501 line too long (84 > 79 characters)
-app/integrations/evolution.py:271:80: E501 line too long (80 > 79 characters)
-app/integrations/evolution.py:462:80: E501 line too long (80 > 79 characters)
-app/integrations/evolution.py:803:80: E501 line too long (80 > 79 characters)
-app/integrations/google_oauth_handler.py:3:80: E501 line too long (90 > 79 characters)
-app/integrations/google_oauth_handler.py:60:80: E501 line too long (83 > 79 characters)
-app/integrations/google_oauth_handler.py:63:80: E501 line too long (99 > 79 characters)
-app/integrations/google_oauth_handler.py:101:80: E501 line too long (83 > 79 characters)
-app/integrations/google_oauth_handler.py:104:80: E501 line too long (99 > 79 characters)
-app/integrations/google_oauth_handler.py:117:80: E501 line too long (80 > 79 characters)
-app/integrations/google_oauth_handler.py:164:80: E501 line too long (80 > 79 characters)
-app/integrations/google_oauth_handler.py:198:80: E501 line too long (80 > 79 characters)
-app/integrations/google_oauth_handler.py:253:80: E501 line too long (80 > 79 characters)
-app/integrations/google_oauth_handler.py:301:54: W291 trailing whitespace
-app/integrations/google_oauth_handler.py:302:41: W291 trailing whitespace
-app/integrations/google_oauth_handler.py:303:49: W291 trailing whitespace
-app/integrations/google_oauth_handler.py:304:44: W291 trailing whitespace
-app/integrations/redis_client.py:41:80: E501 line too long (86 > 79 characters)
-app/integrations/redis_client.py:43:80: E501 line too long (81 > 79 characters)
-app/integrations/redis_client.py:47:80: E501 line too long (86 > 79 characters)
-app/integrations/supabase_client.py:595:80: E501 line too long (80 > 79 characters)
-app/integrations/supabase_client.py:623:35: W292 no newline at end of file
-app/services/audio_transcriber.py:3:80: E501 line too long (81 > 79 characters)
-app/services/audio_transcriber.py:211:80: E501 line too long (87 > 79 characters)
-app/services/audio_transcriber.py:226:80: E501 line too long (80 > 79 characters)
-app/services/audio_transcriber.py:241:80: E501 line too long (87 > 79 characters)
-app/services/calendar_service_100_real.py:45:80: E501 line too long (88 > 79 characters)
-app/services/calendar_service_100_real.py:68:80: E501 line too long (80 > 79 characters)
-app/services/calendar_service_100_real.py:134:80: E501 line too long (82 > 79 characters)
-app/services/calendar_service_100_real.py:168:80: E501 line too long (80 > 79 characters)
-app/services/calendar_service_100_real.py:279:80: E501 line too long (80 > 79 characters)
-app/services/conversation_monitor.py:149:80: E501 line too long (80 > 79 characters)
-app/services/crm_service_100_real.py:40:80: E501 line too long (82 > 79 characters)
-app/services/crm_service_100_real.py:125:80: E501 line too long (84 > 79 characters)
-app/services/crm_service_100_real.py:182:80: E501 line too long (81 > 79 characters)
-app/services/crm_service_100_real.py:185:80: E501 line too long (83 > 79 characters)
-app/services/crm_service_100_real.py:319:80: E501 line too long (80 > 79 characters)
-app/services/crm_service_100_real.py:382:80: E501 line too long (81 > 79 characters)
-app/services/crm_service_100_real.py:394:80: E501 line too long (81 > 79 characters)
-app/services/crm_service_100_real.py:399:80: E501 line too long (84 > 79 characters)
-app/services/crm_service_100_real.py:481:80: E501 line too long (81 > 79 characters)
-app/services/crm_service_100_real.py:577:18: W292 no newline at end of file
-app/services/followup_executor_service.py:70:80: E501 line too long (85 > 79 characters)
-app/services/followup_executor_service.py:89:80: E501 line too long (80 > 79 characters)
-app/services/followup_executor_service.py:98:80: E501 line too long (83 > 79 characters)
-app/services/followup_executor_service.py:103:80: E501 line too long (82 > 79 characters)
-app/services/followup_service_100_real.py:61:80: E501 line too long (81 > 79 characters)
-app/services/followup_service_100_real.py:251:80: E501 line too long (80 > 79 characters)
-app/services/followup_worker.py:69:80: E501 line too long (80 > 79 characters)
-app/services/followup_worker.py:78:80: E501 line too long (80 > 79 characters)
-app/services/followup_worker.py:91:80: E501 line too long (81 > 79 characters)
-app/services/message_buffer.py:26:80: E501 line too long (83 > 79 characters)
-app/services/message_buffer.py:65:80: E501 line too long (80 > 79 characters)
-app/services/rate_limiter.py:18:80: E501 line too long (80 > 79 characters)
-app/services/typing_controller.py:39:80: E501 line too long (80 > 79 characters)
-app/utils/agno_media_detection.py:172:1: E999 SyntaxError: invalid syntax
-app/utils/gemini_retry.py:47:80: E501 line too long (80 > 79 characters)
-app/utils/gemini_retry.py:112:80: E501 line too long (81 > 79 characters)
-app/utils/logger.py:45:80: E501 line too long (80 > 79 characters)
-app/utils/retry_handler.py:47:80: E501 line too long (80 > 79 characters)
-app/utils/retry_handler.py:67:80: E501 line too long (83 > 79 characters)
-app/utils/retry_handler.py:74:80: E501 line too long (85 > 79 characters)
-app/utils/retry_handler.py:79:80: E501 line too long (82 > 79 characters)
-app/utils/safe_conversions.py:33:80: E501 line too long (82 > 79 characters)
-app/utils/safe_conversions.py:56:80: E501 line too long (84 > 79 characters)
-app/utils/supabase_storage.py:2:80: E501 line too long (82 > 79 characters)
+# TODO - Plano de Correção do Agente
+
+## Tarefa 1: Corrigir a Retenção de Contexto
+
+- [x] **Modificar `app/core/lead_manager.py`**:
+    - [x] Alterar a função `extract_lead_info` para que ela não re-processe o histórico inteiro a cada chamada.
+    - [x] A lógica deve iterar apenas sobre as mensagens mais recentes (as que ainda não foram processadas) para extrair novas informações e adicioná-las ao `existing_lead_info`.
+    - [x] Garantir que as informações existentes (como `name`, `bill_value`, etc.) não sejam sobrescritas com `None` se não forem encontradas nas mensagens mais recentes.
+
+- [x] **Verificar `app/agents/agentic_sdr_stateless.py`**:
+    - [x] Confirmar que o `lead_info` atualizado é sempre passado corretamente para as funções subsequentes e retornado no final do processamento.
+
+## Tarefa 2: Corrigir o Message Splitter
+
+- [x] **Modificar `app/config.py`**:
+    - [x] Alterar o valor padrão de `message_max_length` de `4000` para um valor mais apropriado para o WhatsApp, como `450`, para garantir que mensagens longas sejam divididas.
+
+- [x] **Verificar `app/api/webhooks.py`**:
+    - [x] Confirmar que a lógica de loop que envia os `chunks` da mensagem está correta e não há condições que possam fazê-la falhar.
+
+## Tarefa 3: Publicar Correções
+
+- [ ] **Executar `git add .`**: Adicionar todos os arquivos modificados.
+- [ ] **Executar `git commit`**: Criar um commit com uma mensagem clara descrevendo as correções.
+- [ ] **Executar `git push`**: Enviar as correções para o repositório remoto.

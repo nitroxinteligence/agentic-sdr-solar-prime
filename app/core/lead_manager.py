@@ -38,6 +38,11 @@ class LeadManager:
         if existing_lead_info:
             import copy
             lead_info = copy.deepcopy(existing_lead_info)
+            if "preferences" not in lead_info or not isinstance(lead_info["preferences"], dict):
+                lead_info["preferences"] = {
+                    "interests": [],
+                    "objections": []
+                }
         else:
             lead_info = {
                 "name": None,
@@ -56,65 +61,84 @@ class LeadManager:
                 }
             }
 
-        for idx, msg in enumerate(messages):
+        processed_message_count = lead_info.get("processed_message_count", 0)
+        new_messages = messages[processed_message_count:]
+
+        if not new_messages:
+            return lead_info
+
+        for msg in new_messages:
             content = msg.get("content", "").lower()
             role = msg.get("role", "")
 
-            if not lead_info["name"] and role == "user":
-                name = self._extract_name(content)
-                if name:
-                    lead_info["name"] = name
-                else:
-                    # Fallback for simple name extraction
-                    words = content.split()
-                    if 1 <= len(words) <= 4:
-                        blacklist = [
-                            "oi", "olá", "ola", "sim", "não", "nao",
-                            "ok", "tudo", "bom", "dia", "tarde",
-                            "noite", "boa", "legal", "bem", "quero",
-                            "gostaria", "preciso", "pode", "poderia",
-                            "claro", "certeza", "beleza", "blz",
-                            "tbm", "também", "tá", "ta", "está",
-                            "estou", "to", "já", "tenho", "como",
-                            "funciona", "quanto", "vou", "pago",
-                            "minha", "conta", "desconto", "economia",
-                            "origo", "setta", "solar", "energia", "luz"
-                        ]
-                        potential_name = " ".join(
-                            word for word in words if word.lower() not in blacklist
-                        )
-                        if potential_name and self._is_valid_name(potential_name):
-                            lead_info["name"] = potential_name.title()
+            if role == "user":
+                # Extrai o nome apenas se ainda não existir
+                if not lead_info.get("name"):
+                    name = self._extract_name(content)
+                    if name:
+                        lead_info["name"] = name
+                    else:
+                        # Fallback for simple name extraction
+                        words = content.split()
+                        if 1 <= len(words) <= 4:
+                            blacklist = [
+                                "oi", "olá", "ola", "sim", "não", "nao",
+                                "ok", "tudo", "bom", "dia", "tarde",
+                                "noite", "boa", "legal", "bem", "quero",
+                                "gostaria", "preciso", "pode", "poderia",
+                                "claro", "certeza", "beleza", "blz",
+                                "tbm", "também", "tá", "ta", "está",
+                                "estou", "to", "já", "tenho", "como",
+                                "funciona", "quanto", "vou", "pago",
+                                "minha", "conta", "desconto", "economia",
+                                "origo", "setta", "solar", "energia", "luz"
+                            ]
+                            potential_name = " ".join(
+                                word for word in words if word.lower() not in blacklist
+                            )
+                            if potential_name and self._is_valid_name(potential_name):
+                                lead_info["name"] = potential_name.title()
 
-            if not lead_info["email"]:
-                email = self._extract_email(content)
-                if email:
-                    lead_info["email"] = email
+                # Extrai outras informações apenas se não existirem
+                if not lead_info.get("email"):
+                    email = self._extract_email(content)
+                    if email:
+                        lead_info["email"] = email
 
-            if not lead_info["bill_value"]:
-                value = self._extract_bill_value(content)
-                if value:
-                    lead_info["bill_value"] = value
+                if not lead_info.get("bill_value"):
+                    value = self._extract_bill_value(content)
+                    if value:
+                        lead_info["bill_value"] = value
 
-            if not lead_info["preferences"]["property_type"]:
-                prop_type = self._extract_property_type(content)
-                if prop_type:
-                    lead_info["preferences"]["property_type"] = prop_type
+                if not lead_info.get("preferences", {}).get("property_type"):
+                    prop_type = self._extract_property_type(content)
+                    if prop_type:
+                        lead_info["preferences"]["property_type"] = prop_type
 
-            if not lead_info["preferences"]["location"]:
-                location = self._extract_location(content)
-                if location:
-                    lead_info["preferences"]["location"] = location
+                if not lead_info.get("preferences", {}).get("location"):
+                    location = self._extract_location(content)
+                    if location:
+                        lead_info["preferences"]["location"] = location
 
+            # Interesses e objeções podem ser adicionados cumulativamente
             interests = self._extract_interests(content)
-            lead_info["preferences"]["interests"].extend(interests)
+            if interests:
+                if "interests" not in lead_info["preferences"]:
+                    lead_info["preferences"]["interests"] = []
+                lead_info["preferences"]["interests"].extend(interests)
+
             objections = self._extract_objections(content)
-            lead_info["preferences"]["objections"].extend(objections)
+            if objections:
+                if "objections" not in lead_info["preferences"]:
+                    lead_info["preferences"]["objections"] = []
+                lead_info["preferences"]["objections"].extend(objections)
 
             if not lead_info.get("chosen_flow"):
                 chosen_flow = self._extract_chosen_flow(content)
                 if chosen_flow:
                     lead_info["chosen_flow"] = chosen_flow
+
+        lead_info["processed_message_count"] = len(messages)
 
         lead_info["preferences"]["interests"] = list(
             set(lead_info["preferences"]["interests"])

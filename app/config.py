@@ -215,7 +215,7 @@ class Settings(BaseSettings):
         default=True, env="ENABLE_MESSAGE_SPLITTER"
     )
     message_max_length: int = Field(
-        default=4000, env="MESSAGE_MAX_LENGTH"
+        default=200, env="MESSAGE_MAX_LENGTH"
     )
     message_chunk_delay: float = Field(
         default=0.8, env="MESSAGE_CHUNK_DELAY"
