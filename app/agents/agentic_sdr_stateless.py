@@ -130,9 +130,6 @@ class AgenticSDRStateless:
             }
             conversation_history.append(user_message)
 
-            if conversation_id and phone:
-                await self._save_message_to_db(conversation_id, user_message)
-
             context = self.context_analyzer.analyze_context(
                 conversation_history,
                 message
@@ -162,12 +159,6 @@ class AgenticSDRStateless:
                 "content": response,
                 "timestamp": datetime.now().isoformat()
             }
-
-            if conversation_id and phone:
-                await self._save_message_to_db(
-                    conversation_id,
-                    assistant_message
-                )
 
             if phone:
                 await self.conversation_monitor.register_message(
@@ -491,3 +482,19 @@ class AgenticSDRStateless:
                 )
 
         raise ValueError(f"Tool não reconhecido: {service_method}")
+
+    async def _generate_response(self, message, context, lead_info, media_context, conversation_history, execution_context):
+        # Dummy implementation
+        return "Olá! Sou a Helen. Como posso te ajudar?"
+
+    def _format_media_context(self, media_result):
+        # Dummy implementation
+        return ""
+
+    def _detect_lead_changes(self, lead_info, new_lead_info):
+        # Dummy implementation
+        return {}
+
+    async def _sync_lead_changes(self, lead_changes, phone, lead_info):
+        # Dummy implementation
+        pass
