@@ -458,12 +458,12 @@ async def evolution_webhook(
 
 
 async def process_new_message(data: Any):
-    """Processa cada nova mensagem recebida, seja um objeto único ou uma lista."""
+    """Processa cada nova mensagem recebida, normalizando o payload para sempre ser uma lista."""
     try:
-        if isinstance(data, dict):
-            messages = [data]
-        elif isinstance(data, list):
+        if isinstance(data, list):
             messages = data
+        elif isinstance(data, dict):
+            messages = [data]
         else:
             emoji_logger.system_warning(f"Payload de mensagens com formato inesperado: {type(data)}")
             return
@@ -475,6 +475,11 @@ async def process_new_message(data: Any):
             return
 
         for message in messages:
+            # Garante que 'message' seja um dicionário antes de prosseguir
+            if not isinstance(message, dict):
+                logger.warning(f"Item ignorado no payload de mensagens pois não é um dicionário: {message}")
+                continue
+
             key = message.get("key", {})
             remote_jid = key.get("remoteJid", "")
             from_me = key.get("fromMe", False)
