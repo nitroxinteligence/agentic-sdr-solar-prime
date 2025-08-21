@@ -483,18 +483,94 @@ class AgenticSDRStateless:
 
         raise ValueError(f"Tool não reconhecido: {service_method}")
 
-    async def _generate_response(self, message, context, lead_info, media_context, conversation_history, execution_context):
-        # Dummy implementation
-        return "Olá! Sou a Helen. Como posso te ajudar?"
+    async def _generate_response(
+        self,
+        message: str,
+        context: dict,
+        lead_info: dict,
+        media_context: str,
+        conversation_history: list,
+        execution_context: dict,
+        is_followup: bool = False
+    ) -> str:
+        """Gera a resposta do agente usando o ModelManager."""
+        from app.prompts.prompt_builder import PromptBuilder
+        
+        prompt_builder = PromptBuilder()
+        system_prompt = prompt_builder.get_system_prompt()
+        user_prompt = prompt_builder.build_user_prompt(
+            message,
+            conversation_history,
+            lead_info,
+            context,
+            media_context,
+            is_followup
+        )
 
-    def _format_media_context(self, media_result):
-        # Dummy implementation
-        return ""
+        response_text = await self.model_manager.get_response(
+            prompt=user_prompt,
+            system_prompt=system_prompt
+        )
 
-    def _detect_lead_changes(self, lead_info, new_lead_info):
-        # Dummy implementation
-        return {}
+        if response_text:
+            tool_results = await self._parse_and_execute_tools(
+                response_text, lead_info, context
+            )
+            if tool_results:
+                final_prompt = prompt_builder.build_final_prompt(
+                    user_prompt, response_text, tool_results
+                )
+                response_text = await self.model_manager.get_response(
+                    prompt=final_prompt,
+                    system_prompt=system_prompt
+                )
+        
+        return response_text or "Não consegui gerar uma resposta no momento."
 
-    async def _sync_lead_changes(self, lead_changes, phone, lead_info):
-        # Dummy implementation
-        pass
+    def _format_media_context(self, media_result: dict) -> str:
+        """Formata o contexto de mídia para o prompt."""
+        if not media_result or not media_result.get("success"):
+            return ""
+        
+        media_type = media_result.get("type", "desconhecido")
+        text = media_result.get("text", "")
+        analysis = media_result.get("analysis", {})
+        
+        context_str = f"=== ANÁLISE DE MÍDIA RECEBIDA ===\n"
+        context_str += f"Tipo: {media_type}\n"
+        if text:
+            context_str += f"Texto extraído: {text[:500]}\n"
+        if analysis:
+            context_str += f"Análise: {analysis}\n"
+        context_str += "=================================\n"
+        return context_str
+
+    def _detect_lead_changes(self, old_info: dict, new_info: dict) -> dict:
+        """Detecta mudanças nas informações do lead."""
+        changes = {}
+        for key, value in new_info.items():
+            if value and value != old_info.get(key):
+                changes[key] = value
+        return changes
+
+    async def _sync_lead_changes(self, changes: dict, phone: str, lead_info: dict):
+        """Sincroniza as mudanças do lead com o CRM."""
+        if not self.crm_service.is_initialized:
+            await self.crm_service.initialize()
+            
+        kommo_lead_id = lead_info.get("kommo_lead_id")
+        if not kommo_lead_id:
+            # Se não houver ID do Kommo, talvez criar um novo lead aqui
+            return
+
+        update_data = {}
+        for key, value in changes.items():
+            if key == "name":
+                update_data["name"] = value
+            elif key == "bill_value":
+                update_data["bill_value"] = value
+            elif key == "chosen_flow":
+                update_data["chosen_flow"] = value
+        
+        if update_data:
+            await self.crm_service.update_lead(kommo_lead_id, update_data)
