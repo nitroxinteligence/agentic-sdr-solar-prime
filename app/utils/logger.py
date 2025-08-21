@@ -249,6 +249,16 @@ class EmojiLogger:
         )
 
     @classmethod
+    def webhook_receive(cls, endpoint: str, source: str, **kwargs):
+        kwargs.update({"endpoint": endpoint, "source": source})
+        cls.log_with_emoji(
+            "INFO",
+            "webhook_receive",
+            f"Webhook recebido: {endpoint} de {source}",
+            **kwargs,
+        )
+
+    @classmethod
     def system_start(cls, component: str, **kwargs):
         cls.log_with_emoji(
             "INFO", "system_start", f"Iniciando {component}", **kwargs
