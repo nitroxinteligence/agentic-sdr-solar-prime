@@ -15,6 +15,7 @@ from app.core.lead_manager import LeadManager
 from app.core.context_analyzer import ContextAnalyzer
 from app.services.conversation_monitor import get_conversation_monitor
 from app.utils.logger import emoji_logger
+from app.core.response_formatter import response_formatter
 
 # Importar serviços diretamente
 from app.services.calendar_service_100_real import CalendarServiceReal
@@ -170,7 +171,7 @@ class AgenticSDRStateless:
             emoji_logger.system_success(
                 f"Resposta gerada: {response[:100]}..."
             )
-            return response
+            return response_formatter.ensure_response_tags(response)
 
         except Exception as e:
             import traceback
