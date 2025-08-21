@@ -1,33 +1,89 @@
-# TODO - Plano de Ação v2.1 (Concluído)
-
-## Prioridade Máxima: Estabilidade e Consistência
-
-- [x] **Corrigir Inconsistências de `tool_calling`:**
-    - [x] Em `agentic_sdr_stateless.py`, no método `_execute_single_tool`, criar aliases para os nomes de `tools` do prompt. Ex: `if method_name == "update_stage": return await self.crm_service.update_lead_stage(...)`.
-    - [x] Remover a instrução para agendar lembretes (`[TOOL: followup.schedule]`) da seção de agendamento do `prompt-agente.md` para eliminar a redundância com o `_execute_post_scheduling_workflow`.
-
-- [x] **Implementar Locks de Concorrência (Redis):**
-    - [x] No `CalendarServiceReal`, implementar `redis_client.acquire_lock` no início dos métodos `check_availability` e `schedule_meeting`, e `release_lock` no final (em um bloco `finally`). A chave do lock para agendamento deve ser baseada no horário (ex: `lock:schedule:2025-08-20:10:00`).
-    - [x] No `CRMServiceReal`, implementar um lock similar no `create_or_update_lead` para evitar a criação de leads duplicados.
-
-- [x] **Garantir Persistência do `ConversationMonitor`:**
-    - [x] Refatorar o `ConversationMonitor` para usar o Redis em vez de um dicionário em memória (`self.active_conversations`). Cada vez que uma mensagem for registrada, usar `redis_client.set` com um TTL (ex: 7 dias) para a chave `monitor:conversation:{phone}`. O loop de monitoramento deve então escanear essas chaves no Redis.
-
-## Prioridade Alta: Robustez dos Processos
-
-- [x] **Implementar Mecanismos de Compensação (Rollback):**
-    - [x] No `CalendarServiceReal`, refatorar `reschedule_meeting`. Antes de cancelar o evento antigo, buscar e armazenar seus dados. Se a criação do novo evento falhar, recriar o evento original com os dados armazenados.
-    - [x] No `AgenticSDRStateless`, envolver cada chamada dentro do `_execute_post_scheduling_workflow` em seu próprio bloco `try...except` para que a falha de uma etapa não impeça a execução das outras.
-
-- [x] **Corrigir Arquitetura do `FollowUpExecutorService`:**
-    - [x] Modificar o `FollowUpExecutorService` para que ele não envie mensagens diretamente, mas sim enfileire uma "tarefa de follow-up" em uma fila do Redis. (Renomeado para `FollowUpSchedulerService`).
-    - [x] Criar um novo arquivo `followup_worker.py` com a lógica para consumir da fila, instanciar um `AgenticSDRStateless` completo e usar o método `process_message` para gerar e enviar a mensagem de follow-up, garantindo o uso de todo o contexto e personalidade do agente.
-
-## Prioridade Média: Melhorias de Lógica e UX
-
-- [x] **Implementar Prevenção de Spam de Follow-up:**
-    - [x] No `FollowUpSchedulerService`, antes de enfileirar um follow-up, consultar a tabela `follow_ups` no Supabase para contar quantos follow-ups foram enviados para o `lead_id` na última semana. Se o limite for atingido, marcar o follow-up atual como `cancelled`.
-    - [x] Adicionado o método `get_recent_followup_count` ao `SupabaseClient` para suportar esta funcionalidade.
-
-- [x] **Robustecer Extração de Nome:**
-    - [x] Refatorar a lógica de extração de nome em `LeadManager` para ser mais conservadora, focando em padrões explícitos de apresentação e adicionando uma função de validação `_is_valid_name` para evitar a captura de palavras comuns como nomes.
+app/api/health.py:248:6: W292 no newline at end of file
+app/api/webhooks.py:83:1: E302 expected 2 blank lines, found 1
+app/api/webhooks.py:216:80: E501 line too long (80 > 79 characters)
+app/api/webhooks.py:333:1: E302 expected 2 blank lines, found 1
+app/api/webhooks.py:344:1: E302 expected 2 blank lines, found 1
+app/api/webhooks.py:430:80: E501 line too long (80 > 79 characters)
+app/config.py:372:57: W291 trailing whitespace
+app/core/context_analyzer.py:258:80: E501 line too long (81 > 79 characters)
+app/core/context_analyzer.py:261:80: E501 line too long (80 > 79 characters)
+app/core/context_analyzer.py:267:80: E501 line too long (82 > 79 characters)
+app/core/context_analyzer.py:475:80: E501 line too long (82 > 79 characters)
+app/core/context_analyzer.py:477:23: W292 no newline at end of file
+app/core/lead_manager.py:231:80: E501 line too long (80 > 79 characters)
+app/core/model_manager.py:322:10: W292 no newline at end of file
+app/core/multimodal_processor.py:319:80: E501 line too long (85 > 79 characters)
+app/core/multimodal_processor.py:320:80: E501 line too long (80 > 79 characters)
+app/core/multimodal_processor.py:355:80: E501 line too long (81 > 79 characters)
+app/core/response_formatter.py:23:80: E501 line too long (80 > 79 characters)
+app/core/response_formatter.py:138:80: E501 line too long (83 > 79 characters)
+app/decorators/error_handler.py:66:80: E501 line too long (80 > 79 characters)
+app/integrations/evolution.py:76:80: E501 line too long (82 > 79 characters)
+app/integrations/evolution.py:94:80: E501 line too long (82 > 79 characters)
+app/integrations/evolution.py:99:80: E501 line too long (80 > 79 characters)
+app/integrations/evolution.py:108:80: E501 line too long (84 > 79 characters)
+app/integrations/evolution.py:271:80: E501 line too long (80 > 79 characters)
+app/integrations/evolution.py:462:80: E501 line too long (80 > 79 characters)
+app/integrations/evolution.py:803:80: E501 line too long (80 > 79 characters)
+app/integrations/google_oauth_handler.py:3:80: E501 line too long (90 > 79 characters)
+app/integrations/google_oauth_handler.py:60:80: E501 line too long (83 > 79 characters)
+app/integrations/google_oauth_handler.py:63:80: E501 line too long (99 > 79 characters)
+app/integrations/google_oauth_handler.py:101:80: E501 line too long (83 > 79 characters)
+app/integrations/google_oauth_handler.py:104:80: E501 line too long (99 > 79 characters)
+app/integrations/google_oauth_handler.py:117:80: E501 line too long (80 > 79 characters)
+app/integrations/google_oauth_handler.py:164:80: E501 line too long (80 > 79 characters)
+app/integrations/google_oauth_handler.py:198:80: E501 line too long (80 > 79 characters)
+app/integrations/google_oauth_handler.py:253:80: E501 line too long (80 > 79 characters)
+app/integrations/google_oauth_handler.py:301:54: W291 trailing whitespace
+app/integrations/google_oauth_handler.py:302:41: W291 trailing whitespace
+app/integrations/google_oauth_handler.py:303:49: W291 trailing whitespace
+app/integrations/google_oauth_handler.py:304:44: W291 trailing whitespace
+app/integrations/redis_client.py:41:80: E501 line too long (86 > 79 characters)
+app/integrations/redis_client.py:43:80: E501 line too long (81 > 79 characters)
+app/integrations/redis_client.py:47:80: E501 line too long (86 > 79 characters)
+app/integrations/supabase_client.py:595:80: E501 line too long (80 > 79 characters)
+app/integrations/supabase_client.py:623:35: W292 no newline at end of file
+app/services/audio_transcriber.py:3:80: E501 line too long (81 > 79 characters)
+app/services/audio_transcriber.py:211:80: E501 line too long (87 > 79 characters)
+app/services/audio_transcriber.py:226:80: E501 line too long (80 > 79 characters)
+app/services/audio_transcriber.py:241:80: E501 line too long (87 > 79 characters)
+app/services/calendar_service_100_real.py:45:80: E501 line too long (88 > 79 characters)
+app/services/calendar_service_100_real.py:68:80: E501 line too long (80 > 79 characters)
+app/services/calendar_service_100_real.py:134:80: E501 line too long (82 > 79 characters)
+app/services/calendar_service_100_real.py:168:80: E501 line too long (80 > 79 characters)
+app/services/calendar_service_100_real.py:279:80: E501 line too long (80 > 79 characters)
+app/services/conversation_monitor.py:149:80: E501 line too long (80 > 79 characters)
+app/services/crm_service_100_real.py:40:80: E501 line too long (82 > 79 characters)
+app/services/crm_service_100_real.py:125:80: E501 line too long (84 > 79 characters)
+app/services/crm_service_100_real.py:182:80: E501 line too long (81 > 79 characters)
+app/services/crm_service_100_real.py:185:80: E501 line too long (83 > 79 characters)
+app/services/crm_service_100_real.py:319:80: E501 line too long (80 > 79 characters)
+app/services/crm_service_100_real.py:382:80: E501 line too long (81 > 79 characters)
+app/services/crm_service_100_real.py:394:80: E501 line too long (81 > 79 characters)
+app/services/crm_service_100_real.py:399:80: E501 line too long (84 > 79 characters)
+app/services/crm_service_100_real.py:481:80: E501 line too long (81 > 79 characters)
+app/services/crm_service_100_real.py:577:18: W292 no newline at end of file
+app/services/followup_executor_service.py:70:80: E501 line too long (85 > 79 characters)
+app/services/followup_executor_service.py:89:80: E501 line too long (80 > 79 characters)
+app/services/followup_executor_service.py:98:80: E501 line too long (83 > 79 characters)
+app/services/followup_executor_service.py:103:80: E501 line too long (82 > 79 characters)
+app/services/followup_service_100_real.py:61:80: E501 line too long (81 > 79 characters)
+app/services/followup_service_100_real.py:251:80: E501 line too long (80 > 79 characters)
+app/services/followup_worker.py:69:80: E501 line too long (80 > 79 characters)
+app/services/followup_worker.py:78:80: E501 line too long (80 > 79 characters)
+app/services/followup_worker.py:91:80: E501 line too long (81 > 79 characters)
+app/services/message_buffer.py:26:80: E501 line too long (83 > 79 characters)
+app/services/message_buffer.py:65:80: E501 line too long (80 > 79 characters)
+app/services/rate_limiter.py:18:80: E501 line too long (80 > 79 characters)
+app/services/typing_controller.py:39:80: E501 line too long (80 > 79 characters)
+app/utils/agno_media_detection.py:172:1: E999 SyntaxError: invalid syntax
+app/utils/gemini_retry.py:47:80: E501 line too long (80 > 79 characters)
+app/utils/gemini_retry.py:112:80: E501 line too long (81 > 79 characters)
+app/utils/logger.py:45:80: E501 line too long (80 > 79 characters)
+app/utils/retry_handler.py:47:80: E501 line too long (80 > 79 characters)
+app/utils/retry_handler.py:67:80: E501 line too long (83 > 79 characters)
+app/utils/retry_handler.py:74:80: E501 line too long (85 > 79 characters)
+app/utils/retry_handler.py:79:80: E501 line too long (82 > 79 characters)
+app/utils/safe_conversions.py:33:80: E501 line too long (82 > 79 characters)
+app/utils/safe_conversions.py:56:80: E501 line too long (84 > 79 characters)
+app/utils/supabase_storage.py:2:80: E501 line too long (82 > 79 characters)

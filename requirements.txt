@@ -20,10 +20,6 @@ aiohttp>=3.9.0
 
 # Database
 supabase
-sqlalchemy[postgresql]==2.0.30
-alembic==1.13.1
-asyncpg==0.29.0
-psycopg2-binary==2.9.10
 pgvector==0.3.6
 
 # Cache and Queue

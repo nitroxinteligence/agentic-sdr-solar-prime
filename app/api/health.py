@@ -1,9 +1,8 @@
 """
 Health Check API - Endpoints de saúde do sistema
 """
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from datetime import datetime
-from typing import Dict, Any
 from loguru import logger
 
 from app.integrations.supabase_client import supabase_client
@@ -12,6 +11,7 @@ from app.integrations.redis_client import redis_client
 from app.agents.agentic_sdr_stateless import AgenticSDRStateless
 
 router = APIRouter()
+
 
 @router.get("/")
 async def health_check():
@@ -22,10 +22,12 @@ async def health_check():
         "service": "SDR IA SolarPrime"
     }
 
+
 @router.get("/live")
 async def liveness():
     """Liveness probe para Kubernetes"""
     return {"status": "alive"}
+
 
 @router.get("/ready")
 async def readiness():
@@ -35,23 +37,18 @@ async def readiness():
         agent = AgenticSDRStateless()
         await agent.initialize()
 
-        # Verifica se os componentes principais estão inicializados
         checks = {
             "supabase": await supabase_client.test_connection(),
             "evolution": await evolution_client.test_connection(),
             "agent": agent.is_initialized,
             "redis": await redis_client.ping()
         }
-        
-        # Sistema está pronto se todos os componentes críticos estão OK
         is_ready = all(checks.values())
-        
         return {
             "ready": is_ready,
             "checks": checks,
             "timestamp": datetime.now().isoformat()
         }
-        
     except Exception as e:
         logger.error(f"Erro no readiness check: {e}")
         return {
@@ -59,6 +56,7 @@ async def readiness():
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }
+
 
 @router.get("/metrics")
 async def metrics():
@@ -70,30 +68,46 @@ async def metrics():
             "gauges": {},
             "histograms": {}
         }
-        
+
         # Obtém métricas do Redis se disponível
         if await redis_client.ping():
             # Contadores
-            metrics_data["counters"]["messages_processed"] = await redis_client.get_counter("messages_processed")
-            metrics_data["counters"]["leads_created"] = await redis_client.get_counter("leads_created")
-            metrics_data["counters"]["meetings_scheduled"] = await redis_client.get_counter("meetings_scheduled")
-            
+            messages_processed = await redis_client.get_counter(
+                "messages_processed"
+            )
+            metrics_data["counters"]["messages_processed"] = messages_processed
+            leads_created = await redis_client.get_counter("leads_created")
+            metrics_data["counters"]["leads_created"] = leads_created
+            meetings_scheduled = await redis_client.get_counter(
+                "meetings_scheduled"
+            )
+            metrics_data["counters"]["meetings_scheduled"] = meetings_scheduled
+
             # Gauges (valores atuais)
-            connection_status = await redis_client.get("whatsapp:connection_status")
+            connection_status = await redis_client.get(
+                "whatsapp:connection_status"
+            )
             if connection_status:
-                metrics_data["gauges"]["whatsapp_connected"] = 1 if connection_status.get("state") == "open" else 0
-        
+                is_open = connection_status.get("state") == "open"
+                metrics_data["gauges"]["whatsapp_connected"] = (
+                    1 if is_open else 0
+                )
+
         # Obtém estatísticas do banco se disponível
         if await supabase_client.test_connection():
             try:
                 stats = await supabase_client.get_daily_stats()
-                metrics_data["gauges"]["leads_today"] = stats.get("leads_today", 0)
-                metrics_data["gauges"]["conversations_active"] = stats.get("conversations_active", 0)
-            except:
+                metrics_data["gauges"]["leads_today"] = stats.get(
+                    "leads_today", 0
+                )
+                metrics_data["gauges"]["conversations_active"] = stats.get(
+                    "conversations_active", 0
+                )
+            except Exception:
                 pass
-        
+
         return metrics_data
-        
+
     except Exception as e:
         logger.error(f"Erro ao obter métricas: {e}")
         return {
@@ -101,11 +115,12 @@ async def metrics():
             "timestamp": datetime.now().isoformat()
         }
 
+
 @router.get("/dependencies")
 async def check_dependencies():
     """Verifica status de todas as dependências"""
     dependencies = {}
-    
+
     # Supabase
     try:
         connected = await supabase_client.test_connection()
@@ -119,7 +134,7 @@ async def check_dependencies():
             "error": str(e),
             "type": "database"
         }
-    
+
     # Evolution API
     try:
         connected = await evolution_client.test_connection()
@@ -133,7 +148,7 @@ async def check_dependencies():
             "error": str(e),
             "type": "whatsapp"
         }
-    
+
     # Redis
     try:
         await redis_client.connect()
@@ -153,7 +168,7 @@ async def check_dependencies():
             "error": str(e),
             "type": "cache"
         }
-    
+
     # Google Calendar (funciona mas sem sync com Supabase)
     try:
         from app.config import settings
@@ -168,12 +183,12 @@ async def check_dependencies():
                 "status": "not_configured",
                 "type": "calendar"
             }
-    except:
+    except Exception:
         dependencies["google_calendar"] = {
             "status": "not_configured",
             "type": "calendar"
         }
-    
+
     # Kommo CRM (se configurado)
     try:
         from app.config import settings
@@ -187,29 +202,30 @@ async def check_dependencies():
                 "status": "not_configured",
                 "type": "crm"
             }
-    except:
+    except Exception:
         dependencies["kommo_crm"] = {
             "status": "not_configured",
             "type": "crm"
         }
-    
+
     # Determina status geral
     all_healthy = all(
-        dep.get("status") in ["healthy", "configured"] 
+        dep.get("status") in ["healthy", "configured"]
         for dep in dependencies.values()
     )
-    
+
     return {
         "status": "healthy" if all_healthy else "degraded",
         "dependencies": dependencies,
         "timestamp": datetime.now().isoformat()
     }
 
+
 @router.get("/info")
 async def service_info():
     """Informações sobre o serviço"""
     from app.config import settings
-    
+
     return {
         "service": "SDR IA SolarPrime",
         "version": "0.2.0",

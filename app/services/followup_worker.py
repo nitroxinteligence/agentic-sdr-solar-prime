@@ -3,14 +3,14 @@ FollowUp Worker - Processa tarefas da fila de follow-ups do Redis
 """
 
 import asyncio
-import json
 from typing import Dict, Any
 
 from app.integrations.redis_client import redis_client
 from app.integrations.supabase_client import SupabaseClient
 from app.agents.agentic_sdr_stateless import AgenticSDRStateless
 from app.utils.logger import emoji_logger
-from app.config import settings
+from loguru import logger
+
 
 class FollowUpWorker:
     """
@@ -43,11 +43,15 @@ class FollowUpWorker:
         """Loop principal que consome tarefas da fila do Redis."""
         while self.running:
             try:
-                task_payload = await self.redis.dequeue("followup_tasks", timeout=10)
+                task_payload = await self.redis.dequeue(
+                    "followup_tasks", timeout=10
+                )
                 if task_payload:
                     await self._process_task(task_payload)
             except Exception as e:
-                emoji_logger.system_error("FollowUp Worker", f"Erro no loop de consumo: {e}")
+                emoji_logger.system_error(
+                    "FollowUp Worker", f"Erro no loop de consumo: {e}"
+                )
                 await asyncio.sleep(5)
 
     async def _process_task(self, task_payload: Dict[str, Any]):
@@ -61,16 +65,20 @@ class FollowUpWorker:
 
         lock_key = f"followup_exec:{followup_id}"
         if not await self.redis.acquire_lock(lock_key, ttl=300):
-            logger.warning(f"Execução do follow-up {followup_id} já em andamento, pulando.")
+            logger.warning(
+                f"Execução do follow-up {followup_id} já em andamento, pulando."
+            )
             return
 
         try:
-            emoji_logger.followup_event(f"🚀 Processando tarefa de follow-up: {followup_id}")
+            emoji_logger.followup_event(
+                f"🚀 Processando tarefa de follow-up: {followup_id}"
+            )
 
-            # Gerar a mensagem de follow-up usando o agente para manter a inteligência contextual
-            message_content = await self._generate_intelligent_followup_message(task_payload)
+            message_content = await self._generate_intelligent_followup_message(
+                task_payload
+            )
 
-            # Enviar a mensagem
             from app.integrations.evolution import evolution_client
             send_result = await evolution_client.send_text_message(
                 phone=task_payload["phone_number"],
@@ -79,66 +87,80 @@ class FollowUpWorker:
 
             if send_result and send_result.get("key", {}).get("id"):
                 await self.db.update_follow_up_status(followup_id, 'executed')
-                emoji_logger.system_success(f"✅ Follow-up {followup_id} executado e enviado com sucesso.")
+                emoji_logger.system_success(
+                    f"✅ Follow-up {followup_id} executado e enviado com sucesso."
+                )
             else:
                 await self.db.update_follow_up_status(followup_id, 'failed')
-                emoji_logger.system_error("FollowUp Worker", f"Falha ao enviar mensagem para o follow-up {followup_id}.")
+                emoji_logger.system_error(
+                    "FollowUp Worker",
+                    f"Falha ao enviar mensagem para o follow-up {followup_id}."
+                )
 
         except Exception as e:
-            emoji_logger.system_error("FollowUp Worker", f"Erro ao processar tarefa {followup_id}: {e}")
+            emoji_logger.system_error(
+                "FollowUp Worker",
+                f"Erro ao processar tarefa {followup_id}: {e}"
+            )
             await self.db.update_follow_up_status(followup_id, 'failed')
         finally:
             await self.redis.release_lock(lock_key)
 
-    async def _generate_intelligent_followup_message(self, task_payload: Dict[str, Any]) -> str:
+    async def _generate_intelligent_followup_message(
+            self, task_payload: Dict[str, Any]
+    ) -> str:
         """
-        Usa o AgenticSDRStateless para gerar uma mensagem de follow-up contextual.
+        Usa o AgenticSDRStateless para gerar uma mensagem de follow-up.
         """
         lead_id = task_payload.get("lead_id")
         followup_type = task_payload.get("followup_type", "CUSTOM")
 
         if not lead_id:
-            emoji_logger.system_error("FollowUp Worker", f"Task {task_payload.get('followup_id')} não contém 'lead_id'. Impossível gerar mensagem.")
-            return "Não foi possível gerar a mensagem de follow-up pois o lead não foi encontrado."
+            emoji_logger.system_error(
+                "FollowUp Worker",
+                f"Task {task_payload.get('followup_id')} não contém 'lead_id'."
+            )
+            return "Não foi possível gerar a mensagem de follow-up."
 
-        # Montar um contexto de execução para o agente
         lead_info = await self.db.get_lead_by_id(lead_id)
-        conversation_history = await self.db.get_conversation_messages(lead_info.get('conversation_id')) if lead_info else []
+        conversation_history = await self.db.get_conversation_messages(
+            lead_info.get('conversation_id')
+        ) if lead_info else []
 
         execution_context = {
             "conversation_history": conversation_history,
             "lead_info": lead_info or {},
             "phone": task_payload.get("phone_number"),
-            "conversation_id": lead_info.get('conversation_id') if lead_info else None,
+            "conversation_id": (
+                lead_info.get('conversation_id') if lead_info else None
+            ),
         }
 
-        # Criar um prompt para o agente gerar a mensagem de follow-up
-        prompt = f"Gere uma mensagem de follow-up do tipo '{followup_type}' para este lead, com base no nosso histórico de conversa."
+        prompt = (
+            f"Gere uma mensagem de follow-up do tipo '{followup_type}' para "
+            f"este lead, com base no nosso histórico de conversa."
+        )
 
-        # Chamar o agente para gerar a resposta (sem executar tools)
         response_text = await self.agent._generate_response(
             message=prompt,
-            context={}, # O contexto será analisado a partir do histórico
+            context={},
             lead_info=lead_info,
             media_context="",
             conversation_history=conversation_history,
             execution_context=execution_context,
-            is_followup=True # Flag para indicar que é uma geração de follow-up
+            is_followup=True
         )
-        
-        # Extrair apenas a resposta final
+
         from app.api.webhooks import extract_final_response
         return extract_final_response(response_text)
+
 
 async def main():
     """Função principal para iniciar o worker."""
     worker = FollowUpWorker()
     await worker.start()
-    # Manter o worker rodando
     while worker.running:
         await asyncio.sleep(1)
 
 if __name__ == "__main__":
-    # Este bloco permite rodar o worker como um script separado.
-    # Em uma aplicação real, isso seria gerenciado por um process manager como o systemd ou supervisor.
     asyncio.run(main())
