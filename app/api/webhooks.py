@@ -555,119 +555,118 @@ async def process_message_with_agent(
         original_message: Dados originais da mensagem
         message_id: ID da mensagem
     """
-    try:
-        # Preparar mídia se houver
-        media_data = await _handle_media_message(original_message)
-        if media_data and media_data.get("error"):
-            # Se houver erro no processamento da mídia, informa o usuário e encerra.
-            await evolution_client.send_text_message(phone, media_data["error"])
-            return
-            
-        # PARALELIZAÇÃO MÁXIMA: Busca lead + conversa em paralelo com tratamento de erros
-        lead_task = asyncio.create_task(supabase_client.get_lead_by_phone(phone))
-        conversation_task = asyncio.create_task(supabase_client.get_conversation_by_phone(phone))
-        # Agente stateless será criado depois, não precisa pré-carregar
+    # Preparar mídia se houver
+    media_data = await _handle_media_message(original_message)
+    if media_data and media_data.get("error"):
+        # Se houver erro no processamento da mídia, informa o usuário e encerra.
+        await evolution_client.send_text_message(phone, media_data["error"])
+        return
         
-        # Aguarda todas as tasks com tratamento de erros
-        results = await asyncio.gather(
-            lead_task,
-            conversation_task,
-            return_exceptions=True
-        )
-        
-        # Processar resultados com tratamento de erros
-        lead_result, conv_result = results
-        
-        # Verificar lead
-        if isinstance(lead_result, Exception):
-            emoji_logger.system_error("Lead Fetch", f"Erro ao buscar lead: {lead_result}")
-            lead = None
-        else:
-            lead = lead_result
-        
-        if not lead:
-            # Cria novo lead
-            lead = await supabase_client.create_lead({
-                "phone_number": phone,
-                "current_stage": "INITIAL_CONTACT",
-                "qualification_status": "PENDING", 
-                "interested": True,
-                "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat()
-            })
-            emoji_logger.supabase_insert("leads", 1, phone=phone)
-        
-        # Preparar dados da mensagem enquanto busca conversa
-        message_data = {
-            "content": message_content,
-            "role": "user",
-            "sender": "user",
-            "media_data": {
-                "message_id": message_id,
-                "raw_data": original_message
-            }
+    # PARALELIZAÇÃO MÁXIMA: Busca lead + conversa em paralelo com tratamento de erros
+    lead_task = asyncio.create_task(supabase_client.get_lead_by_phone(phone))
+    conversation_task = asyncio.create_task(supabase_client.get_conversation_by_phone(phone))
+    # Agente stateless será criado depois, não precisa pré-carregar
+    
+    # Aguarda todas as tasks com tratamento de erros
+    results = await asyncio.gather(
+        lead_task,
+        conversation_task,
+        return_exceptions=True
+    )
+    
+    # Processar resultados com tratamento de erros
+    lead_result, conv_result = results
+    
+    # Verificar lead
+    if isinstance(lead_result, Exception):
+        emoji_logger.system_error("Lead Fetch", f"Erro ao buscar lead: {lead_result}")
+        lead = None
+    else:
+        lead = lead_result
+    
+    if not lead:
+        # Cria novo lead
+        lead = await supabase_client.create_lead({
+            "phone_number": phone,
+            "current_stage": "INITIAL_CONTACT",
+            "qualification_status": "PENDING", 
+            "interested": True,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        })
+        emoji_logger.supabase_insert("leads", 1, phone=phone)
+    
+    # Preparar dados da mensagem enquanto busca conversa
+    message_data = {
+        "content": message_content,
+        "role": "user",
+        "sender": "user",
+        "media_data": {
+            "message_id": message_id,
+            "raw_data": original_message
         }
-        
-        # Verificar conversa
-        if isinstance(conv_result, Exception):
-            emoji_logger.system_error("Conversation Fetch", f"Erro ao buscar conversa: {conv_result}")
-            conversation = None
-        else:
-            conversation = conv_result
-        
-        if not conversation:
-            conversation = await supabase_client.create_conversation(phone, lead["id"])
-        
-        # VALIDAÇÃO CRÍTICA: Garantir que conversation existe e tem ID válido
-        if not conversation or not isinstance(conversation, dict) or "id" not in conversation:
-            emoji_logger.system_error("Conversation Validation", f"Conversa inválida criada/buscada: {conversation}")
-            raise ValueError(f"Conversa inválida: {conversation}")
-        
-        # Log para debug
-        emoji_logger.system_info(f"Conversa validada - ID: {conversation['id']}, Phone: {phone}")
-        
-        # OTIMIZAÇÃO: Executar em PARALELO - salvar mensagem + cache
-        message_data["conversation_id"] = conversation["id"]
-        
-        save_tasks = [
-            supabase_client.save_message(message_data),
-            redis_client.cache_conversation(
-                phone,
-                {
-                    "lead_id": lead["id"],
-                    "conversation_id": conversation["id"],
-                    "last_message": message_content,
-                    "timestamp": datetime.now().isoformat()
-                }
-            )
-        ]
-        
-        # Executar tarefas em paralelo
-        await asyncio.gather(*save_tasks, return_exceptions=True)
-        
-        # Criar agente stateless com contexto completo
-        emoji_logger.webhook_process("Criando AGENTIC SDR Stateless...")
-        
+    }
+    
+    # Verificar conversa
+    if isinstance(conv_result, Exception):
+        emoji_logger.system_error("Conversation Fetch", f"Erro ao buscar conversa: {conv_result}")
+        conversation = None
+    else:
+        conversation = conv_result
+    
+    if not conversation:
+        conversation = await supabase_client.create_conversation(phone, lead["id"])
+    
+    # VALIDAÇÃO CRÍTICA: Garantir que conversation existe e tem ID válido
+    if not conversation or not isinstance(conversation, dict) or "id" not in conversation:
+        emoji_logger.system_error("Conversation Validation", f"Conversa inválida criada/buscada: {conversation}")
+        raise ValueError(f"Conversa inválida: {conversation}")
+    
+    # Log para debug
+    emoji_logger.system_info(f"Conversa validada - ID: {conversation['id']}, Phone: {phone}")
+    
+    # OTIMIZAÇÃO: Executar em PARALELO - salvar mensagem + cache
+    message_data["conversation_id"] = conversation["id"]
+    
+    save_tasks = [
+        supabase_client.save_message(message_data),
+        redis_client.cache_conversation(
+            phone,
+            {
+                "lead_id": lead["id"],
+                "conversation_id": conversation["id"],
+                "last_message": message_content,
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+    ]
+    
+    # Executar tarefas em paralelo
+    await asyncio.gather(*save_tasks, return_exceptions=True)
+    
+    # Criar agente stateless com contexto completo
+    emoji_logger.webhook_process("Criando AGENTIC SDR Stateless...")
+    
+    try:
+        agentic, execution_context = await create_agent_with_context(
+            phone=phone,
+            conversation_id=conversation["id"]
+        )
+        emoji_logger.webhook_process("AGENTIC SDR Stateless pronto para uso")
+    except Exception as e:
+        emoji_logger.system_error("Agent Creation", f"Erro ao criar agente: {e}")
+        raise HTTPException(status_code=503, detail="Agente temporariamente indisponível")
+    
+    # REMOVIDO: Não simular tempo de leitura quando usuário envia mensagem
+    # Isso estava causando typing aparecer quando não deveria
+    
+    # VALIDAÇÃO CRÍTICA: Garantir conversation_id antes de processar
+    if not conversation or not conversation.get("id"):
+        emoji_logger.system_error("WEBHOOK", f"❌ Conversation inválida! Lead: {lead}, Phone: {phone}")
+        # Tentar criar nova conversa como fallback
         try:
-            agentic, execution_context = await create_agent_with_context(
-                phone=phone,
-                conversation_id=conversation["id"]
-            )
-            emoji_logger.webhook_process("AGENTIC SDR Stateless pronto para uso")
-        except Exception as e:
-            emoji_logger.system_error("Agent Creation", f"Erro ao criar agente: {e}")
-            raise HTTPException(status_code=503, detail="Agente temporariamente indisponível")
-        
-        # REMOVIDO: Não simular tempo de leitura quando usuário envia mensagem
-        # Isso estava causando typing aparecer quando não deveria
-        
-        # VALIDAÇÃO CRÍTICA: Garantir conversation_id antes de processar
-        if not conversation or not conversation.get("id"):
-            emoji_logger.system_error("WEBHOOK", f"❌ Conversation inválida! Lead: {lead}, Phone: {phone}")
-            # Tentar criar nova conversa como fallback
-            try:
-                conversation = await supabase_client.create_conversation(phone, lead["id"] if lead else None)
-                emoji_logger.system_info(f"✅ Nova conversa criada: {conversation.get('id', 'N/A')}")
-            except Exception as conv_error:
-                emoji_logger.system_error("WEBHOOK", f"❌ Falha ao criar conversa: {conv_error}")
-                return
+            conversation = await supabase_client.create_conversation(phone, lead["id"] if lead else None)
+            emoji_logger.system_info(f"✅ Nova conversa criada: {conversation.get('id', 'N/A')}")
+        except Exception as conv_error:
+            emoji_logger.system_error("WEBHOOK", f"❌ Falha ao criar conversa: {conv_error}")
+            return
