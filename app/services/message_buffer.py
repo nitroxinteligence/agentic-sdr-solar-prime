@@ -5,6 +5,8 @@ import asyncio
 from typing import Dict, List, Optional
 from loguru import logger
 from app.utils.logger import emoji_logger
+from app.integrations.supabase_client import supabase_client
+
 
 class MessageBuffer:
     """
