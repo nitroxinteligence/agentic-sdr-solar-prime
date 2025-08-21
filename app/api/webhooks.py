@@ -50,6 +50,7 @@ async def _handle_media_message(
         message: Dict[str, Any]
 ) -> Optional[Dict[str, Any]]:
     """Lida com o download e processamento de mídia."""
+    import base64
     msg_content = message.get("message", {})
     media_type_map = {
         "imageMessage": "image",
@@ -61,14 +62,17 @@ async def _handle_media_message(
 
     for msg_type, media_type in media_type_map.items():
         if msg_type in msg_content:
-            media_content = msg_content[msg_type]
-            # A Evolution API envia a mídia em base64 no campo 'media'
-            if "media" in media_content:
-                return {
-                    "type": media_type,
-                    "content": media_content["media"],
-                    "mimetype": media_content.get("mimetype"),
-                }
+            try:
+                media_bytes = await evolution_client.download_media(msg_content[msg_type])
+                if media_bytes:
+                    return {
+                        "type": media_type,
+                        "content": base64.b64encode(media_bytes).decode('utf-8'),
+                        "mimetype": msg_content[msg_type].get("mimetype"),
+                    }
+            except Exception as e:
+                emoji_logger.system_error(f"Falha ao baixar mídia para {msg_type}", str(e))
+                return {"success": False, "message": "Desculpe, tive um problema ao baixar a mídia que você enviou."}
     return None
 
 
