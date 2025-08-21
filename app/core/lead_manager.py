@@ -38,11 +38,6 @@ class LeadManager:
         if existing_lead_info:
             import copy
             lead_info = copy.deepcopy(existing_lead_info)
-            if "preferences" not in lead_info or not isinstance(lead_info["preferences"], dict):
-                lead_info["preferences"] = {
-                    "interests": [],
-                    "objections": []
-                }
         else:
             lead_info = {
                 "name": None,
@@ -52,14 +47,16 @@ class LeadManager:
                 "qualification_score": 0,
                 "current_stage": "INITIAL_CONTACT",
                 "chosen_flow": None,
-                "preferences": {
-                    "location": None,
-                    "property_type": None,
-                    "has_bill_image": False,
-                    "interests": [],
-                    "objections": []
-                }
+                "preferences": {}
             }
+
+        # Garante que a estrutura de 'preferences' e suas chaves existam
+        if "preferences" not in lead_info or not isinstance(lead_info.get("preferences"), dict):
+            lead_info["preferences"] = {}
+        if "interests" not in lead_info["preferences"]:
+            lead_info["preferences"]["interests"] = []
+        if "objections" not in lead_info["preferences"]:
+            lead_info["preferences"]["objections"] = []
 
         processed_message_count = lead_info.get("processed_message_count", 0)
         new_messages = messages[processed_message_count:]
@@ -123,14 +120,10 @@ class LeadManager:
             # Interesses e objeções podem ser adicionados cumulativamente
             interests = self._extract_interests(content)
             if interests:
-                if "interests" not in lead_info["preferences"]:
-                    lead_info["preferences"]["interests"] = []
                 lead_info["preferences"]["interests"].extend(interests)
 
             objections = self._extract_objections(content)
             if objections:
-                if "objections" not in lead_info["preferences"]:
-                    lead_info["preferences"]["objections"] = []
                 lead_info["preferences"]["objections"].extend(objections)
 
             if not lead_info.get("chosen_flow"):
