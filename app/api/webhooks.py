@@ -37,6 +37,12 @@ def extract_message_content(message: Dict[str, Any]) -> Optional[str]:
         return msg_content["extendedTextMessage"].get("text")
     if "textMessage" in msg_content:
         return msg_content["textMessage"].get("text")
+    
+    # Adiciona extração de legenda para mídias
+    for media_type in ["imageMessage", "videoMessage", "documentMessage"]:
+        if media_type in msg_content:
+            return msg_content[media_type].get("caption")
+            
     return None
 
 
@@ -447,80 +453,78 @@ async def evolution_webhook(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def process_new_message(data: Dict[str, Any]):
-    """Processa nova mensagem recebida"""
+async def process_new_message(data: List[Dict[str, Any]]):
+    """Processa cada nova mensagem recebida no array."""
     try:
-        emoji_logger.webhook_process("Iniciando processamento de nova mensagem")
+        emoji_logger.webhook_process(f"Iniciando processamento de {len(data)} nova(s) mensagem(ns)")
 
         if not data:
-            emoji_logger.system_warning("Payload vazio")
+            emoji_logger.system_warning("Payload de mensagens vazio")
             return
 
-        message = data
-        key = message.get("key", {})
-        remote_jid = key.get("remoteJid", "")
-        from_me = key.get("fromMe", False)
-        message_id = key.get("id", "")
+        for message in data:
+            key = message.get("key", {})
+            remote_jid = key.get("remoteJid", "")
+            from_me = key.get("fromMe", False)
+            message_id = key.get("id", "")
 
-        if from_me:
-            emoji_logger.webhook_process("Mensagem própria ignorada")
-            return
+            if from_me:
+                emoji_logger.webhook_process("Mensagem própria ignorada")
+                continue
 
-        phone = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
+            phone = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
 
-        if "@g.us" in remote_jid:
-            emoji_logger.webhook_process(
-                f"Mensagem de grupo ignorada: {remote_jid}"
+            if "@g.us" in remote_jid:
+                emoji_logger.webhook_process(
+                    f"Mensagem de grupo ignorada: {remote_jid}"
+                )
+                continue
+
+            emoji_logger.webhook_process(f"Processando mensagem de {phone}")
+            
+            message_content = extract_message_content(message)
+            media_data = await _handle_media_message(message)
+
+            if not message_content and not media_data:
+                emoji_logger.system_warning(f"Mensagem sem conteúdo de texto ou mídia de {phone}")
+                logger.debug(f"Payload completo: {message}")
+                continue
+
+            message_content = message_content or ""
+
+            emoji_logger.evolution_receive(
+                phone, 
+                media_data["type"] if media_data else "text", 
+                preview=message_content[:100]
             )
-            return
 
-        emoji_logger.webhook_process(f"Processando mensagem de {phone}")
-        message_content = extract_message_content(message)
-        media_data = await _handle_media_message(message)
+            if not await redis_client.check_rate_limit(
+                f"message:{phone}", max_requests=10, window_seconds=60
+            ):
+                emoji_logger.system_warning(f"Rate limit excedido para {phone}")
+                await evolution_client.send_text_message(
+                    phone,
+                    "⚠️ Você está enviando muitas mensagens. Por favor, aguarde um momento.",
+                    delay=1
+                )
+                return
 
-        # Ignora a mensagem apenas se não tiver nem texto nem mídia
-        if not message_content and not media_data:
-            emoji_logger.system_warning(f"Mensagem sem conteúdo de texto ou mídia de {phone}")
-            logger.debug(f"Payload completo: {message}")
-            return
-
-        # Se houver mídia, o conteúdo da mensagem pode ser vazio
-        message_content = message_content or ""
-
-        emoji_logger.evolution_receive(
-            phone, 
-            media_data["type"] if media_data else "text", 
-            preview=message_content[:100]
-        )
-
-        if not await redis_client.check_rate_limit(
-            f"message:{phone}", max_requests=10, window_seconds=60
-        ):
-            emoji_logger.system_warning(f"Rate limit excedido para {phone}")
-            await evolution_client.send_text_message(
-                phone,
-                "⚠️ Você está enviando muitas mensagens. "
-                "Por favor, aguarde um momento.",
-                delay=1
-            )
-            return
-
-        if settings.enable_message_buffer:
-            buffer = get_message_buffer_instance()
-            await buffer.add_message(
-                phone=phone,
-                content=message_content,
-                message_data=message,
-                media_data=media_data
-            )
-        else:
-            await process_message_with_agent(
-                phone=phone,
-                message_content=message_content,
-                original_message=message,
-                message_id=message_id,
-                media_data=media_data
-            )
+            if settings.enable_message_buffer:
+                buffer = get_message_buffer_instance()
+                await buffer.add_message(
+                    phone=phone,
+                    content=message_content,
+                    message_data=message,
+                    media_data=media_data
+                )
+            else:
+                await process_message_with_agent(
+                    phone=phone,
+                    message_content=message_content,
+                    original_message=message,
+                    message_id=message_id,
+                    media_data=media_data
+                )
 
     except Exception as e:
         emoji_logger.system_error("Webhook Message Processing", str(e))
