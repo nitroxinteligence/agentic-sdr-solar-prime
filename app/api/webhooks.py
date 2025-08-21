@@ -32,6 +32,56 @@ message_splitter = None
 # Instância do detector AGNO para validação de mídia
 agno_detector = AGNOMediaDetector()
 
+# FUNÇÕES AUXILIARES DE WEBHOOK (REIMPLEMENTADAS)
+
+def extract_message_content(message: Dict[str, Any]) -> Optional[str]:
+    """Extrai o conteúdo de texto de vários tipos de mensagem."""
+    msg_content = message.get("message", {})
+    if not msg_content:
+        return None
+    
+    if "conversation" in msg_content:
+        return msg_content["conversation"]
+    if "extendedTextMessage" in msg_content:
+        return msg_content["extendedTextMessage"].get("text")
+    if "textMessage" in msg_content:
+        return msg_content["textMessage"].get("text")
+    return None
+
+async def _handle_media_message(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Lida com o download e processamento de mídia."""
+    # Esta função pode ser expandida para baixar e processar mídia
+    return None
+
+async def process_connection_update(data: Dict[str, Any]):
+    """Processa atualizações de status da conexão."""
+    status = data.get("status")
+    emoji_logger.system_info(f"Connection status update: {status}")
+    await redis_client.set("whatsapp:connection_status", status)
+
+async def process_qrcode_update(data: Dict[str, Any]):
+    """Processa atualizações de QR code."""
+    emoji_logger.system_info("QR code updated. Scan required.")
+    # Lógica para notificar sobre o QR code pode ser adicionada aqui
+
+async def process_message_update(data: Dict[str, Any]):
+    """Processa atualizações de status de mensagem (enviada, lida, etc.)."""
+    update = data.get("update", {})
+    status = update.get("status")
+    msg_id = update.get("key", {}).get("id")
+    if status and msg_id:
+        emoji_logger.system_debug(f"Message {msg_id} status updated to {status}")
+
+async def process_presence_update(data: Dict[str, Any]):
+    """Processa atualizações de presença (digitando, online, etc.)."""
+    remote_jid = data.get("remoteJid")
+    presence = data.get("presence")
+    if remote_jid and presence:
+        emoji_logger.system_debug(f"Presence update from {remote_jid}: {presence}")
+
+# FIM DAS FUNÇÕES AUXILIARES
+
+
 def sanitize_final_response(text: str) -> str:
     """
     Sanitiza agressivamente o texto final para garantir conformidade total 
