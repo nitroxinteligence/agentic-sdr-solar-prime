@@ -4,7 +4,7 @@ Processa mensagens recebidas e eventos do CRM
 """
 
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import asyncio
 import re
 
