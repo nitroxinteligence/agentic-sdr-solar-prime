@@ -151,7 +151,7 @@ class LeadManager:
     def calculate_qualification_score(
             self,
             lead_info: Dict[str, Any],
-    ) -> float:
+    ) -> int:
         """Calcula score de qualificação SIMPLES"""
         score = 0.0
         bill_value = lead_info.get("bill_value", 0)
@@ -197,7 +197,7 @@ class LeadManager:
         elif len(objections) >= 2:
             score -= 3
 
-        return max(0, min(100, score))
+        return int(max(0, min(100, score)))
 
     def determine_stage(self, lead_info: Dict[str, Any]) -> str:
         """Determina estágio do lead no funil"""
