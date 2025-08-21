@@ -227,6 +227,13 @@ class EmojiLogger:
         )
 
     @classmethod
+    def supabase_insert(cls, table: str, count: int, **kwargs):
+        kwargs.update({"table": table, "count": count})
+        cls.log_with_emoji(
+            "INFO", "supabase_insert", f"{count} registro(s) inserido(s) em {table}", **kwargs
+        )
+
+    @classmethod
     def evolution_webhook(cls, event: str, instance: str, **kwargs):
         kwargs.update({"event_type": event, "instance": instance})
         cls.log_with_emoji(
