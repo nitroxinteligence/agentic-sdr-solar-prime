@@ -662,7 +662,7 @@ async def process_message_with_agent(
         # Isso estava causando typing aparecer quando não deveria
         
         # VALIDAÇÃO CRÍTICA: Garantir conversation_id antes de processar
-        if not conversation or not conversation.get("id"):
+                if not conversation or not conversation.get("id"):
             emoji_logger.system_error("WEBHOOK", f"❌ Conversation inválida! Lead: {lead}, Phone: {phone}")
             # Tentar criar nova conversa como fallback
             try:

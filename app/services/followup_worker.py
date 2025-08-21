@@ -97,6 +97,10 @@ class FollowUpWorker:
         lead_id = task_payload.get("lead_id")
         followup_type = task_payload.get("followup_type", "CUSTOM")
 
+        if not lead_id:
+            emoji_logger.system_error("FollowUp Worker", f"Task {task_payload.get('followup_id')} não contém 'lead_id'. Impossível gerar mensagem.")
+            return "Não foi possível gerar a mensagem de follow-up pois o lead não foi encontrado."
+
         # Montar um contexto de execução para o agente
         lead_info = await self.db.get_lead_by_id(lead_id)
         conversation_history = await self.db.get_conversation_messages(lead_info.get('conversation_id')) if lead_info else []

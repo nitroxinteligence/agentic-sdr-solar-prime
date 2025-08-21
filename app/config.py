@@ -117,7 +117,7 @@ class Settings(BaseSettings):
     
     # Horários de funcionamento
     business_hours_start: str = Field(default="08:00", env="BUSINESS_HOURS_START")
-    business_hours_end: str = Field(default="20:00", env="BUSINESS_HOURS_END")
+    business_hours_end: str = Field(default="18:00", env="BUSINESS_HOURS_END")
     timezone: str = Field(default="America/Sao_Paulo", env="TIMEZONE")
     
     # Configurações do Sistema

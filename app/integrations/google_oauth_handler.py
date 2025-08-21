@@ -181,6 +181,13 @@ class GoogleOAuthHandler:
         try:
             env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
             
+            # Garante que o arquivo .env exista antes de tentar ler
+            if not os.path.exists(env_path):
+                with open(env_path, 'w') as f:
+                    f.write(f'GOOGLE_OAUTH_REFRESH_TOKEN={refresh_token}\n')
+                emoji_logger.service_info(f"💾 Arquivo .env criado e refresh token salvo em {env_path}")
+                return
+
             # Ler arquivo .env atual
             with open(env_path, 'r') as f:
                 lines = f.readlines()

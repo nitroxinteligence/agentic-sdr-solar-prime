@@ -229,33 +229,6 @@ class EvolutionAPIClient:
     
     # ==================== MENSAGENS ====================
     
-    def calculate_reading_time(self, text: str) -> float:
-        """
-        Calcula tempo de leitura baseado no tamanho do texto
-        
-        Args:
-            text: Texto para calcular tempo de leitura
-            
-        Returns:
-            Tempo em segundos
-        """
-        if not settings.simulate_reading_time:
-            return 0
-        
-        # Calcular número de palavras
-        word_count = len(text.split())
-        
-        # Calcular tempo baseado em WPM (palavras por minuto)
-        reading_time = (word_count / settings.reading_speed_wpm) * 60
-        
-        # Adicionar variação humana
-        if settings.response_time_variation > 0:
-            variation = reading_time * settings.response_time_variation
-            reading_time += random.uniform(-variation, variation)
-        
-        # Limitar entre 0.5 e 5 segundos
-        return max(0.5, min(reading_time, 5.0))
-    
     async def send_text_message(
         self,
         phone: str,

@@ -361,7 +361,7 @@ class AgenticSDRStateless:
                 hours = int(params.get("hours", 24))
                 message = params.get("message", "Oi! Tudo bem? Ainda tem interesse em energia solar?")
                 return await self.followup_service.schedule_followup(
-                    phone_number=lead_info.get("phone"),
+                    phone_number=lead_info.get("phone_number"),
                     message=message,
                     delay_hours=hours,
                     lead_info=lead_info

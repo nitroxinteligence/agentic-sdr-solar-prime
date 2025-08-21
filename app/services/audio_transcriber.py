@@ -272,7 +272,14 @@ class AudioTranscriber:
                     pass
             
             # 3. Transcrever com SpeechRecognition
+            wav_path_for_fallback = None
             try:
+                # Criar um arquivo WAV temporário para o fallback do Whisper
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_wav_fallback:
+                    wav_path_for_fallback = temp_wav_fallback.name
+                    wav_io.seek(0)
+                    temp_wav_fallback.write(wav_io.read())
+
                 with sr.AudioFile(wav_io) as source:
                     # Ajustar para ruído ambiente
                     self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
@@ -304,10 +311,10 @@ class AudioTranscriber:
                         # Google não conseguiu entender - tentar OpenAI Whisper
                         emoji_logger.system_warning("Google Speech não entendeu, tentando OpenAI Whisper...")
                         
-                        if self.openai_available and os.path.exists(wav_path):
+                        if self.openai_available and wav_path_for_fallback and os.path.exists(wav_path_for_fallback):
                             try:
                                 # Usar OpenAI Whisper-1 como fallback
-                                with open(wav_path, "rb") as audio_file:
+                                with open(wav_path_for_fallback, "rb") as audio_file:
                                     transcription = self.openai_client.audio.transcriptions.create(
                                         model="whisper-1",
                                         file=audio_file,
@@ -340,9 +347,9 @@ class AudioTranscriber:
                         logger.error(f"Erro Google Speech: {e}")
                         emoji_logger.system_warning("🔄 Google falhou, tentando OpenAI Whisper...")
                         
-                        if self.openai_available and os.path.exists(wav_path):
+                        if self.openai_available and wav_path_for_fallback and os.path.exists(wav_path_for_fallback):
                             try:
-                                with open(wav_path, "rb") as audio_file:
+                                with open(wav_path_for_fallback, "rb") as audio_file:
                                     transcription = self.openai_client.audio.transcriptions.create(
                                         model="whisper-1",
                                         file=audio_file,
@@ -377,6 +384,12 @@ class AudioTranscriber:
                     "status": "error",
                     "error": f"Erro ao transcrever: {str(e)}"
                 }
+            finally:
+                if wav_path_for_fallback and os.path.exists(wav_path_for_fallback):
+                    try:
+                        os.unlink(wav_path_for_fallback)
+                    except:
+                        pass
                 
         except Exception as e:
             logger.exception(f"Erro crítico no AudioTranscriber: {e}")

@@ -6,6 +6,11 @@ from datetime import datetime
 from typing import Dict, Any
 from loguru import logger
 
+from app.integrations.supabase_client import supabase_client
+from app.integrations.evolution import evolution_client
+from app.integrations.redis_client import redis_client
+from app.agents.agentic_sdr_stateless import AgenticSDRStateless
+
 router = APIRouter()
 
 @router.get("/")
@@ -23,35 +28,23 @@ async def liveness():
     return {"status": "alive"}
 
 @router.get("/ready")
-async def readiness(request: Request):
+async def readiness():
     """Readiness probe - verifica se o serviço está pronto"""
     try:
+        # Instanciar agente para verificação
+        agent = AgenticSDRStateless()
+        await agent.initialize()
+
         # Verifica se os componentes principais estão inicializados
         checks = {
-            "supabase": False,
-            "evolution": False,
-            "agent": False,
-            "redis": False
+            "supabase": await supabase_client.test_connection(),
+            "evolution": await evolution_client.test_connection(),
+            "agent": agent.is_initialized,
+            "redis": await redis_client.ping()
         }
         
-        # Verifica Supabase
-        if hasattr(request.app.state, 'supabase'):
-            checks["supabase"] = await request.app.state.supabase.test_connection()
-        
-        # Verifica Evolution API
-        if hasattr(request.app.state, 'evolution'):
-            checks["evolution"] = await request.app.state.evolution.test_connection()
-        
-        # Verifica Agente
-        if hasattr(request.app.state, 'agent'):
-            checks["agent"] = request.app.state.agent.is_ready()
-        
-        # Verifica Redis
-        if hasattr(request.app.state, 'redis'):
-            checks["redis"] = await request.app.state.redis.ping()
-        
         # Sistema está pronto se todos os componentes críticos estão OK
-        is_ready = checks["supabase"] and checks["evolution"] and checks["agent"]
+        is_ready = all(checks.values())
         
         return {
             "ready": is_ready,
@@ -68,7 +61,7 @@ async def readiness(request: Request):
         }
 
 @router.get("/metrics")
-async def metrics(request: Request):
+async def metrics():
     """Métricas do sistema para monitoramento"""
     try:
         metrics_data = {
@@ -79,9 +72,7 @@ async def metrics(request: Request):
         }
         
         # Obtém métricas do Redis se disponível
-        if hasattr(request.app.state, 'redis'):
-            from app.integrations.redis_client import redis_client
-            
+        if await redis_client.ping():
             # Contadores
             metrics_data["counters"]["messages_processed"] = await redis_client.get_counter("messages_processed")
             metrics_data["counters"]["leads_created"] = await redis_client.get_counter("leads_created")
@@ -93,9 +84,9 @@ async def metrics(request: Request):
                 metrics_data["gauges"]["whatsapp_connected"] = 1 if connection_status.get("state") == "open" else 0
         
         # Obtém estatísticas do banco se disponível
-        if hasattr(request.app.state, 'supabase'):
+        if await supabase_client.test_connection():
             try:
-                stats = await request.app.state.supabase.get_daily_stats()
+                stats = await supabase_client.get_daily_stats()
                 metrics_data["gauges"]["leads_today"] = stats.get("leads_today", 0)
                 metrics_data["gauges"]["conversations_active"] = stats.get("conversations_active", 0)
             except:
@@ -111,18 +102,17 @@ async def metrics(request: Request):
         }
 
 @router.get("/dependencies")
-async def check_dependencies(request: Request):
+async def check_dependencies():
     """Verifica status de todas as dependências"""
     dependencies = {}
     
     # Supabase
     try:
-        if hasattr(request.app.state, 'supabase'):
-            connected = await request.app.state.supabase.test_connection()
-            dependencies["supabase"] = {
-                "status": "healthy" if connected else "unhealthy",
-                "type": "database"
-            }
+        connected = await supabase_client.test_connection()
+        dependencies["supabase"] = {
+            "status": "healthy" if connected else "unhealthy",
+            "type": "database"
+        }
     except Exception as e:
         dependencies["supabase"] = {
             "status": "unhealthy",
@@ -132,12 +122,11 @@ async def check_dependencies(request: Request):
     
     # Evolution API
     try:
-        if hasattr(request.app.state, 'evolution'):
-            connected = await request.app.state.evolution.test_connection()
-            dependencies["evolution_api"] = {
-                "status": "healthy" if connected else "unhealthy",
-                "type": "whatsapp"
-            }
+        connected = await evolution_client.test_connection()
+        dependencies["evolution_api"] = {
+            "status": "healthy" if connected else "unhealthy",
+            "type": "whatsapp"
+        }
     except Exception as e:
         dependencies["evolution_api"] = {
             "status": "unhealthy",
@@ -147,9 +136,8 @@ async def check_dependencies(request: Request):
     
     # Redis
     try:
-        from app.integrations.redis_client import redis_client
         await redis_client.connect()
-        if await redis_client.redis_client.ping():
+        if await redis_client.ping():
             dependencies["redis"] = {
                 "status": "healthy",
                 "type": "cache"

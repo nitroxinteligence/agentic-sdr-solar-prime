@@ -209,7 +209,7 @@ class LeadManager:
         # Informações fornecidas (peso 30%)
         if lead_info.get("name"):
             score += 10
-        if lead_info.get("phone"):
+        if lead_info.get("phone_number"):
             score += 10
         if lead_info.get("email"):
             score += 5
