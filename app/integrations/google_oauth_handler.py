@@ -142,14 +142,13 @@ class GoogleOAuthHandler:
             
             # Salvar refresh token
             if credentials.refresh_token:
-                # Salvar no arquivo .env (produção: usar vault seguro)
-                await self._save_refresh_token(credentials.refresh_token)
-                
-                emoji_logger.service_info("✅ Refresh token salvo com sucesso!")
+                # AVISO: O token deve ser salvo manualmente nas variáveis de ambiente
+                emoji_logger.service_info("✅ Novo refresh token gerado. Copie o valor abaixo e salve na variável de ambiente GOOGLE_OAUTH_REFRESH_TOKEN.")
+                emoji_logger.service_info(f"TOKEN: {credentials.refresh_token}")
                 
                 return {
                     "success": True,
-                    "message": "Autorização concluída com sucesso",
+                    "message": "Autorização concluída. Copie o refresh token dos logs e configure no seu ambiente.",
                     "access_token": credentials.token,
                     "refresh_token": credentials.refresh_token,
                     "expiry": credentials.expiry.isoformat() if credentials.expiry else None,
