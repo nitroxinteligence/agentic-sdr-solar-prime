@@ -621,3 +621,17 @@ async def process_message_with_agent(
                 "WEBHOOK", f"❌ Falha ao criar conversa: {conv_error}"
             )
             return
+
+    response_text = await agentic.process_message(
+        message=message_content,
+        execution_context=execution_context
+    )
+
+    final_response = extract_final_response(response_text)
+    
+    if final_response:
+        await evolution_client.send_text_message(phone, final_response)
+    else:
+        emoji_logger.system_warning(
+            "A resposta final estava vazia, não enviando mensagem."
+        )
