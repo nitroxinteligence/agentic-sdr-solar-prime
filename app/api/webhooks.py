@@ -44,6 +44,25 @@ async def _handle_media_message(
         message: Dict[str, Any]
 ) -> Optional[Dict[str, Any]]:
     """Lida com o download e processamento de mídia."""
+    msg_content = message.get("message", {})
+    media_type_map = {
+        "imageMessage": "image",
+        "videoMessage": "video",
+        "audioMessage": "audio",
+        "documentMessage": "document",
+        "stickerMessage": "sticker",
+    }
+
+    for msg_type, media_type in media_type_map.items():
+        if msg_type in msg_content:
+            media_content = msg_content[msg_type]
+            # A Evolution API envia a mídia em base64 no campo 'media'
+            if "media" in media_content:
+                return {
+                    "type": media_type,
+                    "content": media_content["media"],
+                    "mimetype": media_content.get("mimetype"),
+                }
     return None
 
 
@@ -287,7 +306,8 @@ def extract_base64_from_data_url(data_url: str) -> str:
 
 async def create_agent_with_context(
         phone: str,
-        conversation_id: str = None
+        conversation_id: str = None,
+        media_data: Optional[Dict[str, Any]] = None
 ) -> tuple:
     """Cria agente stateless com contexto completo carregado"""
     from app.integrations.supabase_client import supabase_client
@@ -309,6 +329,7 @@ async def create_agent_with_context(
             "lead_info": lead_data or {},
             "conversation_id": conversation_id,
             "conversation_history": conversation_history or [],
+            "media": media_data,
             "timestamp": datetime.now().isoformat()
         }
 
@@ -455,14 +476,21 @@ async def process_new_message(data: Dict[str, Any]):
 
         emoji_logger.webhook_process(f"Processando mensagem de {phone}")
         message_content = extract_message_content(message)
+        media_data = await _handle_media_message(message)
 
-        if not message_content:
-            emoji_logger.system_warning(f"Mensagem sem conteúdo de {phone}")
+        # Ignora a mensagem apenas se não tiver nem texto nem mídia
+        if not message_content and not media_data:
+            emoji_logger.system_warning(f"Mensagem sem conteúdo de texto ou mídia de {phone}")
             logger.debug(f"Payload completo: {message}")
             return
 
+        # Se houver mídia, o conteúdo da mensagem pode ser vazio
+        message_content = message_content or ""
+
         emoji_logger.evolution_receive(
-            phone, "text", preview=message_content[:100]
+            phone, 
+            media_data["type"] if media_data else "text", 
+            preview=message_content[:100]
         )
 
         if not await redis_client.check_rate_limit(
@@ -482,14 +510,16 @@ async def process_new_message(data: Dict[str, Any]):
             await buffer.add_message(
                 phone=phone,
                 content=message_content,
-                message_data=message
+                message_data=message,
+                media_data=media_data
             )
         else:
             await process_message_with_agent(
                 phone=phone,
                 message_content=message_content,
                 original_message=message,
-                message_id=message_id
+                message_id=message_id,
+                media_data=media_data
             )
 
     except Exception as e:
@@ -501,11 +531,12 @@ async def process_message_with_agent(
     phone: str,
     message_content: str,
     original_message: Dict[str, Any],
-    message_id: str
+    message_id: str,
+    media_data: Optional[Dict[str, Any]] = None
 ):
     """Processa mensagem com o agente AGENTIC SDR"""
     from app.integrations.supabase_client import supabase_client
-    media_data = await _handle_media_message(original_message)
+    
     if media_data and media_data.get("error"):
         await evolution_client.send_text_message(phone, media_data["error"])
         return
@@ -593,7 +624,8 @@ async def process_message_with_agent(
     try:
         agentic, execution_context = await create_agent_with_context(
             phone=phone,
-            conversation_id=conversation["id"]
+            conversation_id=conversation["id"],
+            media_data=media_data
         )
         emoji_logger.webhook_process("AGENTIC SDR Stateless pronto para uso")
     except Exception as e:
