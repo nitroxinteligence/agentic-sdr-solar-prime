@@ -76,38 +76,36 @@ async def lifespan(app: FastAPI):
         # Sincronização agora é feita diretamente pelo CRMServiceReal
         
         
-        # Inicializa FollowUp Executor Service (versão segura)
+        # Inicializa FollowUp Scheduler e Worker
         if settings.enable_follow_up_automation:
             try:
-                from app.services.followup_executor_service import start_followup_executor
-                asyncio.create_task(start_followup_executor())  # Roda em background
-                emoji_logger.system_ready("FollowUp Executor", check_interval="1min", types="30min, 24h")
+                from app.services.followup_executor_service import FollowUpSchedulerService
+                from app.services.followup_worker import FollowUpWorker
+
+                scheduler = FollowUpSchedulerService()
+                worker = FollowUpWorker()
+                
+                await scheduler.start()
+                await worker.start()
+                
+                emoji_logger.system_ready("FollowUp Services (Scheduler & Worker)")
             except Exception as e:
-                emoji_logger.system_warning(f"⚠️ FollowUp Executor não iniciado: {str(e)}")
+                emoji_logger.system_warning(f"⚠️ FollowUp Services não iniciados: {str(e)}")
         
-        # PRÉ-AQUECIMENTO: Testa criação do agente (singleton ou stateless conforme configuração)
-        from app.agents import create_stateless_agent
-        from app.config import settings
+        # PRÉ-AQUECIMENTO: Instancia o agente para carregar modelos e serviços
+        from app.agents.agentic_sdr_stateless import AgenticSDRStateless
         
-        # Sistema agora é 100% stateless
         agent_mode = "Stateless"
         
-        for attempt in range(3):
-            try:
-                emoji_logger.system_info(f"🔥 Pré-aquecendo AgenticSDR ({agent_mode}) - tentativa {attempt+1}/3...")
-                
-                # Sempre criar instância stateless
-                test_agent = await create_stateless_agent()
-                
-                emoji_logger.system_ready(f"AgenticSDR ({agent_mode})", status="sistema pronto")
-                break
-            except Exception as e:
-                if attempt == 2:  # Última tentativa
-                    emoji_logger.system_error("AgenticSDR", f"Falha no teste após 3 tentativas: {e}")
-                    emoji_logger.system_warning(f"Sistema continuará normalmente (modo {agent_mode})")
-                else:
-                    emoji_logger.system_warning(f"Tentativa {attempt+1} falhou, tentando novamente...")
-                    await asyncio.sleep(2)  # Aguarda 2 segundos antes de tentar novamente
+        try:
+            emoji_logger.system_info(f"🔥 Pré-aquecendo AgenticSDR ({agent_mode})...")
+            test_agent = AgenticSDRStateless()
+            await test_agent.initialize()
+            emoji_logger.system_ready(f"AgenticSDR ({agent_mode})", status="sistema pronto")
+        except Exception as e:
+            emoji_logger.system_error("AgenticSDR", f"Falha no pré-aquecimento: {e}")
+            # Em caso de falha, a aplicação não deve subir para evitar instabilidade
+            raise
         
         emoji_logger.system_ready("SDR IA Solar Prime", startup_time=3.0)
         
