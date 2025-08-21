@@ -170,54 +170,6 @@ class GoogleOAuthHandler:
                 "message": f"Erro ao processar autorização: {str(e)}"
             }
     
-    async def _save_refresh_token(self, refresh_token: str):
-        """
-        Salva refresh token no arquivo .env
-        NOTA: Em produção, usar um vault seguro como HashiCorp Vault ou AWS Secrets Manager
-        
-        Args:
-            refresh_token: Token a ser salvo
-        """
-        try:
-            env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
-            
-            # Garante que o arquivo .env exista antes de tentar ler
-            if not os.path.exists(env_path):
-                with open(env_path, 'w') as f:
-                    f.write(f'GOOGLE_OAUTH_REFRESH_TOKEN={refresh_token}\n')
-                emoji_logger.service_info(f"💾 Arquivo .env criado e refresh token salvo em {env_path}")
-                return
-
-            # Ler arquivo .env atual
-            with open(env_path, 'r') as f:
-                lines = f.readlines()
-            
-            # Atualizar ou adicionar GOOGLE_OAUTH_REFRESH_TOKEN
-            token_found = False
-            for i, line in enumerate(lines):
-                if line.startswith('GOOGLE_OAUTH_REFRESH_TOKEN='):
-                    lines[i] = f'GOOGLE_OAUTH_REFRESH_TOKEN={refresh_token}\n'
-                    token_found = True
-                    break
-            
-            if not token_found:
-                lines.append(f'\n# OAuth Refresh Token (gerado automaticamente)\n')
-                lines.append(f'GOOGLE_OAUTH_REFRESH_TOKEN={refresh_token}\n')
-            
-            # Salvar arquivo atualizado
-            with open(env_path, 'w') as f:
-                f.writelines(lines)
-            
-            # Atualizar configuração em runtime
-            settings.google_oauth_refresh_token = refresh_token
-            self.refresh_token = refresh_token
-            
-            emoji_logger.service_info(f"💾 Refresh token salvo em {env_path}")
-            
-        except Exception as e:
-            emoji_logger.service_error(f"❌ Erro ao salvar refresh token: {e}")
-            raise
-    
     def get_credentials(self) -> Optional[Credentials]:
         """
         Obtém credenciais OAuth válidas
