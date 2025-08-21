@@ -30,26 +30,31 @@ class LeadManager:
     def extract_lead_info(
             self,
             messages: List[Dict[str, Any]],
+            existing_lead_info: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Extrai informações do lead de forma SIMPLES
         """
-        lead_info = {
-            "name": None,
-            "phone_number": None,
-            "email": None,
-            "bill_value": None,
-            "qualification_score": 0,
-            "current_stage": "INITIAL_CONTACT",
-            "chosen_flow": None,
-            "preferences": {
-                "location": None,
-                "property_type": None,
-                "has_bill_image": False,
-                "interests": [],
-                "objections": []
+        if existing_lead_info:
+            import copy
+            lead_info = copy.deepcopy(existing_lead_info)
+        else:
+            lead_info = {
+                "name": None,
+                "phone_number": None,
+                "email": None,
+                "bill_value": None,
+                "qualification_score": 0,
+                "current_stage": "INITIAL_CONTACT",
+                "chosen_flow": None,
+                "preferences": {
+                    "location": None,
+                    "property_type": None,
+                    "has_bill_image": False,
+                    "interests": [],
+                    "objections": []
+                }
             }
-        }
 
         for idx, msg in enumerate(messages):
             content = msg.get("content", "").lower()

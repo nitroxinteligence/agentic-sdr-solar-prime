@@ -633,7 +633,10 @@ async def process_message_with_agent(
     final_response = extract_final_response(response_text)
     
     if final_response:
-        await evolution_client.send_text_message(phone, final_response)
+        splitter = get_message_splitter_instance()
+        message_chunks = splitter.split_message(final_response)
+        for chunk in message_chunks:
+            await evolution_client.send_text_message(phone, chunk)
     else:
         emoji_logger.system_warning(
             "A resposta final estava vazia, não enviando mensagem."

@@ -137,7 +137,8 @@ class AgenticSDRStateless:
             )
 
             new_lead_info = self.lead_manager.extract_lead_info(
-                conversation_history
+                conversation_history,
+                existing_lead_info=lead_info
             )
 
             lead_changes = self._detect_lead_changes(lead_info, new_lead_info)
