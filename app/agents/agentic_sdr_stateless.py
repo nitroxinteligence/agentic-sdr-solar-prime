@@ -123,6 +123,10 @@ class AgenticSDRStateless:
                     emoji_logger.multimodal_event(
                         "📎 Mídia processada com sucesso"
                     )
+                else:
+                    # Se o processamento de mídia falhar, retorne a mensagem de erro diretamente
+                    error_message = media_result.get("message", "Ocorreu um erro ao processar a mídia.")
+                    return response_formatter.ensure_response_tags(error_message), lead_info
 
             user_message = {
                 "role": "user",

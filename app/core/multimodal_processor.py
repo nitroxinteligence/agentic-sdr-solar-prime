@@ -14,6 +14,7 @@ import PyPDF2
 from docx import Document
 from app.utils.logger import emoji_logger
 from app.config import settings
+from app.utils.dependency_checker import check_multimodal_dependencies
 
 try:
     from pdf2image import convert_from_bytes
@@ -33,6 +34,7 @@ class MultimodalProcessor:
     def __init__(self):
         self.enabled = settings.enable_multimodal_analysis
         self.is_initialized = False
+        self.dependencies = {"ocr": False, "audio": False, "pdf": False}
 
     def initialize(self):
         """Inicialização simples"""
@@ -40,7 +42,8 @@ class MultimodalProcessor:
             return
 
         if self.enabled:
-            emoji_logger.system_ready("🎨 MultimodalProcessor habilitado")
+            self.dependencies = check_multimodal_dependencies()
+            emoji_logger.system_ready("🎨 MultimodalProcessor habilitado", dependencies=self.dependencies)
         else:
             emoji_logger.system_warning("🎨 MultimodalProcessor desabilitado")
 
@@ -64,10 +67,17 @@ class MultimodalProcessor:
 
         try:
             if media_type == "image":
+                if not self.dependencies.get("ocr"):
+                    return {"success": False, "message": "Desculpe, não consigo processar imagens no momento."}
                 return await self.process_image(content)
             elif media_type in ["audio", "voice"]:
+                if not self.dependencies.get("audio"):
+                    return {"success": False, "message": "Desculpe, não consigo processar áudios no momento."}
                 return await self.process_audio(content)
             elif media_type == "document":
+                # O processamento de PDF depende tanto do poppler quanto do tesseract
+                if not self.dependencies.get("pdf") or not self.dependencies.get("ocr"):
+                     return {"success": False, "message": "Desculpe, não consigo processar documentos no momento."}
                 return await self.process_document(content)
             else:
                 return {

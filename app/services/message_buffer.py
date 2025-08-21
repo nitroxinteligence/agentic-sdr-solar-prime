@@ -27,7 +27,7 @@ class MessageBuffer:
         )
 
     async def add_message(
-            self, phone: str, content: str, message_data: Dict
+            self, phone: str, content: str, message_data: Dict, media_data: Optional[Dict] = None
     ) -> None:
         """
         Adiciona mensagem ao buffer
@@ -35,7 +35,7 @@ class MessageBuffer:
         if phone not in self.queues:
             self.queues[phone] = asyncio.Queue(maxsize=self.max_size)
             self.tasks[phone] = asyncio.create_task(self._process_queue(phone))
-        message = {"content": content, "data": message_data}
+        message = {"content": content, "data": message_data, "media_data": media_data}
         try:
             self.queues[phone].put_nowait(message)
             emoji_logger.system_debug(
@@ -94,12 +94,14 @@ class MessageBuffer:
             phone=phone, total_chars=len(combined_content)
         )
         last_message = messages[-1]["data"]
+        media_data = messages[-1]["media_data"]
         message_id = last_message.get("key", {}).get("id", "")
         await process_message_with_agent(
             phone=phone,
             message_content=combined_content,
             original_message=last_message,
-            message_id=message_id
+            message_id=message_id,
+            media_data=media_data
         )
 
     async def shutdown(self) -> None:
