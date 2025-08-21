@@ -628,6 +628,8 @@ async def process_message_with_agent(
     )
 
     if updated_lead_info and updated_lead_info.get("id"):
+        # Remove a chave transitória antes de salvar no banco
+        updated_lead_info.pop("processed_message_count", None)
         await supabase_client.update_lead(updated_lead_info["id"], updated_lead_info)
 
     final_response = extract_final_response(response_text)
