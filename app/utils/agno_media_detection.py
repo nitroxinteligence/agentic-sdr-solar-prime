@@ -169,13 +169,13 @@ class AGNOMediaDetector:
         """Verificações extras para formatos que precisam de validação"""
         if check_type == 'webp':
             return len(magic_bytes) >= 12 and magic_bytes[8:12] == b'WEBP'
-elif check_type == 'heic':
+        elif check_type == 'heic':
             if len(magic_bytes) >= 12:
                 return magic_bytes[8:12] in (
                     b'heic', b'heix', b'hevc', b'mif1'
                 )
             return False
-elif check_type == 'wav':
+        elif check_type == 'wav':
             return len(magic_bytes) >= 12 and magic_bytes[8:12] == b'WAVE'
         return True
 
