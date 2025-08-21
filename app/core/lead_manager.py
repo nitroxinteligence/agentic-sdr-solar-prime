@@ -190,11 +190,12 @@ class LeadManager:
 
         property_type = lead_info.get(
             "preferences", {}
-        ).get("property_type", "")
-        if "comercial" in property_type or "empresa" in property_type:
-            score += 15
-        elif "residencial" in property_type or "casa" in property_type:
-            score += 10
+        ).get("property_type")
+        if property_type:
+            if "comercial" in property_type or "empresa" in property_type:
+                score += 15
+            elif "residencial" in property_type or "casa" in property_type:
+                score += 10
 
         interests = lead_info.get("preferences", {}).get("interests", [])
         if len(interests) >= 3:
