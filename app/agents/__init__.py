@@ -4,11 +4,9 @@ Arquitetura Stateless
 """
 
 from app.agents.agentic_sdr_stateless import (
-    AgenticSDRStateless,
-    create_stateless_agent
+    AgenticSDRStateless
 )
 
 __all__ = [
-    'AgenticSDRStateless',
-    'create_stateless_agent'
+    'AgenticSDRStateless'
 ]

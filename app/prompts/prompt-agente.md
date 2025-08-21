@@ -743,8 +743,6 @@
     </scenario>
     
     <scenario name="agendar_lembrete">
-      Helen: [TOOL: followup.schedule | hours=24 | message=Oi João! Tudo bem? Passando para confirmar sua reunião de amanhã às 10h com o Leonardo. Link: {meet_link}]
-      Helen: [TOOL: followup.schedule | hours=2 | message=João, sua reunião com o Leonardo é daqui a 2 horas! Te esperamos às 10h!]
       Helen: "Perfeito! Configurei lembretes automáticos para você não esquecer da reunião."
     </scenario>
   </practical_examples>

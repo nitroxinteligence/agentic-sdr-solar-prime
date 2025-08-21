@@ -13,6 +13,8 @@ from functools import wraps
 from app.utils.logger import emoji_logger
 from app.config import settings
 from app.services.rate_limiter import wait_for_kommo
+from app.decorators.error_handler import handle_kommo_errors, async_handle_errors
+from app.exceptions import KommoAPIException, DatabaseException
 
 def async_retry_with_backoff(max_retries: int = 3, initial_delay: float = 1.0, max_delay: float = 30.0, backoff_factor: float = 2.0):
     """
@@ -86,14 +88,14 @@ class CRMServiceReal:
         # Todos os campos abaixo foram testados e validados na API do Kommo
         self.custom_fields = {
             # ===== CAMPOS VALIDADOS E FUNCIONAIS =====
-            "phone": 392802,          # WhatsApp (text) ✅ TESTADO
-            "whatsapp": 392802,       # Alias para phone ✅ TESTADO
-            "bill_value": 392804,     # Valor Conta Energia (numeric) ✅ TESTADO
-            "valor_conta": 392804,    # Alias para bill_value ✅ TESTADO
-            "solution_type": 392808,  # Solução Solar (select) ✅ TESTADO
-            "solucao_solar": 392808,  # Alias para solution_type ✅ TESTADO
-            "calendar_link": 395520,  # Link do evento no Google Calendar (url) ✅ TESTADO
-            "google_calendar": 395520, # Alias para calendar_link ✅ TESTADO
+            "phone": None,          # WhatsApp (text) ✅ TESTADO
+            "whatsapp": None,       # Alias para phone ✅ TESTADO
+            "bill_value": None,     # Valor Conta Energia (numeric) ✅ TESTADO
+            "valor_conta": None,    # Alias para bill_value ✅ TESTADO
+            "solution_type": None,  # Solução Solar (select) ✅ TESTADO
+            "solucao_solar": None,  # Alias para solution_type ✅ TESTADO
+            "calendar_link": None,  # Link do evento no Google Calendar (url) ✅ TESTADO
+            "google_calendar": None, # Alias para calendar_link ✅ TESTADO
             
             # ===== CAMPOS DE OUTRAS ENTIDADES (NÃO USAR EM LEADS) =====
             # "location": 152429,     # Endereço (textarea) - COMPANIES apenas, não LEADS
@@ -103,46 +105,12 @@ class CRMServiceReal:
             # "score": None,              # Removido - causava erro 400
             # "email": None,              # Não existe campo email customizado em LEADS
             # "property_type": None,      # Não existe campo tipo de propriedade
-            "conversation_id": 392860     # Mantendo para compatibilidade
+            "conversation_id": None     # Mantendo para compatibilidade
         }
         
         # Mapeamento UNIFICADO de estágios para IDs do Kommo
         # Aceita tanto chaves em inglês quanto português
-        self.stage_map = {
-            # QUALIFICAÇÃO
-            "QUALIFICATION": 89709589,
-            "QUALIFICACAO": 89709589,
-            "QUALIFICADO": 89709589,
-            "QUALIFIED": 89709589,
-            
-            # AGENDAMENTO
-            "SCHEDULE": 89709591,
-            "AGENDAMENTO": 89709591,
-            "MEETING_SCHEDULED": 89709595,
-            "REUNIAO_AGENDADA": 89709595,
-            "REUNIÃO AGENDADA": 89709595,
-            
-            # EM NEGOCIAÇÃO
-            "NEGOTIATION": 89709593,
-            "NEGOCIACAO": 89709593,
-            "EM_NEGOCIACAO": 89709593,
-            "EM NEGOCIAÇÃO": 89709593,
-            
-            # FECHADO
-            "CLOSED": 89709597,
-            "FECHADO": 89709597,
-            "CONVERTED": 89709597,
-            "CONVERTIDO": 89709597,
-            
-            # NÃO INTERESSADO
-            "NOT_INTERESTED": 89709599,
-            "NAO_INTERESSADO": 89709599,
-            "NÃO INTERESSADO": 89709599,
-            
-            # ATENDIMENTO HUMANO
-            "HUMAN_HANDOFF": 90421387,
-            "ATENDIMENTO_HUMANO": 90421387,
-        }
+        self.stage_map = {}
         
         # Mapeamento de valores do campo SELECT "Solução Solar" (ID: 392808)
         # IMPORTANTE: Usar enum_id, não o texto!
@@ -173,6 +141,8 @@ class CRMServiceReal:
             "Usina Investimento": 1078622
         }
         
+    @handle_kommo_errors(max_retries=3, delay=10.0)
+    @handle_kommo_errors(max_retries=3, delay=10.0)
     async def initialize(self):
         """Inicializa conexão REAL com Kommo CRM e busca IDs dinamicamente"""
         if self.is_initialized:
@@ -214,13 +184,27 @@ class CRMServiceReal:
                     
                     self.is_initialized = True
                 else:
-                    raise Exception(f"Erro ao conectar: {response.status}")
+                    error_text = await response.text()
+                    raise KommoAPIException(
+                        f"Erro ao conectar Kommo: {response.status} - {error_text}",
+                        error_code="KOMMO_CONNECTION_ERROR",
+                        details={"status_code": response.status, "response": error_text}
+                    )
                     
         except Exception as e:
             emoji_logger.service_error(f"Erro ao conectar Kommo: {e}")
             if self.session:
                 await self._close_session_safely()
-            raise
+            
+            # Re-raise with proper error type
+            if not isinstance(e, KommoAPIException):
+                raise KommoAPIException(
+                    f"Erro ao conectar Kommo: {e}",
+                    error_code="KOMMO_INITIALIZATION_ERROR",
+                    details={"exception": str(e)}
+                )
+            else:
+                raise
     
     async def _fetch_custom_fields(self):
         """Busca IDs dos campos customizados dinamicamente"""
@@ -274,7 +258,14 @@ class CRMServiceReal:
                     emoji_logger.service_info(f"📊 {len(self.custom_fields)} campos customizados mapeados")
         except Exception as e:
             emoji_logger.service_warning(f"Erro ao buscar campos customizados: {e}")
-            # Manter os IDs padrão se falhar
+            # Verificar se campos essenciais foram mapeados
+            essential_fields = ["phone", "bill_value", "solution_type", "calendar_link"]
+            missing_fields = [f for f in essential_fields if not self.custom_fields.get(f)]
+            if missing_fields:
+                raise KommoAPIException(
+                    f"Falha ao mapear campos customizados essenciais: {missing_fields}",
+                    error_code="KOMMO_FIELD_MAPPING_ERROR"
+                )
     
     async def _fetch_pipeline_stages(self):
         """Busca estágios do pipeline dinamicamente COM CACHE SIMPLES"""
@@ -363,9 +354,17 @@ class CRMServiceReal:
                             break
         except Exception as e:
             emoji_logger.service_warning(f"Erro ao buscar estágios do pipeline: {e}")
-            # Manter mapeamento padrão se falhar
+            # Verificar se estágios essenciais foram mapeados
+            essential_stages = ["QUALIFICATION", "MEETING_SCHEDULED", "NOT_INTERESTED", "HUMAN_HANDOFF"]
+            missing_stages = [s for s in essential_stages if not self.stage_map.get(s)]
+            if missing_stages:
+                raise KommoAPIException(
+                    f"Falha ao mapear estágios essenciais do pipeline: {missing_stages}",
+                    error_code="KOMMO_STAGE_MAPPING_ERROR"
+                )
     
     @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    @handle_kommo_errors(max_retries=3, delay=10.0)
     async def create_lead(self, lead_data: Dict[str, Any]) -> Dict[str, Any]:
         """Cria lead REAL no Kommo"""
         if not self.is_initialized:
@@ -467,14 +466,43 @@ class CRMServiceReal:
                     }
                 else:
                     error_text = await response.text()
-                    raise Exception(f"Erro na criação do lead: {response.status} - {error_text}")
+                    if response.status == 403:
+                        raise KommoAPIException(
+                            "Erro de permissão ao criar lead no Kommo",
+                            error_code="KOMMO_PERMISSION_DENIED",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    elif response.status == 404:
+                        raise KommoAPIException(
+                            "Pipeline não encontrado ao criar lead no Kommo",
+                            error_code="KOMMO_NOT_FOUND",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    elif response.status == 409:
+                        raise KommoAPIException(
+                            "Conflito ao criar lead no Kommo",
+                            error_code="KOMMO_CONFLICT",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    else:
+                        raise KommoAPIException(
+                            f"Erro ao criar lead no Kommo: {response.status} - {error_text}",
+                            error_code="KOMMO_CREATE_LEAD_ERROR",
+                            details={"status_code": response.status, "response": error_text}
+                        )
                     
         except Exception as e:
             emoji_logger.service_error(f"Erro ao criar lead no Kommo: {e}")
-            return {
-                "success": False,
-                "message": f"Erro ao criar lead no CRM: {e}"
-            }
+            
+            # Re-raise with proper error type if not already a KommoAPIException
+            if not isinstance(e, KommoAPIException):
+                raise KommoAPIException(
+                    f"Erro ao criar lead no CRM: {e}",
+                    error_code="KOMMO_CREATE_LEAD_EXCEPTION",
+                    details={"exception": str(e)}
+                )
+            else:
+                raise
     
     async def create_lead_with_compensation(self, lead_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -598,6 +626,7 @@ class CRMServiceReal:
             }
     
     @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    @handle_kommo_errors(max_retries=3, delay=10.0)
     async def update_lead(self, lead_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
         """Atualiza lead REAL no Kommo"""
         if not self.is_initialized:
@@ -695,14 +724,43 @@ class CRMServiceReal:
                     }
                 else:
                     error_text = await response.text()
-                    raise Exception(f"Erro na atualização do lead: {response.status} - {error_text}")
+                    if response.status == 403:
+                        raise KommoAPIException(
+                            "Erro de permissão ao atualizar lead no Kommo",
+                            error_code="KOMMO_PERMISSION_DENIED",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    elif response.status == 404:
+                        raise KommoAPIException(
+                            "Lead não encontrado ao atualizar no Kommo",
+                            error_code="KOMMO_NOT_FOUND",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    elif response.status == 409:
+                        raise KommoAPIException(
+                            "Conflito ao atualizar lead no Kommo",
+                            error_code="KOMMO_CONFLICT",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    else:
+                        raise KommoAPIException(
+                            f"Erro ao atualizar lead no Kommo: {response.status} - {error_text}",
+                            error_code="KOMMO_UPDATE_LEAD_ERROR",
+                            details={"status_code": response.status, "response": error_text}
+                        )
                     
         except Exception as e:
             emoji_logger.service_error(f"Erro ao atualizar lead no Kommo: {e}")
-            return {
-                "success": False,
-                "message": f"Erro ao atualizar lead no CRM: {e}"
-            }
+            
+            # Re-raise with proper error type if not already a KommoAPIException
+            if not isinstance(e, KommoAPIException):
+                raise KommoAPIException(
+                    f"Erro ao atualizar lead no CRM: {e}",
+                    error_code="KOMMO_UPDATE_LEAD_EXCEPTION",
+                    details={"exception": str(e)}
+                )
+            else:
+                raise
     
     async def update_lead_with_compensation(self, lead_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -854,13 +912,25 @@ class CRMServiceReal:
     
     async def create_or_update_lead(self, lead_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Cria ou atualiza lead REAL no Kommo
-        Método direto para criar/atualizar lead no Kommo (alias para create_lead)
-        Usado pelo KommoAutoSyncService
+        Cria ou atualiza lead REAL no Kommo, com lock para prevenir duplicatas.
         """
-        # Verificar se lead já existe (por telefone)
-        if lead_data.get("phone"):
-            existing_lead = await self.get_lead_by_phone(lead_data["phone"])
+        phone = lead_data.get("phone")
+        if not phone:
+            # Se não há telefone, não podemos verificar duplicatas, então apenas cria.
+            return await self.create_lead(lead_data)
+
+        lock_key = f"crm:lead:{phone}"
+        if not await redis_client.acquire_lock(lock_key, ttl=30):
+            emoji_logger.service_warning(f"⚠️ Não foi possível adquirir lock para o lead com telefone {phone}. Outro processo pode estar criando este lead.")
+            return {
+                "success": False,
+                "error": "lock_not_acquired",
+                "message": "Operação já em andamento para este lead.",
+            }
+        
+        try:
+            # Com o lock adquirido, verificamos com segurança se o lead existe.
+            existing_lead = await self.get_lead_by_phone(phone)
             if existing_lead and existing_lead.get("id"):
                 # Atualizar lead existente
                 update_result = await self.update_lead(existing_lead["id"], lead_data)
@@ -871,9 +941,14 @@ class CRMServiceReal:
                         "message": "Lead atualizado com sucesso",
                         "created": False
                     }
-        
-        # Criar novo lead
-        return await self.create_lead(lead_data)
+                else:
+                    # Retorna o erro da atualização
+                    return update_result
+            
+            # Criar novo lead se não existir
+            return await self.create_lead(lead_data)
+        finally:
+            await redis_client.release_lock(lock_key)
     
     async def create_or_update_lead_with_compensation(self, lead_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -904,6 +979,7 @@ class CRMServiceReal:
             }
     
     @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    @handle_kommo_errors(max_retries=3, delay=10.0)
     async def get_lead_by_id(self, lead_id: str) -> Optional[Dict[str, Any]]:
         """Busca lead REAL no Kommo por ID"""
         if not self.is_initialized:
@@ -913,6 +989,7 @@ class CRMServiceReal:
             # Aplicar rate limiting
             await wait_for_kommo()
             
+            # Buscar lead no Kommo
             async with self.session.get(
                 f"{self.base_url}/api/v4/leads/{lead_id}",
                 headers=self.headers
@@ -921,31 +998,65 @@ class CRMServiceReal:
                     lead = await response.json()
                     return lead
                 elif response.status == 404:
+                    # Lead não encontrado - não é um erro, apenas retorna None
                     return None
                 else:
                     error_text = await response.text()
-                    raise Exception(f"Erro ao buscar lead: {response.status} - {error_text}")
+                    if response.status == 403:
+                        raise KommoAPIException(
+                            "Erro de permissão ao buscar lead no Kommo",
+                            error_code="KOMMO_PERMISSION_DENIED",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    else:
+                        raise KommoAPIException(
+                            f"Erro ao buscar lead no Kommo: {response.status} - {error_text}",
+                            error_code="KOMMO_GET_LEAD_ERROR",
+                            details={"status_code": response.status, "response": error_text}
+                        )
                     
         except Exception as e:
-            emoji_logger.service_error(f"Erro ao buscar lead no Kommo: {e}")
-            return None
+            emoji_logger.service_error(f"Erro ao buscar lead {lead_id} no Kommo: {e}")
+            
+            # Re-raise with proper error type if not already a KommoAPIException
+            if not isinstance(e, KommoAPIException):
+                raise KommoAPIException(
+                    f"Erro ao buscar lead no CRM: {e}",
+                    error_code="KOMMO_GET_LEAD_EXCEPTION",
+                    details={"exception": str(e)}
+                )
+            else:
+                raise
     
     @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    @handle_kommo_errors(max_retries=3, delay=10.0)
     async def get_lead_by_phone(self, phone: str) -> Optional[Dict[str, Any]]:
-        """Busca lead REAL no Kommo por telefone"""
+        """Busca lead REAL no Kommo por telefone com cache"""
         if not self.is_initialized:
             await self.initialize()
-        
+
+        # Limpar número de telefone
+        clean_phone = ''.join(filter(str.isdigit, phone))
+        if not clean_phone.startswith('55'):
+            clean_phone = '55' + clean_phone
+
+        # Verificar cache
+        cache_key = f"kommo_lead:{clean_phone}"
+        cached_lead = await redis_client.get(cache_key)
+        if cached_lead:
+            emoji_logger.system_debug(f"📦 Lead {clean_phone} encontrado no cache")
+            return json.loads(cached_lead)
+
         try:
             # Aplicar rate limiting
             await wait_for_kommo()
             
-            # Buscar leads com o telefone específico
+            # Buscar lead no Kommo por telefone
             async with self.session.get(
                 f"{self.base_url}/api/v4/leads",
                 headers=self.headers,
                 params={
-                    "query": phone
+                    "query": clean_phone
                 }
             ) as response:
                 if response.status == 200:
@@ -954,17 +1065,40 @@ class CRMServiceReal:
                     
                     # Retornar primeiro lead encontrado
                     if leads:
-                        return leads[0]
+                        lead = leads[0]
+                        # Salvar no cache
+                        await redis_client.set(cache_key, json.dumps(lead), ttl=300) # 5 minutos de cache
+                        return lead
                     return None
                 else:
                     error_text = await response.text()
-                    raise Exception(f"Erro ao buscar lead por telefone: {response.status} - {error_text}")
+                    if response.status == 403:
+                        raise KommoAPIException(
+                            "Erro de permissão ao buscar lead por telefone no Kommo",
+                            error_code="KOMMO_PERMISSION_DENIED",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    else:
+                        raise KommoAPIException(
+                            f"Erro ao buscar lead por telefone no Kommo: {response.status} - {error_text}",
+                            error_code="KOMMO_GET_LEAD_BY_PHONE_ERROR",
+                            details={"status_code": response.status, "response": error_text}
+                        )
                     
         except Exception as e:
-            emoji_logger.service_error(f"Erro ao buscar lead por telefone no Kommo: {e}")
-            return None
+            emoji_logger.service_error(f"Erro ao buscar lead por telefone {phone} no Kommo: {e}")
+            
+            # Re-raise with proper error type if not already a KommoAPIException
+            if not isinstance(e, KommoAPIException):
+                raise KommoAPIException(
+                    f"Erro ao buscar lead por telefone no CRM: {e}",
+                    error_code="KOMMO_GET_LEAD_BY_PHONE_EXCEPTION",
+                    details={"exception": str(e)}
+                )
+            else:
+                raise
     
-    @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    @handle_kommo_errors(max_retries=3, delay=10.0)
     async def update_lead_stage(self, lead_id: str, stage_name: str, notes: str = "") -> Dict[str, Any]:
         """
         Atualiza o estágio de um lead no Kommo CRM com mapeamento unificado
@@ -1012,13 +1146,13 @@ class CRMServiceReal:
                 if response.status == 200:
                     response_data = await response.json()
                     
-                    # Se houver notas, adicionar como nota separada
-                    if notes:
-                        await self.add_note_to_lead(lead_id, notes)
-                    
                     emoji_logger.crm_event(
                         f"✅ Lead {lead_id} movido para estágio '{stage_name}' (ID: {stage_id})"
                     )
+                    
+                    # Se houver notas, adicionar como nota separada
+                    if notes:
+                        await self.add_note_to_lead(lead_id, notes)
                     
                     return {
                         "success": True,
@@ -1028,15 +1162,43 @@ class CRMServiceReal:
                     }
                 else:
                     error_text = await response.text()
-                    raise Exception(f"Erro na atualização do estágio: {response.status} - {error_text}")
+                    if response.status == 403:
+                        raise KommoAPIException(
+                            "Erro de permissão ao atualizar estágio do lead no Kommo",
+                            error_code="KOMMO_PERMISSION_DENIED",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    elif response.status == 404:
+                        raise KommoAPIException(
+                            "Lead não encontrado ao atualizar estágio no Kommo",
+                            error_code="KOMMO_NOT_FOUND",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    elif response.status == 409:
+                        raise KommoAPIException(
+                            "Conflito ao atualizar estágio do lead no Kommo",
+                            error_code="KOMMO_CONFLICT",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    else:
+                        raise KommoAPIException(
+                            f"Erro ao atualizar estágio do lead no Kommo: {response.status} - {error_text}",
+                            error_code="KOMMO_UPDATE_STAGE_ERROR",
+                            details={"status_code": response.status, "response": error_text}
+                        )
                     
         except Exception as e:
             emoji_logger.service_error(f"Erro ao atualizar estágio do lead {lead_id}: {e}")
-            return {
-                "success": False,
-                "message": f"Erro ao atualizar estágio: {e}",
-                "lead_id": lead_id
-            }
+            
+            # Re-raise with proper error type if not already a KommoAPIException
+            if not isinstance(e, KommoAPIException):
+                raise KommoAPIException(
+                    f"Erro ao atualizar estágio do lead: {e}",
+                    error_code="KOMMO_UPDATE_STAGE_EXCEPTION",
+                    details={"exception": str(e), "lead_id": lead_id}
+                )
+            else:
+                raise
     
     async def update_lead_stage_with_compensation(self, lead_id: str, stage_name: str, notes: str = "") -> Dict[str, Any]:
         """
@@ -1199,9 +1361,11 @@ class CRMServiceReal:
                     # Tentar rollback dos campos
                     if original_fields_data:
                         try:
-                            rollback_fields_result = await self.update_fields(lead_id, {})
-                            # Precisaríamos restaurar os valores originais dos campos aqui
-                            # Por simplicidade, vamos apenas registrar o erro
+                            rollback_result = await self._rollback_lead_data(lead_id, {"custom_fields_values": original_fields_data})
+                            if rollback_result.get("success"):
+                                emoji_logger.service_info(f"Rollback de campos realizado com sucesso para lead {lead_id}")
+                            else:
+                                emoji_logger.service_error(f"Falha no rollback de campos do lead {lead_id}: {rollback_result.get('message')}")
                         except Exception as field_rollback_error:
                             emoji_logger.service_error(f"Erro no rollback de campos do lead {lead_id}: {field_rollback_error}")
                     
@@ -1302,6 +1466,7 @@ class CRMServiceReal:
             }
     
     @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    @handle_kommo_errors(max_retries=3, delay=10.0)
     async def update_fields(self, lead_id: str, fields_dict: Dict[str, Any]) -> Dict[str, Any]:
         """
         Atualiza campos customizados de um lead no Kommo
@@ -1378,7 +1543,30 @@ class CRMServiceReal:
                     }
                 else:
                     error_text = await response.text()
-                    raise Exception(f"Erro na atualização de campos: {response.status} - {error_text}")
+                    if response.status == 403:
+                        raise KommoAPIException(
+                            "Erro de permissão ao atualizar campos no Kommo",
+                            error_code="KOMMO_PERMISSION_DENIED",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    elif response.status == 404:
+                        raise KommoAPIException(
+                            "Lead não encontrado ao atualizar campos no Kommo",
+                            error_code="KOMMO_NOT_FOUND",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    elif response.status == 409:
+                        raise KommoAPIException(
+                            "Conflito ao atualizar campos no Kommo",
+                            error_code="KOMMO_CONFLICT",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    else:
+                        raise KommoAPIException(
+                            f"Erro ao atualizar campos no Kommo: {response.status} - {error_text}",
+                            error_code="KOMMO_UPDATE_FIELDS_ERROR",
+                            details={"status_code": response.status, "response": error_text}
+                        )
                     
         except Exception as e:
             emoji_logger.service_error(f"Erro ao atualizar campos do lead {lead_id}: {e}")
@@ -1470,10 +1658,17 @@ class CRMServiceReal:
                 "lead_id": lead_id
             }
     
-    @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    @handle_kommo_errors(max_retries=3, delay=10.0)
     async def add_tags_to_lead(self, lead_id: str, tags: List[str]) -> Dict[str, Any]:
         """
         Adiciona tags REAIS ao lead no Kommo
+        
+        Args:
+            lead_id: ID do lead
+            tags: Lista de tags a serem adicionadas
+            
+        Returns:
+            Dict com resultado da operação
         """
         if not self.is_initialized:
             await self.initialize()
@@ -1507,11 +1702,36 @@ class CRMServiceReal:
                     
                     return {
                         "success": True,
-                        "message": "Tags adicionadas com sucesso"
+                        "message": "Tags adicionadas com sucesso",
+                        "tags": tags,
+                        "lead_id": lead_id
                     }
                 else:
                     error_text = await response.text()
-                    raise Exception(f"Erro ao adicionar tags: {response.status} - {error_text}")
+                    if response.status == 403:
+                        raise KommoAPIException(
+                            "Erro de permissão ao adicionar tags no Kommo",
+                            error_code="KOMMO_PERMISSION_DENIED",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    elif response.status == 404:
+                        raise KommoAPIException(
+                            "Lead não encontrado ao adicionar tags no Kommo",
+                            error_code="KOMMO_NOT_FOUND",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    elif response.status == 409:
+                        raise KommoAPIException(
+                            "Conflito ao adicionar tags no Kommo",
+                            error_code="KOMMO_CONFLICT",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    else:
+                        raise KommoAPIException(
+                            f"Erro ao adicionar tags no Kommo: {response.status} - {error_text}",
+                            error_code="KOMMO_ADD_TAGS_ERROR",
+                            details={"status_code": response.status, "response": error_text}
+                        )
                     
         except Exception as e:
             emoji_logger.service_error(f"Erro ao adicionar tags ao lead {lead_id}: {e}")
@@ -1521,7 +1741,7 @@ class CRMServiceReal:
                 "lead_id": lead_id
             }
     
-    @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    @handle_kommo_errors(max_retries=3, delay=10.0)
     async def add_note_to_lead(self, lead_id: str, note_text: str) -> Dict[str, Any]:
         """
         Adiciona nota ao lead no Kommo
@@ -1568,7 +1788,24 @@ class CRMServiceReal:
                     }
                 else:
                     error_text = await response.text()
-                    raise Exception(f"Erro ao adicionar nota: {response.status} - {error_text}")
+                    if response.status == 403:
+                        raise KommoAPIException(
+                            "Erro de permissão ao adicionar nota no Kommo",
+                            error_code="KOMMO_PERMISSION_DENIED",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    elif response.status == 404:
+                        raise KommoAPIException(
+                            "Lead não encontrado ao adicionar nota no Kommo",
+                            error_code="KOMMO_NOT_FOUND",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    else:
+                        raise KommoAPIException(
+                            f"Erro ao adicionar nota no Kommo: {response.status} - {error_text}",
+                            error_code="KOMMO_ADD_NOTE_ERROR",
+                            details={"status_code": response.status, "response": error_text}
+                        )
                     
         except Exception as e:
             emoji_logger.service_error(f"Erro ao adicionar nota ao lead {lead_id}: {e}")
@@ -1578,10 +1815,18 @@ class CRMServiceReal:
                 "lead_id": lead_id
             }
     
-    @async_retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=10.0)
+    @handle_kommo_errors(max_retries=3, delay=10.0)
     async def create_task(self, lead_id: str, task_text: str, complete_till: datetime) -> Dict[str, Any]:
         """
         Cria tarefa REAL no Kommo
+        
+        Args:
+            lead_id: ID do lead
+            task_text: Texto da tarefa
+            complete_till: Data/hora de conclusão
+            
+        Returns:
+            Dict com resultado da operação
         """
         if not self.is_initialized:
             await self.initialize()
@@ -1619,11 +1864,35 @@ class CRMServiceReal:
                     return {
                         "success": True,
                         "task_id": task_id,
-                        "message": "Tarefa criada com sucesso"
+                        "message": "Tarefa criada com sucesso",
+                        "lead_id": lead_id
                     }
                 else:
                     error_text = await response.text()
-                    raise Exception(f"Erro ao criar tarefa: {response.status} - {error_text}")
+                    if response.status == 403:
+                        raise KommoAPIException(
+                            "Erro de permissão ao criar tarefa no Kommo",
+                            error_code="KOMMO_PERMISSION_DENIED",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    elif response.status == 404:
+                        raise KommoAPIException(
+                            "Lead não encontrado ao criar tarefa no Kommo",
+                            error_code="KOMMO_NOT_FOUND",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    elif response.status == 409:
+                        raise KommoAPIException(
+                            "Conflito ao criar tarefa no Kommo",
+                            error_code="KOMMO_CONFLICT",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    else:
+                        raise KommoAPIException(
+                            f"Erro ao criar tarefa no Kommo: {response.status} - {error_text}",
+                            error_code="KOMMO_CREATE_TASK_ERROR",
+                            details={"status_code": response.status, "response": error_text}
+                        )
                     
         except Exception as e:
             emoji_logger.service_error(f"Erro ao criar tarefa para lead {lead_id}: {e}")
@@ -1633,23 +1902,59 @@ class CRMServiceReal:
                 "lead_id": lead_id
             }
     
+    @handle_kommo_errors(max_retries=3, delay=10.0)
     async def health_check(self) -> bool:
-        """Verifica saúde do serviço"""
+        """Verifica saúde do serviço Kommo"""
         try:
             if not self.is_initialized:
                 await self.initialize()
             
-            # Testar conexão com a API
+            # Testar acesso à API
             await wait_for_kommo()
             
             async with self.session.get(
                 f"{self.base_url}/api/v4/account",
                 headers=self.headers
             ) as response:
-                return response.status == 200
-                
-        except:
-            return False
+                if response.status == 200:
+                    account = await response.json()
+                    emoji_logger.service_ready(
+                        f"✅ Kommo CRM conectado: {account.get('name', 'CRM')}"
+                    )
+                    return True
+                else:
+                    error_text = await response.text()
+                    if response.status == 403:
+                        raise KommoAPIException(
+                            "Erro de permissão ao verificar saúde do Kommo",
+                            error_code="KOMMO_PERMISSION_DENIED",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    elif response.status == 404:
+                        raise KommoAPIException(
+                            "Conta não encontrada ao verificar saúde do Kommo",
+                            error_code="KOMMO_NOT_FOUND",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    else:
+                        raise KommoAPIException(
+                            f"Erro ao verificar saúde do Kommo: {response.status} - {error_text}",
+                            error_code="KOMMO_HEALTH_CHECK_ERROR",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+                    
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao verificar saúde do Kommo: {e}")
+            
+            # Re-raise with proper error type if not already a KommoAPIException
+            if not isinstance(e, KommoAPIException):
+                raise KommoAPIException(
+                    f"Erro ao verificar saúde do CRM: {e}",
+                    error_code="KOMMO_HEALTH_CHECK_EXCEPTION",
+                    details={"exception": str(e)}
+                )
+            else:
+                raise
     
     async def _close_session_safely(self):
         """Fecha sessão HTTP com segurança"""
@@ -1662,5 +1967,16 @@ class CRMServiceReal:
             emoji_logger.service_warning(f"Aviso ao fechar sessão CRM: {e}")
     
     async def close(self):
-        """Fecha conexão com o CRM"""
-        await self._close_session_safely()
+        """Fecha conexão com Kommo CRM"""
+        try:
+            if self.session and not self.session.closed:
+                await self.session.close()
+                self.session = None
+                emoji_logger.service_info("🔌 Sessão Kommo fechada com segurança")
+            
+            self.is_initialized = False
+            emoji_logger.service_info("🏁 Serviço Kommo CRM finalizado")
+            
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao fechar sessão Kommo: {e}")
+            raise

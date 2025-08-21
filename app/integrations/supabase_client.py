@@ -849,6 +849,15 @@ class SupabaseClient:
             logger.error(f"Erro ao buscar lead por ID: {e}")
             return None
 
+    async def get_recent_followup_count(self, lead_id: str, since: datetime) -> int:
+        """Conta o número de follow-ups enviados a um lead desde uma data específica."""
+        try:
+            result = self.client.table('follow_ups').select('id', count='exact').eq('lead_id', lead_id).gte('created_at', since.isoformat()).execute()
+            return result.count
+        except Exception as e:
+            logger.error(f"Erro ao contar follow-ups recentes para o lead {lead_id}: {e}")
+            return 0
+
     async def apply_database_indexes(self):
         """
         Apply database indexes for improved query performance

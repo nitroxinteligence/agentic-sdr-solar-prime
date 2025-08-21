@@ -122,10 +122,8 @@ class FollowUpServiceReal:
                 f"✅ Follow-up REAL agendado para {clean_phone} em {delay_hours}h"
             )
             
-            # Agendar tarefa assíncrona para enviar depois
-            asyncio.create_task(self._execute_delayed_followup(
-                followup_id, clean_phone, message, delay_hours
-            ))
+            # A execução agora é responsabilidade do FollowUpExecutorService
+            # A tarefa assíncrona foi removida para garantir persistência
             
             return {
                 "success": True,
@@ -257,31 +255,7 @@ class FollowUpServiceReal:
                 "message": f"Erro ao criar follow-up: {e}"
             }
     
-    async def _execute_delayed_followup(self, 
-                                       followup_id: str,
-                                       phone: str, 
-                                       message: str, 
-                                       delay_hours: int):
-        """
-        Executa follow-up após delay
-        """
-        try:
-            # Aguardar o tempo especificado
-            await asyncio.sleep(delay_hours * 3600)
-            
-            # Enviar mensagem via Evolution
-            await self.send_message(phone, message)
-            
-            # Atualizar status no banco
-            await self.db.update_followup_status(followup_id, "executed")
-            
-            emoji_logger.followup_event(
-                f"✅ Follow-up {followup_id} ENVIADO para {phone}"
-            )
-            
-        except Exception as e:
-            emoji_logger.service_error(f"Erro ao executar follow-up: {e}")
-            await self.db.update_followup_status(followup_id, "failed")
+    
     
     async def send_message(self, phone_number: str, message: str) -> Dict[str, Any]:
         """
@@ -684,10 +658,11 @@ class FollowUpServiceReal:
         """
         try:
             # Usar IA para gerar mensagem personalizada se disponível
-            from app.agents.agentic_sdr_refactored import get_agentic_agent
-            agent = await get_agentic_agent()
+            from app.agents import AgenticSDRStateless
+            agent = AgenticSDRStateless()
+            await agent.initialize()
             
-            if agent and hasattr(agent, '_gemini_call_with_retry'):
+            if agent:
                 prompt = f"""
                 Você é Helen da SolarPrime. Crie uma mensagem de follow-up PERSONALIZADA.
                 
@@ -713,14 +688,14 @@ class FollowUpServiceReal:
                 - Use emojis com moderação (1-2 no máximo)
                 """
                 
-                response = await agent._gemini_call_with_retry(
+                response = await agent.model_manager.get_response(
                     prompt,
                     temperature=0.8,
                     max_tokens=150
                 )
                 
-                if response and isinstance(response, dict):
-                    message = response.get("content", "").strip()
+                if response:
+                    message = response.strip()
                     if message:
                         return message
         except Exception as e:

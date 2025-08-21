@@ -267,59 +267,59 @@ class LeadManager:
             return "INITIAL_CONTACT"  # novo (valor padrão do banco)
     
     def _extract_name(self, text: str) -> Optional[str]:
-        """Extrai nome do texto com filtros mais rigorosos"""
-        
-        # 🔥 CORREÇÃO CRÍTICA: Lista de palavras/frases que NÃO são nomes
-        blacklist_phrases = [
-            "anúncio", "anuncio", "energia solar", "solar", "energia",
-            "propaganda", "publicidade", "oferta", "promoção", "desconto",
-            "conta de luz", "conta", "luz", "eletricidade", "kwh",
-            "instalação", "sistema", "painel", "placa", "telhado",
-            "economia", "economizar", "reduzir", "diminuir",
-            "whatsapp", "mensagem", "conversa", "chat", "texto",
-            "oi", "olá", "ola", "bom dia", "boa tarde", "boa noite",
-            "quero", "gostaria", "preciso", "queria", "desejo", "interesse"
-        ]
-        
+        """
+        Extrai nome do texto com foco em padrões explícitos e validação rigorosa
+        para evitar falsos positivos. A extração é um fallback para a coleta explícita.
+        """
+        # Padrões que indicam claramente que a pessoa está se apresentando.
         patterns = [
-            # Padrões explícitos de apresentação (mais confiáveis)
-            r"meu nome [eé] ([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2})(?:[,\.\!]|$)",
-            r"me chamo ([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2})(?:[,\.\!]|$)",
-            r"sou o ([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2})(?:[,\.\!]|$)",
-            r"sou a ([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2})(?:[,\.\!]|$)",
-            r"eu sou ([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2})(?:[,\.\!]|$)",
-            # 🔥 REMOVIDO: Pattern genérico que capturava qualquer palavra capitalizada como nome
-            # Isso estava causando detecção incorreta: "Já Tenho", "Como Funciona", etc.
+            r"meu\s+nome\s+[eé]\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,3})",
+            r"me\s+chamo\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,3})",
+            r"pode\s+me\s+chamar\s+de\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,3})",
+            r"(?:eu\s+)?sou\s+o\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,3})",
+            r"(?:eu\s+)?sou\s+a\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,3})",
         ]
         
         for pattern in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                name = match.group(1).strip().title()
+                potential_name = match.group(1).strip().title()
                 
-                # Validações rigorosas
-                if len(name) < 3 or len(name) > 50:  # Nome muito curto ou muito longo
-                    continue
-                
-                # 🔥 FILTRO PRINCIPAL: Verificar se o nome contém palavras da blacklist
-                name_lower = name.lower()
-                is_blacklisted = any(phrase in name_lower for phrase in blacklist_phrases)
-                
-                if is_blacklisted:
-                    continue  # Pular nomes que contém palavras proibidas
-                
-                # Limitar a nomes razoáveis (máximo 3 palavras)
-                words = name.split()
-                if len(words) > 3:
-                    continue
-                
-                # Verificar se as palavras são apenas letras (sem números ou símbolos estranhos)
-                if all(word.isalpha() or any(c in "àáâãäåèéêëìíîïòóôõöùúûüýÿçñ" for c in word.lower()) for word in words):
-                    # Verificar tamanho mínimo por palavra
-                    if all(len(word) >= 2 for word in words):
-                        return name
+                # Validação para garantir que é um nome próprio provável
+                if self._is_valid_name(potential_name):
+                    return potential_name
         
         return None
+
+    def _is_valid_name(self, name: str) -> bool:
+        """
+        Valida se uma string é um nome próprio provável.
+        """
+        if not name or len(name) < 3 or len(name) > 60:
+            return False
+
+        words = name.split()
+        if len(words) > 4: # Nomes com mais de 4 palavras são improváveis neste contexto
+            return False
+
+        # Lista de palavras comuns que não são nomes (incluindo artigos, preposições, etc.)
+        blacklist = [
+            'a', 'o', 'e', 'de', 'do', 'da', 'dos', 'das', 'com', 'em', 'para', 'por',
+            'oi', 'ola', 'sim', 'nao', 'ok', 'tudo', 'bem', 'bom', 'dia', 'tarde', 'noite',
+            'quero', 'gostaria', 'preciso', 'pode', 'claro', 'conta', 'valor', 'energia'
+        ]
+
+        # Verifica se todas as palavras do nome são válidas
+        for word in words:
+            word_lower = word.lower()
+            if word_lower in blacklist:
+                return False # Contém uma palavra da blacklist
+            if not word.isalpha():
+                return False # Contém números ou símbolos
+            if len(word) < 2:
+                return False # Palavras muito curtas (ex: 'J') são improváveis
+
+        return True
     
     def _extract_email(self, text: str) -> Optional[str]:
         """Extrai email do texto"""
