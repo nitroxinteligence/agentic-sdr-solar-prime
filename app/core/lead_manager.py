@@ -56,66 +56,30 @@ class LeadManager:
             role = msg.get("role", "")
 
             if not lead_info["name"] and role == "user":
-                emoji_logger.conversation_event(
-                    f"🔍 Analisando msg do usuário (idx={idx}): "
-                    f"'{content[:30]}...'"
-                )
-                if idx > 0:
-                    prev_msg = messages[idx - 1]
-                    prev_content = prev_msg.get("content", "").lower()
-                    prev_role = prev_msg.get("role", "")
-                    name_questions = [
-                        "como posso te chamar", "como posso chamar",
-                        "qual seu nome", "qual é seu nome", "qual o seu nome",
-                        "me diga seu nome", "pode me dizer seu nome",
-                        "posso saber seu nome", "me fala seu nome",
-                        "como você se chama", "pode me chamar"
-                    ]
-                    if prev_role == "assistant":
-                        emoji_logger.conversation_event(
-                            f"📋 Verificando msg anterior do assistant: "
-                            f"'{prev_content[:50]}...'"
-                        )
-                        found_question = any(
-                            q in prev_content for q in name_questions
-                        )
-                        if found_question:
-                            potential_name = msg.get("content", "").strip()
-                            words = potential_name.split()
-                            emoji_logger.conversation_event(
-                                f"🎯 Potencial nome: '{potential_name}' "
-                                f"({len(words)} palavras)"
-                            )
-                            if 1 <= len(words) <= 4:
-                                blacklist = [
-                                    "oi", "olá", "ola", "sim", "não", "nao",
-                                    "ok", "tudo", "bom", "dia", "tarde",
-                                    "noite", "boa", "legal", "bem", "quero",
-                                    "gostaria", "preciso", "pode", "poderia",
-                                    "claro", "certeza", "beleza", "blz",
-                                    "tbm", "também", "tá", "ta", "está",
-                                    "estou", "to", "já", "tenho", "como",
-                                    "funciona", "quanto", "vou", "pago",
-                                    "minha", "conta", "desconto", "economia",
-                                    "origo", "setta", "solar", "energia", "luz"
-                                ]
-                                if not any(
-                                    word.lower() in blacklist for word in words
-                                ):
-                                    lead_info["name"] = potential_name.title()
-                                    emoji_logger.conversation_event(
-                                        f"🎉 NOME DETECTADO COM SUCESSO: "
-                                        f"{lead_info['name']}"
-                                    )
-                                    continue
-                                else:
-                                    emoji_logger.conversation_event(
-                                        f"❌ Nome rejeitado (blacklist): "
-                                        f"'{potential_name}'"
-                                    )
                 name = self._extract_name(content)
                 if name:
                     lead_info["name"] = name
+                else:
+                    # Fallback for simple name extraction
+                    words = content.split()
+                    if 1 <= len(words) <= 4:
+                        blacklist = [
+                            "oi", "olá", "ola", "sim", "não", "nao",
+                            "ok", "tudo", "bom", "dia", "tarde",
+                            "noite", "boa", "legal", "bem", "quero",
+                            "gostaria", "preciso", "pode", "poderia",
+                            "claro", "certeza", "beleza", "blz",
+                            "tbm", "também", "tá", "ta", "está",
+                            "estou", "to", "já", "tenho", "como",
+                            "funciona", "quanto", "vou", "pago",
+                            "minha", "conta", "desconto", "economia",
+                            "origo", "setta", "solar", "energia", "luz"
+                        ]
+                        potential_name = " ".join(
+                            word for word in words if word.lower() not in blacklist
+                        )
+                        if potential_name and self._is_valid_name(potential_name):
+                            lead_info["name"] = potential_name.title()
 
             if not lead_info["email"]:
                 email = self._extract_email(content)
