@@ -179,7 +179,7 @@ class SupabaseClient:
             lead_id = lead_result.data[0]['id']
 
             conversation_result = self.client.table('conversations').select(
-                'id, messages, emotional_state, current_stage, '
+                'id, emotional_state, current_stage, '
                 'qualification_score, created_at, updated_at'
             ).eq('lead_id', lead_id).execute()
 
