@@ -48,7 +48,7 @@ class AgenticSDRStateless:
         if self.is_initialized:
             return
 
-        emoji_logger.system_event("🚀 Inicializando AgenticSDR Stateless...")
+        emoji_logger.system_start("AgenticSDR Stateless")
 
         try:
             self.model_manager.initialize()
@@ -94,8 +94,8 @@ class AgenticSDRStateless:
         if not self.is_initialized:
             await self.initialize()
 
-        emoji_logger.conversation_event(
-            f"💬 Processando (stateless): {message[:100]}..."
+        emoji_logger.agentic_start(
+            f"Processando (stateless): {message[:100]}..."
         )
 
         conversation_history = execution_context.get(
@@ -176,8 +176,8 @@ class AgenticSDRStateless:
                     lead_info=lead_info
                 )
 
-            emoji_logger.conversation_event(
-                f"✅ Resposta gerada: {response[:100]}..."
+            emoji_logger.system_success(
+                f"Resposta gerada: {response[:100]}..."
             )
             return response
 

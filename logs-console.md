@@ -1,49 +1,32 @@
-ERRO 1:
+✅ Usando variáveis de ambiente do servidor (EasyPanel)
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+2025-08-21 19:34:05.195 | INFO     | app.utils.logger:log_with_emoji:75 | 🚀 Iniciando SDR IA Solar Prime v0.3
+2025-08-21 19:34:05.199 | INFO     | app.integrations.redis_client:connect:35 | ✅ Conectado ao Redis: redis_redis:6379
+2025-08-21 19:34:05.199 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Redis pronto
+2025-08-21 19:34:05.447 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Supabase pronto
+2025-08-21 19:34:05.448 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Buffer Inteligente inicializado (timeout=15.0s, max=10)
+2025-08-21 19:34:05.448 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Message Buffer pronto | Data: {'timeout': '15.0s'}
+2025-08-21 19:34:05.448 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Message Splitter inicializado (max=200, smart=ativada)
+2025-08-21 19:34:05.448 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Message Splitter pronto | Data: {'max_length': 200}
+2025-08-21 19:34:05.448 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Sistema Refatorado pronto | Data: {'modules': 'Core + Services'}
+2025-08-21 19:34:05.471 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 🔐 GoogleOAuthHandler inicializado
+2025-08-21 19:34:05.477 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ FollowUp Scheduler pronto
+2025-08-21 19:34:05.477 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ ⚠️ FollowUp Services não iniciados: 'EmojiLogger' object has no attribute 'system_event'
+2025-08-21 19:34:05.477 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ 🔥 Pré-aquecendo AgenticSDR (Stateless)...
+2025-08-21 19:34:05.484 | ERROR    | app.utils.logger:log_with_emoji:75 | 💥 Erro em AgenticSDR: Falha no pré-aquecimento: 'EmojiLogger' object has no attribute 'system_event' | Data: {'component': 'AgenticSDR'}
+2025-08-21 19:34:05.485 | ERROR    | app.utils.logger:log_with_emoji:75 | 💥 Erro em SDR IA Solar Prime: Erro na inicialização: 'EmojiLogger' object has no attribute 'system_event' | Data: {'component': 'SDR IA Solar Prime'}
+ERROR:    Traceback (most recent call last):
+  File "/root/.local/lib/python3.11/site-packages/starlette/routing.py", line 732, in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+  File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/app/main.py", line 103, in lifespan
+    await test_agent.initialize()
+  File "/app/app/agents/agentic_sdr_stateless.py", line 51, in initialize
+    emoji_logger.system_event("🚀 Inicializando AgenticSDR Stateless...")
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'EmojiLogger' object has no attribute 'system_event'
 
-2025-08-21 15:35:28.578 | ERROR    | app.services.message_buffer:_process_queue:117 | Erro ao processar queue: name 'supabase_client' is not defined
-
----
-
-ERRO 2:
-
-2025-08-21 17:31:59.114 | INFO     | app.utils.logger:log_with_emoji:140 | 📞 Webhook recebido: /whatsapp/connection-update de evolution-api | Data: {'event': 'CONNECTION_UPDATE', 'endpoint': '/whatsapp/connection-update', 'source': 'evolution-api'}
-2025-08-21 17:31:59.120 | INFO     | app.utils.logger:log_with_emoji:140 | ℹ️ Connection status update: None
-2025-08-21 17:31:59.123 | ERROR    | app.integrations.redis_client:set:147 | Erro ao definir cache whatsapp:connection_status: Invalid input of type: 'NoneType'. Convert to a bytes, string, int or float first.
-INFO:     10.11.0.4:59814 - "POST /webhook/whatsapp/connection-update HTTP/1.1" 200 OK
-2025-08-21 17:31:59.935 | INFO     | app.utils.logger:log_with_emoji:140 | 📞 Webhook recebido: /whatsapp/connection-update de evolution-api | Data: {'event': 'CONNECTION_UPDATE', 'endpoint': '/whatsapp/connection-update', 'source': 'evolution-api'}
-2025-08-21 17:31:59.936 | INFO     | app.utils.logger:log_with_emoji:140 | ℹ️ Connection status update: None
-2025-08-21 17:31:59.936 | ERROR    | app.integrations.redis_client:set:147 | Erro ao definir cache whatsapp:connection_status: Invalid input of type: 'NoneType'. Convert to a bytes, string, int or float first.
-
----
-
-PARA CORRIGIR OS ERROS, SIGA AS DIRETRIZES:
-
-# Pense
-
-## Tarefa
-
-**PENSE MUITO e PENSE MAIS AINDA e HIPERPENSE profundamente sobre:** **$ARGUMENTS**
-
-Use o máximo de capacidade de raciocínio para analisar esse problema sistematicamente.
-
-## Instruções
-
-- Aplique a metodologia de resolução de problemas sistemática do Carmack
-- Pense mais a fundo em várias abordagens de solução
-- Avalie os trade-offs técnicos e as implicações práticas
-- Considere a complexidade da implementação versus as necessidades do problema real
-- Forneça uma análise metódica antes das conclusões
-
-## Abordagem
-
-1. Divida o problema em componentes principais
-2. Identifique a complexidade real versus a percebida
-3. Considere as consequências imediatas e de longo prazo
-4. Avalie múltiplos caminhos de solução
-5. Recomenda a abordagem mais pragmática
-
-Ative ULTRATHINK: Faça o planejamento e tire qualquer dúvida antes de começar.
-
-Crie Sub Agentes para realizar toda as tarefas.
-
-Faça apenas o que lhe foi solicitado!
+ERROR:    Application startup failed. Exiting.

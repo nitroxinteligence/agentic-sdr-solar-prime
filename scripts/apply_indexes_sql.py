@@ -16,7 +16,7 @@ from app.utils.logger import emoji_logger
 
 def apply_indexes_from_sql():
     """Apply indexes using the SQL file"""
-    emoji_logger.system_event("🔍 Starting database index application from SQL file...")
+    emoji_logger.system_start("Applying database indexes from SQL file")
     
     try:
         # Read the SQL file

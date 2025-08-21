@@ -15,7 +15,7 @@ from app.utils.logger import emoji_logger
 
 async def main():
     """Main function to apply database indexes"""
-    emoji_logger.system_event("🔍 Starting database index application...")
+    emoji_logger.system_start("Applying database indexes")
     
     try:
         # Initialize Supabase client
