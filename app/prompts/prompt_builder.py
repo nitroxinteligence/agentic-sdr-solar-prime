@@ -46,4 +46,37 @@ class PromptBuilder:
 
         prompt = (
             f"=== Histórico da Conversa ===\n{history_str}\n\n"
-            f
+            f"=== Informações do Lead ===\n{lead_info}\n\n"
+            f"=== Contexto da Conversa ===\n{context}\n\n"
+        )
+        if media_context:
+            prompt += f"=== Contexto de Mídia ===\n{media_context}\n\n"
+        
+        if is_followup:
+            prompt += f"=== Tarefa de Follow-up ===\n{message}\n"
+        else:
+            prompt += f"=== Nova Mensagem do Usuário ===\n{message}\n"
+            
+        return prompt
+
+    def build_final_prompt(
+        self,
+        original_prompt: str,
+        model_response: str,
+        tool_results: Dict[str, Any]
+    ) -> str:
+        """Builds the final prompt including tool results."""
+        
+        results_str = "\n".join(
+            [f"Tool {tool}: {result}" for tool, result in tool_results.items()]
+        )
+
+        prompt = (
+            f"{original_prompt}\n\n"
+            f"=== Resposta do Modelo e Uso de Ferramentas ===\n"
+            f"Resposta do modelo: {model_response}\n"
+            f"Resultados das ferramentas: {results_str}\n\n"
+            f"=== Instrução Final ===\n"
+            f"Com base nos resultados das ferramentas, gere a resposta final para o usuário."
+        )
+        return prompt
