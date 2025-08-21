@@ -453,16 +453,24 @@ async def evolution_webhook(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def process_new_message(data: List[Dict[str, Any]]):
-    """Processa cada nova mensagem recebida no array."""
+async def process_new_message(data: Any):
+    """Processa cada nova mensagem recebida, seja um objeto único ou uma lista."""
     try:
-        emoji_logger.webhook_process(f"Iniciando processamento de {len(data)} nova(s) mensagem(ns)")
+        if isinstance(data, dict):
+            messages = [data]
+        elif isinstance(data, list):
+            messages = data
+        else:
+            emoji_logger.system_warning(f"Payload de mensagens com formato inesperado: {type(data)}")
+            return
 
-        if not data:
+        emoji_logger.webhook_process(f"Iniciando processamento de {len(messages)} nova(s) mensagem(ns)")
+
+        if not messages:
             emoji_logger.system_warning("Payload de mensagens vazio")
             return
 
-        for message in data:
+        for message in messages:
             key = message.get("key", {})
             remote_jid = key.get("remoteJid", "")
             from_me = key.get("fromMe", False)
