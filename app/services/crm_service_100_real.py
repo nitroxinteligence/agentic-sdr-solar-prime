@@ -262,7 +262,6 @@ class CRMServiceReal:
             kommo_lead = {
                 "name": lead_data.get("name", "Lead sem nome"),
                 "pipeline_id": self.pipeline_id,
-                "status_id": 89709589,
                 "_embedded": {"tags": [{"name": "SDR_IA"}]}
             }
             custom_fields = []
