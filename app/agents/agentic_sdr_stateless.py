@@ -221,8 +221,9 @@ class AgenticSDRStateless:
                 error=f"Traceback: {traceback.format_exc()}"
             )
             return (
-                "Desculpe, tive um problema ao processar sua mensagem. "
-                "Pode repetir? 🤔"
+                "<RESPOSTA_FINAL>Desculpe, tive um problema ao processar sua mensagem. "
+                "Pode repetir?</RESPOSTA_FINAL>",
+                lead_info
             )
 
     async def _execute_post_scheduling_workflow(

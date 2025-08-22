@@ -2,7 +2,7 @@
 Context Analyzer - Análise SIMPLES de contexto e emoções
 ZERO complexidade, funcionalidade total
 """
-
+import re
 from typing import Dict, Any, List
 from app.utils.logger import emoji_logger
 from app.config import settings
