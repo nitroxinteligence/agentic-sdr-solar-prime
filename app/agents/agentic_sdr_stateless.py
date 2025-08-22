@@ -118,15 +118,6 @@ class AgenticSDRStateless:
                 lead_info=lead_info
             )
 
-        if conversation_history and conversation_history[-1]['role'] == 'assistant':
-            last_assistant_message = conversation_history[-1]['content'].lower()
-            # Se a última mensagem foi uma pergunta sobre agendamento, e o usuário respondeu positivamente
-            if any(q in last_assistant_message for q in ["marcar uma reunião", "quando podemos marcar", "quando você estaria disponível"]):
-                if any(a in message.lower() for a in ["pode ser", "sim", "claro", "pode", "ok"]):
-                    # Força o contexto para agendamento
-                    context['conversation_stage'] = 'agendamento'
-                    emoji_logger.system_info("Sanity Check: Forçando estágio de agendamento.")
-
         try:
             # 1. PROCESSAR MÍDIA (SE EXISTIR)
             user_message_content = [
