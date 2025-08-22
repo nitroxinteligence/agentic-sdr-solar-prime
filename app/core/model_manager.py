@@ -46,7 +46,7 @@ class Gemini:
             self.model = genai.GenerativeModel(model_name)
 
     async def achat(self, messages):
-        """Chamada REAL para Gemini API com suporte multimodal, usando dicionários simples."""
+        """Chamada REAL para Gemini API com suporte multimodal, usando a estrutura de histórico correta."""
         import google.generativeai as genai
         import base64
 
@@ -54,6 +54,7 @@ class Gemini:
             return type('Response', (), {'content': 'Gemini não disponível. Configure GOOGLE_API_KEY.'})()
 
         try:
+            # Converte o histórico de mensagens completo para o formato do Gemini API
             gemini_history = []
             for msg in messages:
                 role = 'user' if msg['role'] == 'user' else 'model'
@@ -64,25 +65,27 @@ class Gemini:
                     # Mensagem multimodal
                     for item in content:
                         if item.get("type") == "text":
-                            parts.append({"text": item.get("text", "")})
+                            parts.append(item.get("text", ""))
                         elif item.get("type") == "media":
                             media_data = item.get("media_data", {})
                             mime_type = media_data.get("mime_type")
                             base64_content = media_data.get("content")
                             if mime_type and base64_content:
+                                # A API espera os dados brutos, não um objeto Blob
                                 parts.append({
                                     "inline_data": {
                                         "mime_type": mime_type,
-                                        "data": base64_content 
+                                        "data": base64.b64decode(base64_content)
                                     }
                                 })
                 else:
                     # Mensagem de texto simples
-                    parts.append({"text": str(content)})
+                    parts.append(str(content))
 
                 if parts:
                     gemini_history.append({'role': role, 'parts': parts})
 
+            # A system_instruction já foi definida no objeto do modelo no método get_response
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: self.model.generate_content(gemini_history)
