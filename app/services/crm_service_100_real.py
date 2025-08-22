@@ -307,7 +307,7 @@ class CRMServiceReal:
                         lead_id = result.get(
                             "_embedded", {}
                         ).get("leads", [{}])[0].get("id")
-                        emoji_logger.crm_event(
+                        emoji_logger.team_crm(
                             f"✅ Lead CRIADO no Kommo: {kommo_lead['name']} - "
                             f"ID: {lead_id}"
                         )
@@ -390,7 +390,7 @@ class CRMServiceReal:
                     json={"update": [{"id": int(lead_id), **kommo_update}]}
                 ) as response:
                     if response.status == 200:
-                        emoji_logger.crm_event(
+                        emoji_logger.team_crm(
                             f"✅ Lead {lead_id} ATUALIZADO no Kommo"
                         )
                         return {
@@ -527,7 +527,7 @@ class CRMServiceReal:
                     json={"update": [{"id": int(lead_id), **update_data}]}
                 ) as response:
                     if response.status == 200:
-                        emoji_logger.crm_event(
+                        emoji_logger.team_crm(
                             f"✅ Lead {lead_id} movido para '{stage_name}'"
                         )
                         if notes:
@@ -586,7 +586,7 @@ class CRMServiceReal:
                     json=[note_payload]
                 ) as response:
                     if response.status == 200:
-                        emoji_logger.crm_event(f"📝 Nota adicionada ao lead {lead_id}")
+                        emoji_logger.team_crm(f"📝 Nota adicionada ao lead {lead_id}")
                         return {"success": True, "message": "Nota adicionada com sucesso."}
                     else:
                         error_text = await response.text()
