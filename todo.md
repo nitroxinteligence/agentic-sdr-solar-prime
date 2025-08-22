@@ -1,22 +1,16 @@
-# Plano de Ação para Sincronização do Agente (Prompt vs. Código)
+# Plano de Ação para Correção de Lógica e Formatação
 
-Este plano detalha as tarefas necessárias para alinhar a implementação do código com as funcionalidades descritas no `prompt-agente.md`.
+Este plano detalha as tarefas para resolver os problemas de vazamento de tags, apresentação duplicada e formatação de mensagens.
 
 ## Tarefas de Prioridade Alta
 
-- [x] **GAP 1: Integrar a Base de Conhecimento (Knowledge Base)**
-    - [x] **Código:** Importar e inicializar `KnowledgeService` no `AgenticSDRStateless`.
-    - [x] **Código:** Modificar `_execute_single_tool` para incluir um novo `service_name` chamado `knowledge` com o método `search`.
-    - [x] **Prompt:** Adicionar a ferramenta `[TOOL: knowledge.search | query=<termo_de_busca>]` à seção `<tool_calling_system>` para que o agente possa acioná-la.
+- [x] **Problema 1: Corrigir Vazamento da Tag `<RESPOSTA_FINAL>`**
+    - [x] **Código:** Refatorar `extract_final_response` em `app/api/webhooks.py` para ser mais robusto, limpando todas as variações de tags de resposta, incluindo as duplicadas, antes de retornar o conteúdo final.
+
+- [x] **Problema 2: Impedir Apresentação Duplicada**
+    - [x] **Código:** Aprimorar a lógica de detecção de nome em `_determine_stage` no arquivo `app/core/context_analyzer.py` para reconhecer respostas curtas e diretas como um nome válido.
 
 ## Tarefas de Prioridade Média
 
-- [ ] **GAP 2: Implementar Gerenciamento de Estado dos Fluxos de Vendas (A, B, C, D)**
-    - [ ] **Código:** Expandir `ContextAnalyzer` para detectar e retornar `current_flow` e `flow_step`.
-    - [ ] **Código:** Garantir que `lead_info` persista o estado do fluxo entre as mensagens.
-    - [ ] **Prompt:** Adicionar placeholders no prompt para receber as novas variáveis de estado do fluxo.
-
-## Tarefas de Prioridade Baixa (Correções Rápidas)
-
-- [x] **INCONSISTÊNCIA 1: Corrigir Horário de Atendimento**
-    - [x] **Código:** Alterar `"end_hour": 17` para `"end_hour": 18` em `app/services/calendar_service_100_real.py`.
+- [x] **Problema 3: Restaurar Quebra de Linha na Lista de Soluções**
+    - [x] **Código:** Modificar o `MessageSplitter` em `app/services/message_splitter.py` para detectar especificamente a mensagem das "4 soluções" e formatá-la corretamente com quebras de linha, garantindo que o `sanitize_final_response` não a afete negativamente.

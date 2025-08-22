@@ -60,14 +60,24 @@ class MessageSplitter:
 
     def split_message(self, text: str) -> List[str]:
         """
-        Divide mensagem em chunks preservando palavras, emojis e frases
+        Divide mensagem em chunks preservando palavras, emojis e frases.
+        Aplica formatação especial para a mensagem das 4 soluções.
         """
         if not text:
             return []
+
+        # Verifica e formata a mensagem das 4 soluções ANTES de qualquer outra lógica
         if self._is_four_solutions_message(text):
-            return [self._format_four_solutions_message(text)]
+            formatted_text = self._format_four_solutions_message(text)
+            # Se mesmo formatada for curta, retorna como um único chunk
+            if len(formatted_text) <= self.max_length:
+                return [formatted_text]
+            # Se for longa, a lógica abaixo cuidará do split
+            text = formatted_text
+
         if len(text) <= self.max_length:
             return [text.strip()]
+        
         if self.enable_smart_splitting and HAS_NLTK:
             try:
                 chunks = self._split_by_sentences(text)
@@ -80,6 +90,7 @@ class MessageSplitter:
                 )
                 if not self.smart_splitting_fallback:
                     raise
+        
         chunks = (
             self._split_with_regex(text) if HAS_REGEX
             else self._split_simple(text)

@@ -84,35 +84,21 @@ class ContextAnalyzer:
             role = msg.get("role", "")
 
             if role == "user":
-                if any(word in content for word in [
-                    "meu nome é", "me chamo", "sou o", "sou a",
-                    "pode me chamar de"
-                ]):
+                # Verifica padrões explícitos de nome
+                if any(re.search(r'\b' + pattern + r'\b', content) for pattern in ["meu nome é", "me chamo", "sou o", "sou a"]):
                     has_name = True
+                # Verifica se a mensagem anterior foi uma pergunta sobre o nome
                 elif len(messages) > 1:
-                    prev_idx = messages.index(msg) - 1
-                    if prev_idx >= 0:
-                        prev_msg = messages[prev_idx]
+                    prev_msg_index = messages.index(msg) - 1
+                    if prev_msg_index >= 0:
+                        prev_msg = messages[prev_msg_index]
                         prev_content = prev_msg.get("content", "").lower()
-
-                        name_questions = [
-                            "como posso te chamar", "como posso chamar",
-                            "qual seu nome", "qual é seu nome",
-                            "posso saber seu nome"
-                        ]
-
-                        if (
-                            prev_msg.get("role") == "assistant" and
-                            any(q in prev_content for q in name_questions)
-                        ):
-                            words = content.split()
-                            if 1 <= len(words) <= 4:
-                                blacklist = [
-                                    "oi", "olá", "sim", "não", "ok",
-                                    "tudo", "bem", "bom", "dia"
-                                ]
-                                if not any(w in blacklist for w in words):
-                                    has_name = True
+                        # Padrões de pergunta sobre nome
+                        name_questions = ["como posso te chamar", "qual seu nome", "como se chama"]
+                        if prev_msg.get("role") == "assistant" and any(q in prev_content for q in name_questions):
+                            # Se a resposta for curta (1-3 palavras), assume que é o nome
+                            if 1 <= len(content.split()) <= 3:
+                                has_name = True
 
             if role == "assistant" and all(
                 sol in content for sol in [
