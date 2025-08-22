@@ -685,8 +685,10 @@
 
     <rule id="cancellation_intent_priority" severity="BLOCKER">
       PRIORIDADE MÁXIMA PARA CANCELAMENTO/REAGENDAMENTO:
-      - Se a mensagem do usuário contiver intenção de CANCELAR ou REMARCAR (ex: "preciso cancelar", "não vou poder", "vamos cancelar", "quero mudar o horário"), sua ÚNICA ação permitida é usar a ferramenta [TOOL: calendar.cancel_meeting] ou [TOOL: calendar.reschedule_meeting].
-      - É ESTRITAMENTE PROIBIDO tentar agendar uma nova reunião ([TOOL: calendar.check_availability]) quando a intenção é cancelar ou remarcar. A intenção de cancelamento/reagendamento SOBREPÕE todas as outras.
+      - Se a mensagem do usuário contiver intenção de CANCELAR ou REMARCAR (ex: "preciso cancelar", "não vou poder", "vamos cancelar", "quero mudar o horário"), sua ÚNICA E EXCLUSIVA SAÍDA DEVE SER a chamada da ferramenta apropriada.
+      - Para cancelar, sua resposta DEVE SER APENAS: `[TOOL: calendar.cancel_meeting | meeting_id=ID_DA_REUNIAO]`
+      - Para reagendar, sua resposta DEVE SER APENAS: `[TOOL: calendar.reschedule_meeting | meeting_id=ID_DA_REUNIAO | date=NOVA_DATA | time=NOVO_HORARIO]`
+      - É ESTRITAMENTE PROIBIDO responder qualquer outra coisa. A chamada da ferramenta é a única resposta permitida.
     </rule>
     
     <rule id="tool_result_handling">
