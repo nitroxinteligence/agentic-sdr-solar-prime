@@ -51,29 +51,24 @@ class Gemini:
         import base64
 
         if not GEMINI_AVAILABLE or not self.model:
-            return type('Response', (), {
-                'content': 'Gemini não disponível. Configure GOOGLE_API_KEY.'
-            })()
+            return type('Response', (), {'content': 'Gemini não disponível. Configure GOOGLE_API_KEY.'})()
 
         try:
-            # Converte o histórico de mensagens para o formato do Gemini API
             gemini_history = []
             for msg in messages:
                 role = 'user' if msg['role'] == 'user' else 'model'
-                
-                # Processa conteúdo que pode ser string ou lista (para multimodal)
                 content = msg.get('content', '')
+                
+                parts = []
                 if isinstance(content, list):
-                    # É uma mensagem multimodal
-                    parts = []
+                    # Mensagem multimodal
                     for item in content:
                         if item.get("type") == "text":
-                            parts.append(genai.types.Part(text=item.get("text", "")))
+                            parts.append(item.get("text", ""))
                         elif item.get("type") == "media":
                             media_data = item.get("media_data", {})
                             mime_type = media_data.get("mime_type")
                             base64_content = media_data.get("content")
-                            
                             if mime_type and base64_content:
                                 parts.append(genai.types.Part(
                                     inline_data=genai.types.Blob(
@@ -81,12 +76,13 @@ class Gemini:
                                         data=base64.b64decode(base64_content)
                                     )
                                 ))
-                    gemini_history.append(genai.types.Content(role=role, parts=parts))
                 else:
-                    # É uma mensagem de texto simples
-                    gemini_history.append(genai.types.Content(role=role, parts=[genai.types.Part(text=content)]))
+                    # Mensagem de texto simples
+                    parts.append(str(content))
 
-            # Fazer chamada REAL para Gemini
+                if parts:
+                    gemini_history.append({'role': role, 'parts': parts})
+
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: self.model.generate_content(gemini_history)
@@ -96,9 +92,7 @@ class Gemini:
 
         except Exception as e:
             emoji_logger.system_error("Gemini", f"Erro na API: {e}")
-            return type('Response', (), {
-                'content': f'Erro Gemini: {str(e)}'
-            })()
+            return type('Response', (), {'content': f'Erro Gemini: {str(e)}'})()
 
 
 class OpenAI:
