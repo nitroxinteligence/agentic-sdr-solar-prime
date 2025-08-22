@@ -740,6 +740,31 @@ class EvolutionAPIClient:
             logger.error(f"Erro ao obter info do grupo: {e}")
             raise
 
+    async def get_media_as_base64(self, message_key: Dict[str, Any]) -> Optional[str]:
+        """
+        Busca a mídia de uma mensagem diretamente em base64 usando a chave da mensagem.
+        """
+        if not message_key:
+            return None
+        try:
+            payload = {"message": {"key": message_key}}
+            response = await self._make_request(
+                "post",
+                f"/chat/getBase64FromMediaMessage/{self.instance_name}",
+                json=payload
+            )
+            if response.status_code == 200:
+                result = response.json()
+                return result.get("base64")
+            else:
+                emoji_logger.evolution_error(
+                    f"Erro ao buscar mídia em base64: {response.status_code} - {response.text}"
+                )
+                return None
+        except Exception as e:
+            emoji_logger.evolution_error(f"Exceção ao buscar mídia em base64: {e}")
+            return None
+
     def _format_phone(self, phone: str) -> str:
         """
         Formata número de telefone

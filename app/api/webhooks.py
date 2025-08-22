@@ -72,17 +72,17 @@ async def _handle_media_message(
                     emoji_logger.system_debug(f"Mídia Base64 extraída diretamente do payload para {msg_type}")
                     return {
                         "type": media_type,
-                        "content": base64_content,  # O conteúdo já está em base64
+                        "content": base64_content,
                         "mimetype": media_payload.get("mimetype"),
                     }
                 else:
-                    # Fallback para o método de download se o base64 não estiver no payload
-                    emoji_logger.system_warning(f"Webhook para {msg_type} não continha 'media' ou 'body'. Tentando download como fallback.")
-                    media_bytes = await evolution_client.download_media(media_payload, media_type=media_type)
-                    if media_bytes:
+                    # Fallback OTIMIZADO: Usa o endpoint específico para buscar a mídia em base64
+                    emoji_logger.system_info(f"Payload para {msg_type} sem mídia. Usando endpoint getBase64FromMediaMessage.")
+                    base64_from_api = await evolution_client.get_media_as_base64(message.get("key"))
+                    if base64_from_api:
                         return {
                             "type": media_type,
-                            "content": base64.b64encode(media_bytes).decode('utf-8'),
+                            "content": base64_from_api,
                             "mimetype": media_payload.get("mimetype"),
                         }
                     else:
