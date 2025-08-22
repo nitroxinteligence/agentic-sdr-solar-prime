@@ -3,7 +3,7 @@ Multimodal Processor - Processamento SIMPLES de mídia
 ZERO complexidade, funcionalidade total
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import base64
 import io
 from PIL import Image
