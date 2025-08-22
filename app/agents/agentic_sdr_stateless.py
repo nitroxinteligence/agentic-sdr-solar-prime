@@ -133,13 +133,6 @@ class AgenticSDRStateless:
                 media_result = await self.multimodal.process_media(media_data)
                 if media_result.get("success"):
                     media_context = self._format_media_context(media_result)
-                    
-                    # Injeta o contexto de mídia como uma mensagem do sistema no histórico
-                    conversation_history.append({
-                        "role": "system",
-                        "content": media_context,
-                        "timestamp": datetime.now().isoformat()
-                    })
 
                     # Injeta o valor da conta extraído diretamente nas informações do lead
                     extracted_bill_value = media_result.get("analysis", {}).get("bill_value")
@@ -147,7 +140,8 @@ class AgenticSDRStateless:
                         lead_info['bill_value'] = extracted_bill_value
                         emoji_logger.system_info(f"Valor da conta R${extracted_bill_value} extraído e injetado no lead_info.")
 
-                    # Se a mensagem original estiver vazia, crie uma mensagem sintética
+                    # Se a mensagem original estiver vazia, cria uma mensagem sintética.
+                    # Se não, anexa o contexto de mídia à mensagem do usuário.
                     if not message.strip():
                         media_type_pt = media_result.get('type', 'desconhecido')
                         if extracted_bill_value:
@@ -165,7 +159,7 @@ class AgenticSDRStateless:
 
             user_message = {
                 "role": "user",
-                "content": synthetic_message,  # Usa a mensagem sintética
+                "content": synthetic_message,
                 "timestamp": datetime.now().isoformat()
             }
             conversation_history.append(user_message)
@@ -207,6 +201,7 @@ class AgenticSDRStateless:
                 conversation_history[-1]['content'],
                 context,
                 lead_info,
+                media_context, # Passa o contexto de mídia para o prompt builder
                 conversation_history,
                 execution_context
             )
@@ -572,6 +567,7 @@ class AgenticSDRStateless:
         message: str,
         context: dict,
         lead_info: dict,
+        media_context: str,
         conversation_history: list,
         execution_context: dict,
         is_followup: bool = False
@@ -586,6 +582,7 @@ class AgenticSDRStateless:
             conversation_history,
             lead_info,
             context,
+            media_context,
             is_followup
         )
 

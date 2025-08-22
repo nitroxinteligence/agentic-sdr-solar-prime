@@ -36,6 +36,7 @@ class PromptBuilder:
         conversation_history: List[Dict[str, Any]],
         lead_info: Dict[str, Any],
         context: Dict[str, Any],
+        media_context: str,
         is_followup: bool = False
     ) -> str:
         """Builds the user prompt with all the necessary context."""
@@ -50,13 +51,13 @@ class PromptBuilder:
             f"=== Informações do Lead ===\n{lead_info}\n\n"
             f"=== Contexto da Conversa ===\n{context}\n\n"
         )
+        if media_context:
+            prompt += f"=== Contexto de Mídia ===\n{media_context}\n\n"
         
         if is_followup:
             prompt += f"=== Tarefa de Follow-up ===\n{message}\n"
         else:
-            # A mensagem do usuário já está no histórico, então não precisamos adicioná-la novamente.
-            # Apenas garantimos que o prompt termine com uma instrução clara.
-            prompt += f"=== Instrução ===\nCom base em todo o histórico e contexto, gere a próxima resposta para o usuário.\n"
+            prompt += f"=== Nova Mensagem do Usuário ===\n{message}\n"
             
         return prompt
 
