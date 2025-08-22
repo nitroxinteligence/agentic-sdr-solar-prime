@@ -131,15 +131,17 @@ class AgenticSDRStateless:
                 {"type": "text", "text": message}
             ]
             if media_data:
-                # A mídia já vem em base64 do webhook
+                if media_data.get("type") == "error":
+                    error_message = media_data.get("content", "Desculpe, tive um problema ao processar a mídia que você enviou.")
+                    emoji_logger.system_warning(f"Retornando erro de mídia para o usuário: {error_message}")
+                    return response_formatter.ensure_response_tags(error_message), lead_info
+
                 media_content = media_data.get("content") or media_data.get("data", "")
-                media_type = media_data.get("type", "image") # Default to image if not specified
-                mime_type = media_data.get("mime_type", "image/jpeg") # Default to jpeg
+                mime_type = media_data.get("mimetype", "application/octet-stream")
 
                 if "base64," in media_content:
                     media_content = media_content.split("base64,")[1]
 
-                # Estrutura genérica para qualquer tipo de mídia
                 user_message_content.append({
                     "type": "media",
                     "media_data": {
