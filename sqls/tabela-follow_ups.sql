@@ -45,7 +45,8 @@ create table public.follow_ups (
             'pending'::character varying,
             'executed'::character varying,
             'failed'::character varying,
-            'cancelled'::character varying
+            'cancelled'::character varying,
+            'queued'::character varying
           ]
         )::text[]
       )
