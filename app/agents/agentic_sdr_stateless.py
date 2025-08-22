@@ -126,28 +126,21 @@ class AgenticSDRStateless:
                     emoji_logger.system_info("Sanity Check: Forçando estágio de agendamento.")
 
         try:
-            media_context = ""
-            synthetic_message = message  # Começa com a mensagem original
+            user_content = message  # Começa com a mensagem de texto original
 
             if media_data:
                 media_result = await self.multimodal.process_media(media_data)
                 if media_result.get("success"):
                     media_context = self._format_media_context(media_result)
+                    
+                    # Anexa o contexto da mídia diretamente à mensagem do usuário
+                    user_content = f"{message}\n\n{media_context}".strip()
 
                     # Injeta o valor da conta extraído diretamente nas informações do lead
                     extracted_bill_value = media_result.get("analysis", {}).get("bill_value")
                     if extracted_bill_value:
                         lead_info['bill_value'] = extracted_bill_value
                         emoji_logger.system_info(f"Valor da conta R${extracted_bill_value} extraído e injetado no lead_info.")
-
-                    # Se a mensagem original estiver vazia, cria uma mensagem sintética.
-                    # Se não, anexa o contexto de mídia à mensagem do usuário.
-                    if not message.strip():
-                        media_type_pt = media_result.get('type', 'desconhecido')
-                        if extracted_bill_value:
-                            synthetic_message = f"[O usuário enviou a conta de luz. O valor de R${extracted_bill_value:.2f} foi extraído com sucesso. Prossiga com a qualificação a partir deste valor.]"
-                        else:
-                            synthetic_message = f"[O usuário enviou uma mídia do tipo '{media_type_pt}'. A análise está no contexto de mídia. Responda sobre ela.]"
                     
                     emoji_logger.multimodal_event(
                         "📎 Mídia processada com sucesso"
@@ -159,7 +152,7 @@ class AgenticSDRStateless:
 
             user_message = {
                 "role": "user",
-                "content": synthetic_message,
+                "content": user_content,
                 "timestamp": datetime.now().isoformat()
             }
             conversation_history.append(user_message)
@@ -201,7 +194,7 @@ class AgenticSDRStateless:
                 conversation_history[-1]['content'],
                 context,
                 lead_info,
-                media_context, # Passa o contexto de mídia para o prompt builder
+                "", # media_context agora é parte do histórico
                 conversation_history,
                 execution_context
             )
