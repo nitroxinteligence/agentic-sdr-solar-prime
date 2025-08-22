@@ -116,6 +116,15 @@ class AgenticSDRStateless:
                 lead_info=lead_info
             )
 
+        if conversation_history and conversation_history[-1]['role'] == 'assistant':
+            last_assistant_message = conversation_history[-1]['content'].lower()
+            # Se a última mensagem foi uma pergunta sobre agendamento, e o usuário respondeu positivamente
+            if any(q in last_assistant_message for q in ["marcar uma reunião", "quando podemos marcar", "quando você estaria disponível"]):
+                if any(a in message.lower() for a in ["pode ser", "sim", "claro", "pode", "ok"]):
+                    # Força o contexto para agendamento
+                    context['conversation_stage'] = 'agendamento'
+                    emoji_logger.system_info("Sanity Check: Forçando estágio de agendamento.")
+
         try:
             media_context = ""
             synthetic_message = message  # Começa com a mensagem original
@@ -165,8 +174,12 @@ class AgenticSDRStateless:
             )
 
             lead_changes = self._detect_lead_changes(lead_info, new_lead_info)
-            if lead_changes and phone:
-                await self._sync_lead_changes(lead_changes, phone, lead_info)
+            if lead_changes:
+                from app.integrations.supabase_client import supabase_client
+                lead_id_to_update = lead_info.get("id")
+                if lead_id_to_update:
+                    await supabase_client.update_lead(lead_id_to_update, lead_changes)
+                    emoji_logger.system_info("Estado do lead sincronizado com o banco de dados.", changes=lead_changes)
 
             lead_info.update(new_lead_info)
 

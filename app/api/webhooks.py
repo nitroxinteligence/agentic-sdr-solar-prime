@@ -180,39 +180,32 @@ def sanitize_final_response(text: str) -> str:
 
 def extract_final_response(full_response: str) -> str:
     """
-    Extrai e limpa o conteúdo dentro da primeira tag <RESPOSTA_FINAL> encontrada,
-    removendo todas as outras tags de raciocínio.
+    Extrai e limpa o conteúdo dentro da tag <RESPOSTA_FINAL>, removendo
+    outras tags de raciocínio e garantindo uma saída segura.
     """
     if not isinstance(full_response, str):
-        return ""
+        return "Desculpe, ocorreu um erro inesperado."
 
-    # Padrão para encontrar o conteúdo da primeira tag <RESPOSTA_FINAL>
-    # Captura o conteúdo mesmo que haja outras tags dentro.
-    pattern = r'<RESPOSTA_FINAL>(.*?)</RESPOSTA_FINAL>'
-    match = re.search(pattern, full_response, re.DOTALL | re.IGNORECASE)
-
+    # Tenta extrair o conteúdo da tag principal
+    match = re.search(r'<RESPOSTA_FINAL>(.*?)</RESPOSTA_FINAL>', full_response, re.DOTALL | re.IGNORECASE)
+    
     if match:
-        # Pega o conteúdo da primeira tag encontrada
         final_response = match.group(1).strip()
     else:
-        # Se não encontrar a tag, como fallback, remove qualquer tag conhecida e usa o resto.
-        # Isso previne vazamento de tags como <analise_interna>
-        final_response = re.sub(r'</?analise_interna>', '', full_response, flags=re.IGNORECASE).strip()
-        if '<' in final_response or '>' in final_response:
-             # Se ainda houver tags, a resposta é muito incerta, retorne um fallback seguro.
-            emoji_logger.system_error(
-                "extract_final_response",
-                "🚨 Nenhuma tag <RESPOSTA_FINAL> clara encontrada. Usando fallback seguro."
-            )
-            return "Oi! Me dê só um minutinho que já te respondo!"
+        # Fallback: se a tag não for encontrada, limpa o texto de outras tags conhecidas
+        # para evitar vazar o raciocínio interno.
+        temp_response = re.sub(r'</?analise_interna>.*?</analise_interna>', '', full_response, flags=re.DOTALL | re.IGNORECASE)
+        temp_response = re.sub(r'</?RESPOSTA_FINAL>', '', temp_response, flags=re.IGNORECASE)
+        
+        # Se ainda houver tags, a resposta é muito incerta. Retorna um fallback seguro.
+        if '<' in temp_response and '>' in temp_response:
+            emoji_logger.system_error("extract_final_response", "Nenhuma tag <RESPOSTA_FINAL> clara e ainda há outras tags. Usando fallback.")
+            return "Estou finalizando sua solicitação. Um momento."
+        final_response = temp_response.strip()
 
-    # Limpeza final de quaisquer outras tags que possam ter sobrado
-    final_response = re.sub(r'</?RESPOSTA_FINAL>', '', final_response, flags=re.IGNORECASE).strip()
-    final_response = re.sub(r'</?analise_interna>', '', final_response, flags=re.IGNORECASE).strip()
-
-    # O resto da sua lógica de segurança e sanitização permanece...
+    # Se a resposta final estiver vazia ou for "none", retorna um cumprimento padrão.
     if not final_response or final_response.lower() == "none":
-        return "Oi! Como posso ajudar você com energia solar? ☀️"
+        return "Oi! Como posso te ajudar com energia solar? ☀️"
 
     return final_response
 

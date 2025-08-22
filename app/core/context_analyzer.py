@@ -113,6 +113,14 @@ class ContextAnalyzer:
             ]):
                 has_choice = True
 
+        # Lógica adicional para verificar a última pergunta do assistente
+        if messages:
+            last_message = messages[-1]
+            if last_message.get("role") == "assistant":
+                last_content = last_message.get("content", "").lower()
+                if any(q in last_content for q in ["marcar uma reunião", "quando podemos marcar", "quando você estaria disponível"]):
+                    return "agendamento"
+
         if not has_name:
             return "estágio_0_coleta_nome"
         elif has_name and not has_solutions_presented:

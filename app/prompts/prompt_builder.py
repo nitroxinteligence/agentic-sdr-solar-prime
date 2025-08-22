@@ -45,6 +45,7 @@ class PromptBuilder:
         )
 
         prompt = (
+            f"Data e Hora Atuais: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
             f"=== Histórico da Conversa ===\n{history_str}\n\n"
             f"=== Informações do Lead ===\n{lead_info}\n\n"
             f"=== Contexto da Conversa ===\n{context}\n\n"

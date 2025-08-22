@@ -224,11 +224,27 @@ class CalendarServiceReal:
                 )
                 if is_free:
                     all_slots.append(f"{hour:02d}:00")
+            morning_slots = [s for s in all_slots if "08:00" <= s < "12:00"]
+            afternoon_slots = [s for s in all_slots if "13:00" <= s < "18:00"]
+
+            selected_slots = []
+            if morning_slots:
+                selected_slots.append(random.choice(morning_slots))
+            if afternoon_slots:
+                selected_slots.append(random.choice(afternoon_slots))
+            
+            # Adiciona mais um horário se ainda houver espaço e slots disponíveis
+            remaining_slots = [s for s in all_slots if s not in selected_slots]
+            if len(selected_slots) < 3 and remaining_slots:
+                selected_slots.append(random.choice(remaining_slots))
+
+            selected_slots.sort()
+
             return {
-                "success": True, "date": tomorrow.strftime("%d/%m/%Y"),
-                "available_slots": all_slots[:5],
+                "success": True, "date": tomorrow.strftime("%Y-%m-%d"),
+                "available_slots": selected_slots,
                 "message": (
-                    f"Leonardo tem {len(all_slots)} horários para "
+                    f"Leonardo tem {len(selected_slots)} horários para "
                     f"{tomorrow.strftime('%d/%m')}"
                 ),
                 "real": True
