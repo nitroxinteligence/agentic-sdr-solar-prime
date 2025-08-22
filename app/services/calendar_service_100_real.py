@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 import asyncio
 import uuid
+import random
 from googleapiclient.errors import HttpError
 from app.utils.logger import emoji_logger
 from app.config import settings
