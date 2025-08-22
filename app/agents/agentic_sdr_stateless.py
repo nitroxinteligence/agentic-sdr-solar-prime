@@ -122,10 +122,21 @@ class AgenticSDRStateless:
                 media_result = await self.multimodal.process_media(media_data)
                 if media_result.get("success"):
                     media_context = self._format_media_context(media_result)
+
+                    # Injeta o valor da conta extraído diretamente nas informações do lead
+                    extracted_bill_value = media_result.get("analysis", {}).get("bill_value")
+                    if extracted_bill_value:
+                        lead_info['bill_value'] = extracted_bill_value
+                        emoji_logger.system_info(f"Valor da conta R${extracted_bill_value} extraído e injetado no lead_info.")
+
                     # Se a mensagem original estiver vazia, crie uma mensagem sintética
                     if not message.strip():
                         media_type_pt = media_result.get('type', 'desconhecido')
-                        synthetic_message = f"[O usuário enviou uma mídia do tipo '{media_type_pt}'. A análise está no contexto de mídia abaixo. Responda diretamente sobre essa análise.]"
+                        if extracted_bill_value:
+                            synthetic_message = f"[O usuário enviou a conta de luz. O valor de R${extracted_bill_value:.2f} foi extraído com sucesso. Prossiga com a qualificação a partir deste valor.]"
+                        else:
+                            synthetic_message = f"[O usuário enviou uma mídia do tipo '{media_type_pt}'. A análise está no contexto de mídia. Responda sobre ela.]"
+                    
                     emoji_logger.multimodal_event(
                         "📎 Mídia processada com sucesso"
                     )
