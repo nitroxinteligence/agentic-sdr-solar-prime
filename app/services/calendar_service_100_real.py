@@ -366,7 +366,7 @@ Equipe SolarPrime
             return {
                 "success": True, "meeting_id": created_event.get('id'),
                 "google_event_id": created_event.get('id'),
-                "start_time": meeting_datetime.isoformat(),
+                "start_time": created_event.get('start', {}).get('dateTime'),
                 "date": date, "time": time,
                 "link": created_event.get('htmlLink'), "meet_link": meet_link,
                 "attendees": [att['email'] for att in event['attendees']],
