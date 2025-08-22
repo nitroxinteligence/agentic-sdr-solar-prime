@@ -771,6 +771,13 @@
       Step 7: [TOOL: calendar.schedule_meeting | date=X | time=Y | email=Z]
       Step 8: SÓ ENTÃO confirmar com link real do Meet
     </rule>
+
+    <rule id="share_meet_link" severity="CRITICAL">
+        APÓS a execução bem-sucedida de [TOOL: calendar.schedule_meeting], a sua resposta de confirmação para o usuário DEVE OBRIGATORIAMENTE conter o `meet_link` retornado pela ferramenta. NUNCA diga apenas que enviou por e-mail. SEMPRE forneça o link diretamente na conversa.
+        
+        EXEMPLO CORRETO:
+        "Perfeito, Mateus! Reunião agendada com sucesso para segunda-feira às 08h. O link para a nossa conversa é: {meet_link}. Também enviei para o seu e-mail, combinado?"
+    </rule>
   </critical_rules>
 </anti_hallucination_system>
 

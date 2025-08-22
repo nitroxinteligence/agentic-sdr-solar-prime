@@ -178,6 +178,19 @@ class AgenticSDRStateless:
 
             lead_info.update(new_lead_info)
 
+            # CRIA O LEAD NO KOMMO SE AINDA NÃO EXISTIR
+            if lead_info.get("name") and not lead_info.get("kommo_lead_id"):
+                try:
+                    kommo_response = await self.crm_service.create_lead(lead_info)
+                    if kommo_response.get("success"):
+                        new_kommo_id = kommo_response.get("lead_id")
+                        lead_info["kommo_lead_id"] = new_kommo_id
+                        # Atualiza o Supabase com o novo ID do Kommo
+                        await supabase_client.update_lead(lead_info["id"], {"kommo_lead_id": new_kommo_id})
+                        emoji_logger.crm_event(f"Lead criado no Kommo com ID: {new_kommo_id}")
+                except Exception as e:
+                    emoji_logger.system_error("Falha ao criar lead no Kommo", error=str(e))
+
             context = self.context_analyzer.analyze_context(
                 conversation_history,
                 lead_info

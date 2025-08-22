@@ -565,3 +565,44 @@ class CRMServiceReal:
     async def close(self):
         """Fecha conexão com Kommo CRM"""
         self.is_initialized = False
+
+    @async_retry_with_backoff()
+    @handle_kommo_errors()
+    async def add_note_to_lead(self, lead_id: str, note_text: str) -> Dict[str, Any]:
+        """Adiciona uma nota a um lead no Kommo."""
+        if not self.is_initialized:
+            await self.initialize()
+        try:
+            note_payload = {
+                "note_type": "common",
+                "params": {
+                    "text": note_text
+                }
+            }
+            await wait_for_kommo()
+            async with await self._get_session() as session:
+                async with session.post(
+                    f"{self.base_url}/api/v4/leads/{lead_id}/notes",
+                    headers=self.headers,
+                    json=[note_payload]
+                ) as response:
+                    if response.status == 200:
+                        emoji_logger.crm_event(f"📝 Nota adicionada ao lead {lead_id}")
+                        return {"success": True, "message": "Nota adicionada com sucesso."}
+                    else:
+                        error_text = await response.text()
+                        raise KommoAPIException(
+                            f"Erro ao adicionar nota: {response.status} - {error_text}",
+                            error_code="KOMMO_ADD_NOTE_ERROR",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao adicionar nota ao lead {lead_id}: {e}")
+            if not isinstance(e, KommoAPIException):
+                raise KommoAPIException(
+                    f"Erro ao adicionar nota: {e}",
+                    error_code="KOMMO_ADD_NOTE_EXCEPTION",
+                    details={"exception": str(e), "lead_id": lead_id}
+                )
+            else:
+                raise
