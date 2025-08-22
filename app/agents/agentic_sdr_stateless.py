@@ -163,11 +163,20 @@ class AgenticSDRStateless:
             }
             conversation_history.append(user_message)
 
-            context = self.context_analyzer.analyze_context(
+            new_lead_info = self.lead_manager.extract_lead_info(
                 conversation_history,
-                synthetic_message,  # Usa a mensagem sintética
-                lead_info
+                existing_lead_info=lead_info
             )
+
+            lead_changes = self._detect_lead_changes(lead_info, new_lead_info)
+            if lead_changes:
+                from app.integrations.supabase_client import supabase_client
+                lead_id_to_update = lead_info.get("id")
+                if lead_id_to_update:
+                    await supabase_client.update_lead(lead_id_to_update, lead_changes)
+                    emoji_logger.system_info("Estado do lead sincronizado com o banco de dados.", changes=lead_changes)
+
+            conversation_history.append(user_message)
 
             new_lead_info = self.lead_manager.extract_lead_info(
                 conversation_history,
@@ -184,13 +193,10 @@ class AgenticSDRStateless:
 
             lead_info.update(new_lead_info)
 
-            response = await self._generate_response(
-                synthetic_message,  # Usa a mensagem sintética
-                context,
-                lead_info,
-                media_context,
+            context = self.context_analyzer.analyze_context(
                 conversation_history,
-                execution_context
+                synthetic_message,  # Usa a mensagem sintética
+                lead_info
             )
 
             assistant_message = {
