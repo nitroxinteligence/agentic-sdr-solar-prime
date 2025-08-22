@@ -473,6 +473,20 @@ class AgenticSDRStateless:
                     }
                 )
                 if result and result.get("success"):
+                    # CRIA UM REGISTRO DE QUALIFICAÇÃO COM O ID DO EVENTO
+                    event_id = result.get("google_event_id")
+                    if event_id and lead_info.get("id"):
+                        from app.integrations.supabase_client import supabase_client
+                        qualification_data = {
+                            "lead_id": lead_info["id"],
+                            "qualification_status": "QUALIFIED",
+                            "google_event_id": event_id,
+                            "meeting_scheduled_at": result.get("start_time"),
+                            "notes": "Reunião agendada pelo agente de IA."
+                        }
+                        await supabase_client.create_lead_qualification(qualification_data)
+                        emoji_logger.system_info(f"Registro de qualificação criado para o evento: {event_id}")
+
                     await self._execute_post_scheduling_workflow(
                         result,
                         lead_info,
@@ -482,19 +496,24 @@ class AgenticSDRStateless:
             elif method_name == "suggest_times":
                 return await self.calendar_service.suggest_times(lead_info)
             elif method_name == "cancel_meeting":
-                meeting_id = params.get("meeting_id")
+                from app.integrations.supabase_client import supabase_client
+                latest_qualification = await supabase_client.get_latest_qualification(lead_info["id"])
+                meeting_id = params.get("meeting_id") or (latest_qualification and latest_qualification.get("google_event_id"))
+                
                 if not meeting_id:
                     raise ValueError(
-                        "meeting_id é obrigatório para cancelar reunião"
+                        "ID da reunião não encontrado para cancelamento."
                     )
                 return await self.calendar_service.cancel_meeting(meeting_id)
             elif method_name == "reschedule_meeting":
-                meeting_id = params.get("meeting_id")
+                from app.integrations.supabase_client import supabase_client
+                latest_qualification = await supabase_client.get_latest_qualification(lead_info["id"])
+                meeting_id = params.get("meeting_id") or (latest_qualification and latest_qualification.get("google_event_id"))
                 date = params.get("date")
                 time = params.get("time")
                 if not meeting_id:
                     raise ValueError(
-                        "meeting_id é obrigatório para reagendar reunião"
+                        "ID da reunião não encontrado para reagendamento."
                     )
                 return await self.calendar_service.reschedule_meeting(
                     meeting_id=meeting_id,
