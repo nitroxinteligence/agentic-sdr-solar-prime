@@ -144,12 +144,25 @@ class EvolutionAPIClient:
                 self._client = self._create_client()
                 emoji_logger.system_info("Reconectando ao Evolution API...")
             response = await getattr(self.client, method)(path, **kwargs)
+            response.raise_for_status()  # Levanta exceção para status de erro
             self._record_success()
             return response
+        except httpx.RequestError as e:
+            self._record_failure()
+            emoji_logger.evolution_error(
+                f"Erro de requisição para {e.request.method} {e.request.url}: {e}"
+            )
+            raise
+        except httpx.HTTPStatusError as e:
+            self._record_failure()
+            emoji_logger.evolution_error(
+                f"Erro de status {e.response.status_code} para {e.request.method} {e.request.url}: {e.response.text}"
+            )
+            raise
         except Exception as e:
             self._record_failure()
             emoji_logger.evolution_error(
-                f"Erro na requisição {method.upper()} {path}: {e}"
+                f"Erro inesperado na requisição {method.upper()} {path}: {e}"
             )
             raise
 
