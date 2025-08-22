@@ -187,7 +187,7 @@ class AgenticSDRStateless:
                         lead_info["kommo_lead_id"] = new_kommo_id
                         # Atualiza o Supabase com o novo ID do Kommo
                         await supabase_client.update_lead(lead_info["id"], {"kommo_lead_id": new_kommo_id})
-                        emoji_logger.crm_event(f"Lead criado no Kommo com ID: {new_kommo_id}")
+                        emoji_logger.team_crm(f"Lead criado no Kommo com ID: {new_kommo_id}")
                 except Exception as e:
                     emoji_logger.system_error("Falha ao criar lead no Kommo", error=str(e))
 
