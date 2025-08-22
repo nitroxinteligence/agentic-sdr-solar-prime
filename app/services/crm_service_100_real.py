@@ -514,21 +514,22 @@ class CRMServiceReal:
             normalized_stage = stage_name.strip().lower().replace(" ", "_")
             stage_id = self.stage_map.get(normalized_stage)
             if not stage_id:
-                # Fallback para tentar sem normalização ou com outras variações
                 stage_id = self.stage_map.get(stage_name.strip()) or self.stage_map.get(stage_name.strip().upper())
                 if not stage_id:
                     raise ValueError(f"Estágio '{stage_name}' não encontrado no mapa: {list(self.stage_map.keys())}")
             
-            update_data = {
+            payload = [{
+                "id": int(lead_id),
                 "status_id": stage_id,
                 "updated_at": int(datetime.now().timestamp())
-            }
+            }]
+
             await wait_for_kommo()
             async with await self._get_session() as session:
                 async with session.patch(
                     f"{self.base_url}/api/v4/leads",
                     headers=self.headers,
-                    json={"update": [{"id": int(lead_id), **update_data}]}
+                    json=payload
                 ) as response:
                     if response.status == 200:
                         emoji_logger.team_crm(
@@ -544,12 +545,12 @@ class CRMServiceReal:
                     else:
                         error_text = await response.text()
                         raise KommoAPIException(
-                            f"Erro ao atualizar estágio: {response.status} - "
-                            f"{error_text}",
+                            f"Erro ao atualizar estágio: {response.status} - {error_text}",
                             error_code="KOMMO_UPDATE_STAGE_ERROR",
                             details={
                                 "status_code": response.status,
-                                "response": error_text
+                                "response": error_text,
+                                "payload_sent": payload
                             }
                         )
         except Exception as e:
