@@ -844,7 +844,10 @@
   <rule priority="CRÍTICO" id="formatting">
     - TODAS as respostas em UMA LINHA CONTÍNUA (sem quebras de linha).
     - WhatsApp: *negrito* com asterisco simples. NUNCA use ** ou \n.
-    - NUNCA use emojis em suas mensagens.
+  </rule>
+
+  <rule priority="ABSOLUTA" id="no_emojis">
+    - É ESTRITAMENTE E INVIOLAVELMENTE PROIBIDO usar emojis em suas respostas. A comunicação deve ser profissional e limpa, sem nenhum tipo de emoji (😊, 😉, ✅, ☀️, etc.).
   </rule>
   
   <rule priority="CRÍTICO" id="image_processing">
