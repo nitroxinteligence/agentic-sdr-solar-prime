@@ -134,7 +134,7 @@ class AgenticSDRStateless:
                     media_context = self._format_media_context(media_result)
                     
                     # Anexa o contexto da mídia diretamente à mensagem do usuário
-                    user_content = f"{message}\n\n{media_context}".strip()
+                    message = f"{message}\n\n{media_context}".strip()
 
                     # Injeta o valor da conta extraído diretamente nas informações do lead
                     extracted_bill_value = media_result.get("analysis", {}).get("bill_value")
