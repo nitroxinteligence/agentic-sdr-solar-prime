@@ -405,7 +405,7 @@ def get_message_splitter_instance():
     return splitter
 
 
-@router.post("/whatsapp/{event_type}")
+@router.post("/evolution/{event_type}")
 async def whatsapp_dynamic_webhook(
     event_type: str,
     request: Request,
