@@ -615,12 +615,23 @@ async def process_message_with_agent(
         execution_context=execution_context
     )
 
+    final_response = extract_final_response(response_text)
+
+    # Salva a resposta do assistente no banco de dados
+    if final_response:
+        assistant_message_data = {
+            "content": final_response,
+            "role": "assistant",
+            "sender": "agent",
+            "conversation_id": conversation["id"],
+            "media_data": {} 
+        }
+        await supabase_client.save_message(assistant_message_data)
+
     if updated_lead_info and updated_lead_info.get("id"):
         # Remove a chave transitória antes de salvar no banco
         updated_lead_info.pop("processed_message_count", None)
         await supabase_client.update_lead(updated_lead_info["id"], updated_lead_info)
-
-    final_response = extract_final_response(response_text)
     
     if final_response:
         splitter = get_message_splitter_instance()

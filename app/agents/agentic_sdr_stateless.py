@@ -180,12 +180,11 @@ class AgenticSDRStateless:
 
             context = self.context_analyzer.analyze_context(
                 conversation_history,
-                synthetic_message,  # Usa a mensagem sintética
                 lead_info
             )
 
             response = await self._generate_response(
-                synthetic_message,  # Usa a mensagem sintética
+                conversation_history[-1]['content'],
                 context,
                 lead_info,
                 media_context,

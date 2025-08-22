@@ -30,19 +30,18 @@ class ContextAnalyzer:
 
     def analyze_context(self,
                         messages: List[Dict[str, Any]],
-                        current_message: str,
                         lead_info: Dict[str, Any]) -> Dict[str, Any]:
         """
         Analisa contexto da conversa de forma SIMPLES
 
         Args:
             messages: Histórico de mensagens
-            current_message: Mensagem atual
             lead_info: Informações atuais do lead
 
         Returns:
             Análise completa do contexto
         """
+        current_message = messages[-1]['content'] if messages else ""
         context = {
             "conversation_stage": self._determine_stage(messages, lead_info),
             "user_intent": self._extract_intent(current_message),
