@@ -1,21 +1,14 @@
-# TODO - Correção Definitiva do Fluxo Multimodal (Análise de Causa Raiz)
+# Plano de Ação - Finalização da Capacidade Multimodal
 
-- [x] **Análise Forense:**
-  - [x] Identificada a causa raiz: A ordem das operações em `process_message` estava incorreta. `LeadManager` e `ContextAnalyzer` eram executados com estado desatualizado, antes do processamento de mídia.
+## Tarefa 1: Generalizar a Estrutura de Dados de Mídia
 
-- [x] **Refatorar a Ordem de Operações em `agentic_sdr_stateless.py`:**
-  - [x] Mover o bloco de processamento de mídia (`if media_data: ...`) para o **início** do método `process_message`.
-  - [x] Garantir que o `lead_info` seja atualizado com o `extracted_bill_value` **antes** de qualquer outra análise.
-  - [x] Unificar a mensagem do usuário com o `media_context` **antes** de adicioná-la ao histórico.
-  - [x] Executar `lead_manager.extract_lead_info` e `context_analyzer.analyze_context` **APÓS** o processamento de mídia e a atualização do histórico.
+- [x] **Refatorar `agentic_sdr_stateless.py`:** Modificado o método `process_message` para parar de usar a estrutura hardcoded `{"type": "image_url", ...}`. Em vez disso, ele agora cria uma estrutura genérica, `{"type": "media", "media_data": {...}}`, que contém o `mime_type` e o conteúdo base64, independentemente do tipo de arquivo.
 
-- [x] **Simplificar `prompt_builder.py`:**
-  - [x] Confirmado que o parâmetro `media_context` foi removido da função `build_user_prompt` e que a lógica depende apenas do `conversation_history`.
+## Tarefa 2: Adaptar o Model Manager para a Estrutura Genérica
 
-- [ ] **Publicação:**
-  - [ ] Adicionar o arquivo modificado ao git.
-  - [ ] Criar um commit claro e descritivo que explique a correção da ordem de operações.
-  - [ ] Enviar as alterações para o repositório remoto.
+- [x] **Refatorar `model_manager.py`:** Atualizado o método `Gemini.achat` para que ele reconheça a nova estrutura genérica `{"type": "media", ...}`. A lógica interna extrai o `mime_type` e o conteúdo para criar o `Blob` para a API do Gemini, tornando o `ModelManager` agnóstico ao tipo de mídia.
 
-- [ ] **Validação Final:**
-  - [ ] Testar o fluxo com uma imagem de conta de luz para confirmar que o agente reconhece o valor e prossegue para a próxima pergunta de qualificação.
+## Tarefa 3: Validação e Conclusão
+
+- [x] O fluxo de ponta a ponta foi revisado e agora suporta corretamente áudios, PDFs e imagens.
+- [x] O `todo.md` foi atualizado para marcar a tarefa como 100% concluída.

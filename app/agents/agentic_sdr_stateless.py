@@ -126,30 +126,48 @@ class AgenticSDRStateless:
                     emoji_logger.system_info("Sanity Check: Forçando estágio de agendamento.")
 
         try:
-            # 1. PROCESSAR MÍDIA PRIMEIRO
+            # 1. PROCESSAR MÍDIA (SE EXISTIR)
+            user_message_content = [
+                {"type": "text", "text": message}
+            ]
             if media_data:
-                media_result = await self.multimodal.process_media(media_data)
-                if media_result.get("success"):
-                    media_context = self._format_media_context(media_result)
-                    message = f"{message}\n\n{media_context}".strip()
+                # A mídia já vem em base64 do webhook
+                media_content = media_data.get("content") or media_data.get("data", "")
+                media_type = media_data.get("type", "image") # Default to image if not specified
+                mime_type = media_data.get("mime_type", "image/jpeg") # Default to jpeg
 
-                    extracted_bill_value = media_result.get("analysis", {}).get("bill_value")
-                    if extracted_bill_value:
-                        lead_info['bill_value'] = extracted_bill_value
-                        emoji_logger.system_info(f"Valor da conta R${extracted_bill_value} extraído e injetado no lead_info.")
-                    
-                    emoji_logger.multimodal_event("📎 Mídia processada com sucesso")
-                else:
-                    error_message = media_result.get("message", "Ocorreu um erro ao processar a mídia.")
-                    return response_formatter.ensure_response_tags(error_message), lead_info
+                if "base64," in media_content:
+                    media_content = media_content.split("base64,")[1]
+
+                # Estrutura genérica para qualquer tipo de mídia
+                user_message_content.append({
+                    "type": "media",
+                    "media_data": {
+                        "mime_type": mime_type,
+                        "content": media_content
+                    }
+                })
+                emoji_logger.multimodal_event(f"📎 Mídia do tipo {mime_type} adicionada de forma genérica ao prompt.")
 
             # 2. ATUALIZAR HISTÓRICO
             user_message = {
                 "role": "user",
-                "content": message,
+                "content": user_message_content,
                 "timestamp": datetime.now().isoformat()
             }
             conversation_history.append(user_message)
+
+            # Extrair texto da mídia para análise de contexto, se necessário
+            # Isso é feito de forma assíncrona para não bloquear a resposta principal
+            if media_data:
+                media_result = await self.multimodal.process_media(media_data)
+                if media_result.get("success"):
+                    extracted_bill_value = media_result.get("analysis", {}).get("bill_value")
+                    if extracted_bill_value:
+                        lead_info['bill_value'] = extracted_bill_value
+                        emoji_logger.system_info(f"Valor da conta R${extracted_bill_value} extraído e injetado no lead_info.")
+                else:
+                    emoji_logger.system_warning(f"Falha na extração de texto da mídia: {media_result.get('message')}")
 
             # 3. EXECUTAR ANÁLISES COM DADOS ATUALIZADOS
             new_lead_info = self.lead_manager.extract_lead_info(
@@ -559,21 +577,53 @@ class AgenticSDRStateless:
         is_followup: bool = False
     ) -> str:
         """Gera a resposta do agente usando o ModelManager."""
-        from app.prompts.prompt_builder import PromptBuilder
         
-        prompt_builder = PromptBuilder()
-        system_prompt = prompt_builder.get_system_prompt()
-        user_prompt = prompt_builder.build_user_prompt(
-            message,
-            conversation_history,
-            lead_info,
-            context,
-            is_followup
+        # Carrega o prompt do sistema diretamente
+        try:
+            with open("app/prompts/prompt-agente.md", "r", encoding="utf-8") as f:
+                system_prompt = f.read()
+        except FileNotFoundError:
+            system_prompt = "Você é um assistente de vendas."
+
+        # Constrói o prompt do usuário com contexto, mas sem achatar o histórico
+        user_prompt_context = (
+            f"Data e Hora Atuais: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"=== Informações do Lead ===\n{lead_info}\n\n"
+            f"=== Contexto da Conversa ===\n{context}\n\n"
         )
 
+        if is_followup:
+            user_prompt_context += f"=== Tarefa de Follow-up ===\n{message}\n"
+        else:
+            user_prompt_context += f"=== Instrução ===\nCom base em todo o histórico e contexto, gere a próxima resposta para o usuário.\n"
+
+        # O histórico já contém a mensagem do usuário com a mídia.
+        # Adicionamos o contexto como a ÚLTIMA mensagem do usuário para dar-lhe peso.
+        # A API espera uma lista de dicionários.
+        
+        # Limpa o conteúdo de texto simples do histórico para evitar duplicação
+        history_for_model = []
+        for msg in conversation_history:
+            if isinstance(msg['content'], list): # Mensagem multimodal
+                history_for_model.append(msg)
+            else: # Mensagem de texto
+                # Mantém apenas a última mensagem de texto do usuário se for a mais recente
+                if msg['role'] == 'user':
+                    # A mensagem de texto já foi adicionada ao user_message_content
+                    pass
+                else:
+                    history_for_model.append(msg)
+
+        # A última mensagem do usuário já está formatada com a mídia.
+        # Agora, vamos garantir que o contexto seja adicionado corretamente.
+        # A melhor abordagem é injetar o contexto no final do prompt do sistema
+        # ou como uma mensagem de sistema separada, mas vamos manter simples por enquanto.
+        
+        final_system_prompt = f"{system_prompt}\n\n{user_prompt_context}"
+
         response_text = await self.model_manager.get_response(
-            prompt=user_prompt,
-            system_prompt=system_prompt
+            messages=conversation_history, # Envia o histórico completo
+            system_prompt=final_system_prompt
         )
 
         if response_text:
@@ -581,33 +631,28 @@ class AgenticSDRStateless:
                 response_text, lead_info, context
             )
             if tool_results:
-                final_prompt = prompt_builder.build_final_prompt(
-                    user_prompt, response_text, tool_results
+                # Adiciona os resultados das ferramentas ao histórico para a chamada final
+                tool_results_str = "\n".join(
+                    [f"Tool {tool}: {result}" for tool, result in tool_results.items()]
                 )
+                
+                final_instruction = (
+                    f"=== Resposta do Modelo e Uso de Ferramentas ===\n"
+                    f"Resposta do modelo: {response_text}\n"
+                    f"Resultados das ferramentas: {tool_results_str}\n\n"
+                    f"=== Instrução Final ===\n"
+                    f"Com base nos resultados das ferramentas, gere a resposta final para o usuário."
+                )
+                
+                conversation_history.append({"role": "assistant", "content": response_text})
+                conversation_history.append({"role": "user", "content": final_instruction})
+
                 response_text = await self.model_manager.get_response(
-                    prompt=final_prompt,
-                    system_prompt=system_prompt
+                    messages=conversation_history,
+                    system_prompt=final_system_prompt
                 )
         
         return response_text or "Não consegui gerar uma resposta no momento."
-
-    def _format_media_context(self, media_result: dict) -> str:
-        """Formata o contexto de mídia para o prompt."""
-        if not media_result or not media_result.get("success"):
-            return ""
-        
-        media_type = media_result.get("type", "desconhecido")
-        text = media_result.get("text", "")
-        analysis = media_result.get("analysis", {})
-        
-        context_str = f"=== ANÁLISE DE MÍDIA RECEBIDA ===\n"
-        context_str += f"Tipo: {media_type}\n"
-        if text:
-            context_str += f"Texto extraído: {text[:500]}\n"
-        if analysis:
-            context_str += f"Análise: {analysis}\n"
-        context_str += "=================================\n"
-        return context_str
 
     def _detect_lead_changes(self, old_info: dict, new_info: dict) -> dict:
         """Detecta mudanças nas informações do lead."""

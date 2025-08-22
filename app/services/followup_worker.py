@@ -58,9 +58,11 @@ class FollowUpWorker:
         """
         Processa uma única tarefa de follow-up.
         """
-        followup_id = task_payload.get("followup_id")
+        # A tarefa vem aninhada em 'data' pelo redis_client
+        actual_task = task_payload.get("data", {})
+        followup_id = actual_task.get("followup_id")
         if not followup_id:
-            logger.error("Task de follow-up sem ID, descartando.")
+            logger.error(f"Task de follow-up sem ID, descartando. Payload: {task_payload}")
             return
 
         lock_key = f"followup_exec:{followup_id}"
@@ -76,12 +78,12 @@ class FollowUpWorker:
             )
 
             message_content = await self._generate_intelligent_followup_message(
-                task_payload
+                actual_task
             )
 
             from app.integrations.evolution import evolution_client
             send_result = await evolution_client.send_text_message(
-                phone=task_payload["phone_number"],
+                phone=actual_task["phone_number"],
                 message=message_content
             )
 
@@ -123,17 +125,23 @@ class FollowUpWorker:
             return "Não foi possível gerar a mensagem de follow-up."
 
         lead_info = await self.db.get_lead_by_id(lead_id)
+        conversation_id = None
+        if lead_info:
+            # Tentativa de obter o conversation_id do lead_info
+            # Assumindo que a lógica de associação existe
+            conv = await self.db.get_conversation_by_phone(lead_info.get("phone_number"))
+            if conv:
+                conversation_id = conv.get("id")
+
         conversation_history = await self.db.get_conversation_messages(
-            lead_info.get('conversation_id')
-        ) if lead_info else []
+            conversation_id
+        ) if conversation_id else []
 
         execution_context = {
             "conversation_history": conversation_history,
             "lead_info": lead_info or {},
             "phone": task_payload.get("phone_number"),
-            "conversation_id": (
-                lead_info.get('conversation_id') if lead_info else None
-            ),
+            "conversation_id": conversation_id,
         }
 
         prompt = (
@@ -144,8 +152,7 @@ class FollowUpWorker:
         response_text = await self.agent._generate_response(
             message=prompt,
             context={},
-            lead_info=lead_info,
-            media_context="",
+            lead_info=lead_info or {},
             conversation_history=conversation_history,
             execution_context=execution_context,
             is_followup=True

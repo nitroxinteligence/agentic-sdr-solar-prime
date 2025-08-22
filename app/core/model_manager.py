@@ -5,6 +5,7 @@ ZERO complexidade, m	ilde;xima confiabilidade
 
 from typing import Optional, Dict, Any
 import asyncio
+import base64
 from app.utils.logger import emoji_logger
 from app.config import settings
 
@@ -45,23 +46,47 @@ class Gemini:
             self.model = genai.GenerativeModel(model_name)
 
     async def achat(self, messages):
-        """Chamada REAL para Gemini API"""
+        """Chamada REAL para Gemini API com suporte multimodal"""
         if not GEMINI_AVAILABLE or not self.model:
             return type('Response', (), {
-                'content': 'Gemini n	ilde;o dispon	ilde;vel. Configure GOOGLE_API_KEY.'
+                'content': 'Gemini não disponível. Configure GOOGLE_API_KEY.'
             })()
 
         try:
-            # Converter mensagens para formato Gemini
-            prompt = "\n\n".join([
-                f"{m['role'].upper()}: {m['content']}"
-                for m in messages
-            ])
+            # Converte o histórico de mensagens para o formato do Gemini API
+            gemini_history = []
+            for msg in messages:
+                role = 'user' if msg['role'] == 'user' else 'model'
+                
+                # Processa conteúdo que pode ser string ou lista (para multimodal)
+                content = msg.get('content', '')
+                if isinstance(content, list):
+                    # É uma mensagem multimodal
+                    parts = []
+                    for item in content:
+                        if item.get("type") == "text":
+                            parts.append(genai.types.Part(text=item.get("text", "")))
+                        elif item.get("type") == "media":
+                            media_data = item.get("media_data", {})
+                            mime_type = media_data.get("mime_type")
+                            base64_content = media_data.get("content")
+                            
+                            if mime_type and base64_content:
+                                parts.append(genai.types.Part(
+                                    inline_data=genai.types.Blob(
+                                        mime_type=mime_type,
+                                        data=base64.b64decode(base64_content)
+                                    )
+                                ))
+                    gemini_history.append(genai.types.Content(role=role, parts=parts))
+                else:
+                    # É uma mensagem de texto simples
+                    gemini_history.append(genai.types.Content(role=role, parts=[genai.types.Part(text=content)]))
 
             # Fazer chamada REAL para Gemini
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: self.model.generate_content(prompt)
+                lambda: self.model.generate_content(gemini_history)
             )
 
             return type('Response', (), {'content': response.text})()
@@ -181,29 +206,40 @@ class ModelManager:
 
     async def get_response(
             self,
-            prompt: str,
+            messages: list,
             system_prompt: Optional[str] = None,
             use_reasoning: bool = False,
             temperature: float = 0.7,
             max_tokens: int = 2000
     ) -> Optional[str]:
         """
-        Obt	ilde;m resposta REAL do modelo com fallback autom	ilde;tico
+        Obtém resposta REAL do modelo com fallback automático
 
         Args:
-            prompt: Prompt do usu	ilde;rio
-            system_prompt: Prompt do sistema
+            messages: Lista de mensagens da conversa (incluindo a do usuário)
+            system_prompt: Prompt do sistema (opcional, pode ser injetado)
             use_reasoning: Se deve usar modelo de reasoning
-            temperature: Temperatura para gera	ilde;	ilde;o
-            max_tokens: M	ilde;ximo de tokens
+            temperature: Temperatura para geração
+            max_tokens: Máximo de tokens
 
         Returns:
             Resposta REAL do modelo ou None se falhar
         """
+        # Injeta o system_prompt no modelo Gemini, se aplicável
+        model_to_use = self.primary_model
+        if use_reasoning and self.reasoning_model:
+            model_to_use = self.reasoning_model
+        
+        if isinstance(model_to_use, Gemini) and system_prompt:
+            model_to_use.model.system_instruction = genai.types.Content(
+                role="system",
+                parts=[genai.types.Part(text=system_prompt)]
+            )
+
         if use_reasoning and self.reasoning_model:
             try:
                 response = await self._try_model(
-                    self.reasoning_model, prompt, system_prompt
+                    self.reasoning_model, messages, system_prompt
                 )
                 if response:
                     return response
@@ -213,17 +249,17 @@ class ModelManager:
         if self.primary_model:
             try:
                 response = await self._try_model(
-                    self.primary_model, prompt, system_prompt
+                    self.primary_model, messages, system_prompt
                 )
                 if response:
                     return response
             except Exception as e:
-                emoji_logger.model_error(f"Erro no modelo prim	ilde;rio: {e}")
+                emoji_logger.model_error(f"Erro no modelo primário: {e}")
 
         if self.fallback_model:
             try:
                 response = await self._try_model(
-                    self.fallback_model, prompt, system_prompt
+                    self.fallback_model, messages, system_prompt
                 )
                 if response:
                     emoji_logger.model_warning("Usando modelo fallback")
@@ -237,27 +273,28 @@ class ModelManager:
     async def _try_model(
             self,
             model: Any,
-            prompt: str,
+            messages: list,
             system_prompt: Optional[str] = None
     ) -> Optional[str]:
         """
-        Tenta obter resposta de um modelo espec	ilde;fico
+        Tenta obter resposta de um modelo específico
 
         Args:
             model: Modelo a usar
-            prompt: Prompt do usu	ilde;rio
+            messages: Lista de mensagens da conversa
             system_prompt: Prompt do sistema
 
         Returns:
             Resposta ou None se falhar
         """
         try:
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
+            # Para modelos OpenAI, o system prompt é apenas outra mensagem
+            if isinstance(model, OpenAI) and system_prompt:
+                messages_with_system = [{"role": "system", "content": system_prompt}] + messages
+            else:
+                messages_with_system = messages
 
-            response = await model.achat(messages)
+            response = await model.achat(messages_with_system)
 
             if response and response.content:
                 return response.content

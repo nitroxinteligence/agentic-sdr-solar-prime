@@ -78,7 +78,7 @@ async def _handle_media_message(
                 else:
                     # Fallback para o método de download se o base64 não estiver no payload
                     emoji_logger.system_warning(f"Webhook para {msg_type} não continha 'media' ou 'body'. Tentando download como fallback.")
-                    media_bytes = await evolution_client.download_media(media_payload)
+                    media_bytes = await evolution_client.download_media(media_payload, media_type=media_type)
                     if media_bytes:
                         return {
                             "type": media_type,

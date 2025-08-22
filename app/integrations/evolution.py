@@ -820,7 +820,7 @@ class EvolutionAPIClient:
             return None
 
     async def download_media(
-            self, message_data: Dict[str, Any]
+            self, message_data: Dict[str, Any], media_type: str = "image"
     ) -> Optional[bytes]:
         """
         Baixa e descriptografa mídia de uma mensagem do WhatsApp
@@ -831,7 +831,7 @@ class EvolutionAPIClient:
                 logger.warning("URL da mídia não encontrada nos dados")
                 return None
             media_key = message_data.get("mediaKey")
-            media_type = message_data.get("mediaType", "image")
+            # O media_type agora é passado como argumento, garantindo a precisão
             logger.info(f"Baixando mídia de: {media_url[:50]}...")
             if media_key:
                 logger.info(
