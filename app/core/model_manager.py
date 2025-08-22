@@ -83,13 +83,15 @@ class Gemini:
                         base64_content = media_data.get("content")
                         if mime_type and base64_content:
                             try:
+                                # A API do Gemini pode lidar com os bytes diretamente
                                 image_bytes = base64.b64decode(base64_content)
-                                img = Image.open(io.BytesIO(image_bytes))
-                                final_prompt_parts.append(img)
+                                final_prompt_parts.append(genai.types.Blob(
+                                    mime_type=mime_type,
+                                    data=image_bytes
+                                ))
                             except Exception as e:
-                                emoji_logger.system_warning(f"Não foi possível processar a mídia como imagem PIL: {e}")
-                                # Se não for uma imagem, não podemos enviar para o gemini-pro-vision
-                                final_prompt_parts.append("(Mídia recebida, mas não é uma imagem suportada para análise visual)")
+                                emoji_logger.system_warning(f"Não foi possível processar a mídia com mime_type {mime_type}: {e}")
+                                final_prompt_parts.append(f"(Mídia do tipo {mime_type} recebida, mas não pôde ser processada)")
 
             elif isinstance(content, str):
                 # Mensagem de texto simples
