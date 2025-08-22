@@ -544,7 +544,7 @@ class AgenticSDRStateless:
                 "Saída do modelo inválida - fallback para resposta padrão.",
                 details=f"Saída recebida: '{response_text}'"
             )
-            return "Desculpe, não consegui processar sua solicitação. Poderia tentar novamente?", lead_info
+            return "Desculpe, não consegui processar sua solicitação. Poderia tentar novamente?"
 
         if response_text:
             # 6. Analisa e executa ferramentas, se houver.
