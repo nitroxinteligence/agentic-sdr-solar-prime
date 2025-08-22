@@ -537,11 +537,8 @@ class AgenticSDRStateless:
 
                 final_instruction = (
                     f"=== RESULTADO DAS FERRAMENTAS ===\n"
-                    f"Sua resposta inicial foi: 
-'{response_text}'
-"
-                    f"As seguintes ferramentas foram executadas com estes resultados:
-{tool_results_str}\n\n"
+                    f"Sua resposta inicial foi: '{response_text}'\n"
+                    f"As seguintes ferramentas foram executadas com estes resultados:\n{tool_results_str}\n\n"
                     f"=== INSTRUÇÃO FINAL ===\n"
                     f"Com base nos resultados das ferramentas, gere a resposta final, clara e amigável para o usuário. "
                     f"Siga TODAS as regras do seu prompt de sistema. "
