@@ -165,7 +165,8 @@ class AgenticSDRStateless:
 
             context = self.context_analyzer.analyze_context(
                 conversation_history,
-                synthetic_message  # Usa a mensagem sintética
+                synthetic_message,  # Usa a mensagem sintética
+                lead_info
             )
 
             new_lead_info = self.lead_manager.extract_lead_info(
@@ -221,7 +222,7 @@ class AgenticSDRStateless:
                 error=f"Traceback: {traceback.format_exc()}"
             )
             return (
-                "<RESPOSTA_FINAL>Desculpe, tive um problema ao processar sua mensagem. "
+                "<RESPOSTA_FINAL>Desculpe, tive um problema aqui. "
                 "Pode repetir?</RESPOSTA_FINAL>",
                 lead_info
             )

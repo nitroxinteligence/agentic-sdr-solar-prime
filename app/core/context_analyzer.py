@@ -30,19 +30,21 @@ class ContextAnalyzer:
 
     def analyze_context(self,
                         messages: List[Dict[str, Any]],
-                        current_message: str) -> Dict[str, Any]:
+                        current_message: str,
+                        lead_info: Dict[str, Any]) -> Dict[str, Any]:
         """
         Analisa contexto da conversa de forma SIMPLES
 
         Args:
             messages: Histórico de mensagens
             current_message: Mensagem atual
+            lead_info: Informações atuais do lead
 
         Returns:
             Análise completa do contexto
         """
         context = {
-            "conversation_stage": self._determine_stage(messages),
+            "conversation_stage": self._determine_stage(messages, lead_info),
             "user_intent": self._extract_intent(current_message),
             "sentiment": self._analyze_sentiment(current_message),
             "emotional_state": self._analyze_emotional_state(messages),
@@ -56,17 +58,18 @@ class ContextAnalyzer:
 
         return context
 
-    def _determine_stage(self, messages: List[Dict[str, Any]]) -> str:
+    def _determine_stage(self, messages: List[Dict[str, Any]], lead_info: Dict[str, Any]) -> str:
         """
-        Determina estágio da conversa baseado no conteúdo
+        Determina estágio da conversa baseado no conteúdo e no estado do lead
 
         Args:
             messages: Histórico
+            lead_info: Informações do lead
 
         Returns:
             Estágio atual
         """
-        has_name = False
+        has_name = bool(lead_info.get("name"))
         has_solutions_presented = False
         has_choice = False
 
@@ -79,26 +82,35 @@ class ContextAnalyzer:
             f"(👤 {user_count} user, 🤖 {assistant_count} assistant)"
         )
 
+        # Se o nome ainda não foi coletado pelo lead_info, tenta extrair do histórico
+        if not has_name:
+            for msg in messages:
+                content = msg.get("content", "").lower()
+                role = msg.get("role", "")
+
+                if role == "user":
+                    # Verifica padrões explícitos de nome
+                    if any(re.search(r'\b' + pattern + r'\b', content) for pattern in ["meu nome é", "me chamo", "sou o", "sou a"]):
+                        has_name = True
+                        break
+                    # Verifica se a mensagem anterior foi uma pergunta sobre o nome
+                    elif len(messages) > 1:
+                        prev_msg_index = messages.index(msg) - 1
+                        if prev_msg_index >= 0:
+                            prev_msg = messages[prev_msg_index]
+                            prev_content = prev_msg.get("content", "").lower()
+                            # Padrões de pergunta sobre nome
+                            name_questions = ["como posso te chamar", "qual seu nome", "como se chama"]
+                            if prev_msg.get("role") == "assistant" and any(q in prev_content for q in name_questions):
+                                # Se a resposta for curta (1-3 palavras), assume que é o nome
+                                if 1 <= len(content.split()) <= 3:
+                                    has_name = True
+                                    break
+        
+        # Continua a análise do histórico para os outros estágios
         for msg in messages:
             content = msg.get("content", "").lower()
             role = msg.get("role", "")
-
-            if role == "user":
-                # Verifica padrões explícitos de nome
-                if any(re.search(r'\b' + pattern + r'\b', content) for pattern in ["meu nome é", "me chamo", "sou o", "sou a"]):
-                    has_name = True
-                # Verifica se a mensagem anterior foi uma pergunta sobre o nome
-                elif len(messages) > 1:
-                    prev_msg_index = messages.index(msg) - 1
-                    if prev_msg_index >= 0:
-                        prev_msg = messages[prev_msg_index]
-                        prev_content = prev_msg.get("content", "").lower()
-                        # Padrões de pergunta sobre nome
-                        name_questions = ["como posso te chamar", "qual seu nome", "como se chama"]
-                        if prev_msg.get("role") == "assistant" and any(q in prev_content for q in name_questions):
-                            # Se a resposta for curta (1-3 palavras), assume que é o nome
-                            if 1 <= len(content.split()) <= 3:
-                                has_name = True
 
             if role == "assistant" and all(
                 sol in content for sol in [
@@ -113,7 +125,7 @@ class ContextAnalyzer:
             ]):
                 has_choice = True
 
-        # Lógica adicional para verificar a última pergunta do assistente
+        # Lógica de decisão de estágio
         if messages:
             last_message = messages[-1]
             if last_message.get("role") == "assistant":
