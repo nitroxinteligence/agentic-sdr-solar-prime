@@ -682,6 +682,12 @@
       - NUNCA chame calendar.schedule_meeting sem antes ter o e-mail do lead. Se não tiver o e-mail, sua única ação é pedi-lo.
       - Assuma que informações foram salvas sem usar CRM tools
     </rule>
+
+    <rule id="cancellation_intent_priority" severity="BLOCKER">
+      PRIORIDADE MÁXIMA PARA CANCELAMENTO/REAGENDAMENTO:
+      - Se a mensagem do usuário contiver intenção de CANCELAR ou REMARCAR (ex: "preciso cancelar", "não vou poder", "vamos cancelar", "quero mudar o horário"), sua ÚNICA ação permitida é usar a ferramenta [TOOL: calendar.cancel_meeting] ou [TOOL: calendar.reschedule_meeting].
+      - É ESTRITAMENTE PROIBIDO tentar agendar uma nova reunião ([TOOL: calendar.check_availability]) quando a intenção é cancelar ou remarcar. A intenção de cancelamento/reagendamento SOBREPÕE todas as outras.
+    </rule>
     
     <rule id="tool_result_handling">
       APÓS RECEBER RESULTADO DO TOOL:

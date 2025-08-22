@@ -143,8 +143,9 @@ class CalendarServiceReal:
                 return 0
             end
             """
+            # A chamada correta para eval é posicional: script, num_keys, key, arg
             result = await redis_client.redis_client.eval(
-                lua_script, keys=[lock_key], args=[lock_value]
+                lua_script, 1, lock_key, lock_value
             )
             if hasattr(self, '_lock_key'):
                 delattr(self, '_lock_key')
@@ -404,6 +405,40 @@ Equipe SolarPrime
             raise
         finally:
             await self._release_lock()
+
+    @async_handle_errors(retry_policy='google_calendar')
+    async def reschedule_meeting(
+        self, meeting_id: str, date: str, time: str, lead_info: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Reagenda uma reunião cancelando a antiga e criando uma nova."""
+        if not self.is_initialized:
+            await self.initialize()
+        
+        emoji_logger.calendar_event(f"Iniciando reagendamento para a reunião: {meeting_id}")
+
+        # Passo 1: Cancelar a reunião existente
+        try:
+            cancel_result = await self.cancel_meeting(meeting_id)
+            if not cancel_result.get("success"):
+                emoji_logger.service_error(f"Falha ao cancelar a reunião antiga ({meeting_id}) durante o reagendamento.")
+                return {"success": False, "message": "Não foi possível cancelar a reunião antiga para reagendar."}
+            emoji_logger.calendar_event(f"Reunião antiga ({meeting_id}) cancelada com sucesso.")
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao cancelar reunião antiga ({meeting_id}): {e}")
+            # Continua mesmo se o cancelamento falhar para não impedir o novo agendamento
+            
+        # Passo 2: Agendar a nova reunião
+        try:
+            schedule_result = await self.schedule_meeting(date, time, lead_info)
+            if schedule_result.get("success"):
+                emoji_logger.system_success(f"Nova reunião agendada com sucesso para {date} às {time}.")
+                return schedule_result
+            else:
+                emoji_logger.service_error("Falha ao agendar a nova reunião após cancelamento.")
+                return {"success": False, "message": "A reunião antiga foi cancelada, mas houve um erro ao criar a nova. Por favor, tente agendar novamente."}
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao agendar nova reunião: {e}")
+            return {"success": False, "message": f"Erro ao agendar a nova reunião: {e}"}
 
     @async_handle_errors(retry_policy='google_calendar')
     async def get_event(self, event_id: str) -> Optional[Dict[str, Any]]:
