@@ -128,8 +128,16 @@ class ContextAnalyzer:
             if any(w in content for w in ["não sei", "talvez", "pensar"]): emotions["hesitação"] += 1
             if any(w in content for w in ["urgente", "rápido", "agora"]): emotions["urgência"] += 1
             if any(w in content for w in ["confio", "acredito", "certeza"]): emotions["confiança"] += 1
-        dominant = max(emotions, key=emotions.get) if any(emotions.values()) else "neutro"
-        return {"enabled": True, "dominant": dominant, "scores": emotions, "intensity": min(1.0, emotions[dominant] * 0.3)}
+        
+        dominant = "neutro"
+        intensity = 0.0
+        if any(emotions.values()):
+            dominant_emotion_key = max(emotions, key=emotions.get)
+            if emotions[dominant_emotion_key] > 0:
+                dominant = dominant_emotion_key
+                intensity = min(1.0, emotions[dominant] * 0.3)
+
+        return {"enabled": True, "dominant": dominant, "scores": emotions, "intensity": intensity}
 
     def _extract_topics(self, messages: List[Dict[str, Any]]) -> List[str]:
         topics, keywords = [], {"economia": ["economizar", "conta", "valor"], "energia_solar": ["solar", "painel", "energia"], "investimento": ["investir", "retorno", "custo"], "instalação": ["instalar", "obra", "telhado"]}
