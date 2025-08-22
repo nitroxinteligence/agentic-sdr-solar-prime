@@ -116,10 +116,16 @@ class AgenticSDRStateless:
 
         try:
             media_context = ""
+            synthetic_message = message  # Começa com a mensagem original
+
             if media_data:
                 media_result = await self.multimodal.process_media(media_data)
                 if media_result.get("success"):
                     media_context = self._format_media_context(media_result)
+                    # Se a mensagem original estiver vazia, crie uma mensagem sintética
+                    if not message.strip():
+                        media_type_pt = media_result.get('type', 'desconhecido')
+                        synthetic_message = f"[O usuário enviou uma mídia do tipo '{media_type_pt}'. A análise está no contexto de mídia abaixo. Responda diretamente sobre essa análise.]"
                     emoji_logger.multimodal_event(
                         "📎 Mídia processada com sucesso"
                     )
@@ -130,14 +136,14 @@ class AgenticSDRStateless:
 
             user_message = {
                 "role": "user",
-                "content": message,
+                "content": synthetic_message,  # Usa a mensagem sintética
                 "timestamp": datetime.now().isoformat()
             }
             conversation_history.append(user_message)
 
             context = self.context_analyzer.analyze_context(
                 conversation_history,
-                message
+                synthetic_message  # Usa a mensagem sintética
             )
 
             new_lead_info = self.lead_manager.extract_lead_info(
@@ -152,7 +158,7 @@ class AgenticSDRStateless:
             lead_info.update(new_lead_info)
 
             response = await self._generate_response(
-                message,
+                synthetic_message,  # Usa a mensagem sintética
                 context,
                 lead_info,
                 media_context,
