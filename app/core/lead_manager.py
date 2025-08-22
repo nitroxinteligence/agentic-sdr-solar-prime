@@ -67,7 +67,6 @@ class LeadManager:
         for msg in new_messages:
             content_data = msg.get("content", "")
             
-            # Extrai o texto, seja de uma string ou de uma lista multimodal
             text_content = ""
             if isinstance(content_data, list):
                 for part in content_data:
@@ -76,18 +75,16 @@ class LeadManager:
                         break
             elif isinstance(content_data, str):
                 text_content = content_data
-            
+
             content_lower = text_content.lower()
             role = msg.get("role", "")
 
             if role == "user":
-                # Extrai o nome apenas se ainda não existir
                 if not lead_info.get("name"):
                     name = self._extract_name(content_lower)
                     if name:
                         lead_info["name"] = name
                     else:
-                        # Fallback for simple name extraction
                         words = content_lower.split()
                         if 1 <= len(words) <= 4:
                             blacklist = [
@@ -108,7 +105,6 @@ class LeadManager:
                             if potential_name and self._is_valid_name(potential_name):
                                 lead_info["name"] = potential_name.title()
 
-                # Extrai outras informações apenas se não existirem
                 if not lead_info.get("email"):
                     email = self._extract_email(content_lower)
                     if email:
@@ -129,7 +125,6 @@ class LeadManager:
                     if location:
                         lead_info["preferences"]["location"] = location
 
-            # Interesses e objeções podem ser adicionados cumulativamente
             interests = self._extract_interests(content_lower)
             if interests:
                 lead_info["preferences"]["interests"].extend(interests)

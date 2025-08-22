@@ -24,38 +24,27 @@ class ContextAnalyzer:
         """Inicialização simples"""
         if self.is_initialized:
             return
-
         emoji_logger.system_ready("🧠 ContextAnalyzer inicializado")
         self.is_initialized = True
+
+    def _get_text_from_message(self, msg: Dict[str, Any]) -> str:
+        """Helper para extrair texto de forma segura de uma mensagem."""
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            for part in content:
+                if part.get("type") == "text":
+                    return part.get("text", "")
+            return ""
+        return str(content)
 
     def analyze_context(self,
                         messages: List[Dict[str, Any]],
                         lead_info: Dict[str, Any]) -> Dict[str, Any]:
         """
         Analisa contexto da conversa de forma SIMPLES
-
-        Args:
-            messages: Histórico de mensagens
-            lead_info: Informações atuais do lead
-
-        Returns:
-            Análise completa do contexto
         """
+        current_message_text = self._get_text_from_message(messages[-1]) if messages else ""
         
-        # Helper para extrair texto de forma segura
-        def get_text_from_content(content: Any) -> str:
-            if isinstance(content, list):
-                for part in content:
-                    if part.get("type") == "text":
-                        return part.get("text", "")
-                return ""
-            elif isinstance(content, str):
-                return content
-            return ""
-
-        current_message_content = messages[-1]['content'] if messages else ""
-        current_message_text = get_text_from_content(current_message_content)
-
         context = {
             "conversation_stage": self._determine_stage(messages, lead_info),
             "user_intent": self._extract_intent(current_message_text),
@@ -68,429 +57,123 @@ class ContextAnalyzer:
             "questions_asked": self._extract_questions(messages),
             "action_needed": self._determine_action(current_message_text)
         }
-
         return context
 
     def _determine_stage(self, messages: List[Dict[str, Any]], lead_info: Dict[str, Any]) -> str:
-        """
-        Determina estágio da conversa baseado no conteúdo e no estado do lead
-
-        Args:
-            messages: Histórico
-            lead_info: Informações do lead
-
-        Returns:
-            Estágio atual
-        """
         has_name = bool(lead_info.get("name"))
         has_solutions_presented = False
         has_choice = False
 
-        user_count = sum(1 for m in messages if m.get("role") == "user")
-        assistant_count = sum(
-            1 for m in messages if m.get("role") == "assistant"
-        )
-        emoji_logger.conversation_event(
-            f"📊 Analisando estágio - Msgs: {len(messages)} "
-            f"(👤 {user_count} user, 🤖 {assistant_count} assistant)"
-        )
-
-        # Se o nome ainda não foi coletado pelo lead_info, tenta extrair do histórico
-        if not has_name:
-            for msg in messages:
-                content = msg.get("content", "").lower()
-                role = msg.get("role", "")
-
-                if role == "user":
-                    # Verifica padrões explícitos de nome
-                    if any(re.search(r'\b' + pattern + r'\b', content) for pattern in ["meu nome é", "me chamo", "sou o", "sou a"]):
-                        has_name = True
-                        break
-                    # Verifica se a mensagem anterior foi uma pergunta sobre o nome
-                    elif len(messages) > 1:
-                        prev_msg_index = messages.index(msg) - 1
-                        if prev_msg_index >= 0:
-                            prev_msg = messages[prev_msg_index]
-                            prev_content = prev_msg.get("content", "").lower()
-                            # Padrões de pergunta sobre nome
-                            name_questions = ["como posso te chamar", "qual seu nome", "como se chama"]
-                            if prev_msg.get("role") == "assistant" and any(q in prev_content for q in name_questions):
-                                # Se a resposta for curta (1-3 palavras), assume que é o nome
-                                if 1 <= len(content.split()) <= 3:
-                                    has_name = True
-                                    break
-        
-        # Continua a análise do histórico para os outros estágios
-        for msg in messages:
-            content = msg.get("content", "").lower()
+        for i, msg in enumerate(messages):
+            content = self._get_text_from_message(msg).lower()
             role = msg.get("role", "")
 
-            if role == "assistant" and all(
-                sol in content for sol in [
-                    "instalação", "aluguel", "compra", "investimento"
-                ]
-            ):
+            if not has_name and role == "user":
+                if any(re.search(r'\b' + p + r'\b', content) for p in ["meu nome é", "me chamo", "sou o", "sou a"]):
+                    has_name = True
+                elif i > 0:
+                    prev_msg = messages[i-1]
+                    prev_content = self._get_text_from_message(prev_msg).lower()
+                    if prev_msg.get("role") == "assistant" and any(q in prev_content for q in ["como posso te chamar", "qual seu nome"]):
+                        if 1 <= len(content.split()) <= 3:
+                            has_name = True
+            
+            if role == "assistant" and all(sol in content for sol in ["instalação", "aluguel", "compra", "investimento"]):
                 has_solutions_presented = True
 
-            if role == "user" and any(word in content for word in [
-                "opção", "primeira", "segunda", "terceira", "quarta",
-                "instalação", "aluguel", "compra", "investimento"
-            ]):
+            if role == "user" and any(word in content for word in ["opção", "instalação", "aluguel", "compra", "investimento"]):
                 has_choice = True
 
-        # Lógica de decisão de estágio
-        if messages:
-            last_message = messages[-1]
-            if last_message.get("role") == "assistant":
-                last_content = last_message.get("content", "").lower()
-                if any(q in last_content for q in ["marcar uma reunião", "quando podemos marcar", "quando você estaria disponível"]):
-                    return "agendamento"
+        if messages and self._get_text_from_message(messages[-1]).lower() in ["agendar", "marcar", "reunião"]:
+             return "agendamento"
 
-        if not has_name:
-            return "estágio_0_coleta_nome"
-        elif has_name and not has_solutions_presented:
-            return "estágio_1_apresentar_soluções"
-        elif has_solutions_presented and not has_choice:
-            return "estágio_2_aguardando_escolha"
-        elif has_choice:
-            return "qualificação"
-        else:
-            msg_count = len(messages)
-            if msg_count <= 2:
-                return "início"
-            elif msg_count <= 10:
-                return "exploração"
-            else:
-                return "negociação"
+        if not has_name: return "estágio_0_coleta_nome"
+        if not has_solutions_presented: return "estágio_1_apresentar_soluções"
+        if not has_choice: return "estágio_2_aguardando_escolha"
+        return "qualificação"
 
     def _extract_intent(self, message: str) -> str:
-        """
-        Extrai intenção principal da mensagem
-
-        Args:
-            message: Mensagem
-
-        Returns:
-            Intenção identificada
-        """
         message_lower = message.lower()
-
         intents = {
-            "informação": [
-                "quanto", "como", "qual", "quando", "onde", "quem"
-            ],
-            "interesse": [
-                "quero", "gostaria", "interessado", "me interessa"
-            ],
-            "dúvida": ["será", "não sei", "talvez", "dúvida"],
-            "objeção": ["caro", "difícil", "problema", "não posso"],
-            "agendamento": ["agendar", "marcar", "reunião", "conversar"],
-            "compra": ["comprar", "adquirir", "fechar", "contratar"],
-            "reclamação": ["ruim", "péssimo", "horrível", "insatisfeito"],
-            "elogio": ["ótimo", "excelente", "muito bom", "adorei"]
+            "informação": ["quanto", "como", "qual", "quando", "onde", "quem"],
+            "interesse": ["quero", "gostaria", "interessado"], "dúvida": ["será", "não sei", "talvez"],
+            "objeção": ["caro", "difícil", "problema"], "agendamento": ["agendar", "marcar", "reunião"],
+            "compra": ["comprar", "adquirir", "fechar"], "reclamação": ["ruim", "péssimo", "horrível"],
+            "elogio": ["ótimo", "excelente", "adorei"]
         }
-
         for intent, keywords in intents.items():
             if any(keyword in message_lower for keyword in keywords):
                 return intent
-
         return "conversa"
 
     def _analyze_sentiment(self, message: str) -> Dict[str, Any]:
-        """
-        Analisa sentimento da mensagem
-
-        Args:
-            message: Mensagem
-
-        Returns:
-            Análise de sentimento
-        """
-        if not self.sentiment_enabled:
-            return {"enabled": False}
-
+        if not self.sentiment_enabled: return {"enabled": False}
         message_lower = message.lower()
+        pos_words = ["bom", "ótimo", "excelente", "legal", "perfeito", "adorei", "gostei", "sim", "quero"]
+        neg_words = ["ruim", "péssimo", "horrível", "não", "nunca", "problema", "difícil", "caro"]
+        pos_count = sum(1 for word in pos_words if word in message_lower)
+        neg_count = sum(1 for word in neg_words if word in message_lower)
+        if pos_count > neg_count: sentiment, score = "positivo", min(1.0, pos_count * 0.2)
+        elif neg_count > pos_count: sentiment, score = "negativo", max(-1.0, -neg_count * 0.2)
+        else: sentiment, score = "neutro", 0.0
+        return {"enabled": True, "sentiment": sentiment, "score": score, "confidence": 0.7}
 
-        positive_words = [
-            "bom", "ótimo", "excelente", "legal", "maravilha",
-            "perfeito", "adorei", "gostei", "sim", "quero"
-        ]
-        negative_words = [
-            "ruim", "péssimo", "horrível", "não", "nunca",
-            "problema", "difícil", "caro", "dúvida", "medo"
-        ]
-
-        positive_count = sum(
-            1 for word in positive_words if word in message_lower
-        )
-        negative_count = sum(
-            1 for word in negative_words if word in message_lower
-        )
-
-        if positive_count > negative_count:
-            sentiment = "positivo"
-            score = min(1.0, positive_count * 0.2)
-        elif negative_count > positive_count:
-            sentiment = "negativo"
-            score = max(-1.0, -negative_count * 0.2)
-        else:
-            sentiment = "neutro"
-            score = 0.0
-
-        return {
-            "enabled": True,
-            "sentiment": sentiment,
-            "score": score,
-            "confidence": 0.7
-        }
-
-    def _analyze_emotional_state(
-            self, messages: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """
-        Analisa estado emocional do usuário
-
-        Args:
-            messages: Histórico
-
-        Returns:
-            Estado emocional
-        """
-        if not self.emotional_enabled:
-            return {"enabled": False}
-
-        emotions = {
-            "frustração": 0, "entusiasmo": 0, "hesitação": 0,
-            "urgência": 0, "confiança": 0
-        }
-
-        recent_messages = messages[-5:]
-
-        for msg in recent_messages:
-            content = msg.get("content", "").lower()
-
-            if any(word in content for word in [
-                "demora", "difícil", "complicado"
-            ]):
-                emotions["frustração"] += 1
-
-            if any(word in content for word in ["ótimo", "excelente", "adorei"]):
-                emotions["entusiasmo"] += 1
-
-            if any(word in content for word in ["não sei", "talvez", "pensar"]):
-                emotions["hesitação"] += 1
-
-            if any(word in content for word in ["urgente", "rápido", "agora"]):
-                emotions["urgência"] += 1
-
-            if any(word in content for word in ["confio", "acredito", "certeza"]):
-                emotions["confiança"] += 1
-
-        dominant_emotion = max(emotions.items(), key=lambda x: x[1])
-
-        return {
-            "enabled": True,
-            "dominant": (
-                dominant_emotion[0] if dominant_emotion[1] > 0 else "neutro"
-            ),
-            "scores": emotions,
-            "intensity": min(1.0, dominant_emotion[1] * 0.3)
-        }
+    def _analyze_emotional_state(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+        if not self.emotional_enabled: return {"enabled": False}
+        emotions = {"frustração": 0, "entusiasmo": 0, "hesitação": 0, "urgência": 0, "confiança": 0}
+        for msg in messages[-5:]:
+            content = self._get_text_from_message(msg).lower()
+            if any(w in content for w in ["demora", "difícil"]): emotions["frustração"] += 1
+            if any(w in content for w in ["ótimo", "excelente", "adorei"]): emotions["entusiasmo"] += 1
+            if any(w in content for w in ["não sei", "talvez", "pensar"]): emotions["hesitação"] += 1
+            if any(w in content for w in ["urgente", "rápido", "agora"]): emotions["urgência"] += 1
+            if any(w in content for w in ["confio", "acredito", "certeza"]): emotions["confiança"] += 1
+        dominant = max(emotions, key=emotions.get) if any(emotions.values()) else "neutro"
+        return {"enabled": True, "dominant": dominant, "scores": emotions, "intensity": min(1.0, emotions[dominant] * 0.3)}
 
     def _extract_topics(self, messages: List[Dict[str, Any]]) -> List[str]:
-        """
-        Extrai tópicos principais da conversa
-
-        Args:
-            messages: Histórico
-
-        Returns:
-            Lista de tópicos
-        """
-        topics = []
-        topic_keywords = {
-            "economia": ["economizar", "conta", "valor", "pagar"],
-            "energia_solar": ["solar", "painel", "energia", "sol"],
-            "investimento": ["investir", "retorno", "prazo", "custo"],
-            "instalação": ["instalar", "obra", "telhado", "espaço"],
-            "financiamento": ["financiar", "parcelar", "entrada", "prazo"],
-            "manutenção": [
-                "manutenção", "garantia", "durabilidade", "vida útil"
-            ],
-            "sustentabilidade": ["sustentável", "ambiente", "verde", "limpa"]
-        }
-
-        all_text = " ".join(
-            [msg.get("content", "") for msg in messages]
-        ).lower()
-
-        for topic, keywords in topic_keywords.items():
-            if any(keyword in all_text for keyword in keywords):
+        topics, keywords = [], {"economia": ["economizar", "conta", "valor"], "energia_solar": ["solar", "painel", "energia"], "investimento": ["investir", "retorno", "custo"], "instalação": ["instalar", "obra", "telhado"]}
+        all_text = " ".join([self._get_text_from_message(msg) for msg in messages]).lower()
+        for topic, keys in keywords.items():
+            if any(key in all_text for key in keys):
                 topics.append(topic)
-
         return topics
 
     def _assess_urgency(self, message: str) -> str:
-        """
-        Avalia nível de urgência
-
-        Args:
-            message: Mensagem
-
-        Returns:
-            Nível de urgência
-        """
-        message_lower = message.lower()
-        high_urgency = ["urgente", "agora", "hoje", "imediatamente", "rápido"]
-        medium_urgency = ["amanhã", "semana", "breve", "logo"]
-        low_urgency = ["futuro", "depois", "talvez", "pensando"]
-
-        if any(word in message_lower for word in high_urgency):
-            return "alta"
-        elif any(word in message_lower for word in medium_urgency):
-            return "média"
-        elif any(word in message_lower for word in low_urgency):
-            return "baixa"
-        else:
-            return "normal"
+        msg_lower = message.lower()
+        if any(w in msg_lower for w in ["urgente", "agora", "hoje"]): return "alta"
+        if any(w in msg_lower for w in ["amanhã", "semana", "breve"]): return "média"
+        if any(w in msg_lower for w in ["futuro", "depois", "talvez"]): return "baixa"
+        return "normal"
 
     def _calculate_engagement(self, messages: List[Dict[str, Any]]) -> float:
-        """
-        Calcula nível de engajamento
-
-        Args:
-            messages: Histórico
-
-        Returns:
-            Score de engajamento (0-1)
-        """
-        if len(messages) < 2:
-            return 0.5
-
-        factors = {
-            "message_count": min(1.0, len(messages) / 20),
-            "avg_length": 0,
-            "questions": 0,
-            "response_time": 0.5
-        }
-
-        avg_length = sum(
-            len(msg.get("content", "")) for msg in messages
-        ) / len(messages)
-        factors["avg_length"] = min(1.0, avg_length / 100)
-
-        question_count = sum(
-            1 for msg in messages if "?" in msg.get("content", "")
-        )
-        factors["questions"] = min(1.0, question_count / 5)
-
-        engagement = sum(factors.values()) / len(factors)
-        return engagement
+        if len(messages) < 2: return 0.5
+        text_messages = [self._get_text_from_message(m) for m in messages]
+        avg_len = sum(len(m) for m in text_messages) / len(messages)
+        q_count = sum(1 for m in text_messages if "?" in m)
+        factors = {"msg_count": min(1.0, len(messages) / 20), "avg_len": min(1.0, avg_len / 100), "questions": min(1.0, q_count / 5)}
+        return sum(factors.values()) / len(factors)
 
     def _find_objections(self, messages: List[Dict[str, Any]]) -> List[str]:
-        """
-        Encontra objeções mencionadas
-
-        Args:
-            messages: Histórico
-
-        Returns:
-            Lista de objeções
-        """
-        objections = []
-        objection_patterns = {
-            "preço": ["muito caro", "não tenho dinheiro", "fora do orçamento"],
-            "desconfiança": ["não confio", "é golpe", "parece suspeito"],
-            "timing": ["não é o momento", "depois eu vejo", "agora não"],
-            "propriedade": ["casa alugada", "não sou dono", "inquilino"],
-            "tecnologia": ["não entendo", "muito complicado", "difícil"]
-        }
-
-        all_text = " ".join(
-            [msg.get("content", "") for msg in messages]
-        ).lower()
-
-        for objection, patterns in objection_patterns.items():
-            if any(pattern in all_text for pattern in patterns):
-                objections.append(objection)
-
+        objections, patterns = [], {"preço": ["caro", "dinheiro"], "desconfiança": ["golpe", "não confio"], "timing": ["agora não", "depois"], "propriedade": ["aluguel", "não é meu"], "tecnologia": ["complicado", "difícil"]}
+        all_text = " ".join([self._get_text_from_message(msg) for msg in messages]).lower()
+        for obj, pats in patterns.items():
+            if any(p in all_text for p in pats):
+                objections.append(obj)
         return objections
 
     def _extract_questions(self, messages: List[Dict[str, Any]]) -> List[str]:
-        """
-        Extrai perguntas feitas
-
-        Args:
-            messages: Histórico
-
-        Returns:
-            Lista de perguntas
-        """
         questions = []
         for msg in messages:
-            content = msg.get("content", "")
+            content = self._get_text_from_message(msg)
             if "?" in content:
-                question = content.split("?")[0][-100:] + "?"
-                questions.append(question.strip())
+                questions.append(content.strip())
         return questions[-5:]
 
     def _determine_action(self, message: str) -> str:
-        """
-        Determina ação necessária
-
-        Args:
-            message: Mensagem
-
-        Returns:
-            Ação recomendada
-        """
-        message_lower = message.lower()
-        actions = {
-            "agendar": [
-                "agendar", "marcar", "reunião", "conversar", "leonardo"
-            ],
-            "qualificar": ["conta", "valor", "gasto", "consumo", "kwh"],
-            "informar": [
-                "como funciona", "quanto custa", "dúvida", "explicar"
-            ],
-            "fechar": ["quero", "fechar", "contratar", "assinar"],
-            "reengajar": ["pensar", "depois", "talvez", "não sei"]
-        }
-
-        for action, keywords in actions.items():
-            if any(keyword in message_lower for keyword in keywords):
+        msg_lower = message.lower()
+        actions = {"agendar": ["agendar", "marcar", "reunião"], "qualificar": ["conta", "valor", "consumo"], "informar": ["como funciona", "quanto custa", "dúvida"], "fechar": ["quero", "fechar", "contratar"]}
+        for action, keys in actions.items():
+            if any(key in msg_lower for key in keys):
                 return action
-
         return "conversar"
-
-    def get_context_summary(self, context: Dict[str, Any]) -> str:
-        """
-        Gera resumo do contexto
-
-        Args:
-            context: Análise de contexto
-
-        Returns:
-            Resumo formatado
-        """
-        summary = "📊 **Análise de Contexto**\n\n"
-        summary += f"🎯 Estágio: {context['conversation_stage']}\n"
-        summary += f"💭 Intenção: {context['user_intent']}\n"
-
-        if context['sentiment'].get('enabled'):
-            summary += f"😊 Sentimento: {context['sentiment']['sentiment']}\n"
-
-        if context['emotional_state'].get('enabled'):
-            summary += f"❤️ Emoção: {context['emotional_state']['dominant']}\n"
-
-        summary += f"⚡ Urgência: {context['urgency_level']}\n"
-        summary += f"📈 Engajamento: {context['engagement_level']:.0%}\n"
-        summary += f"🎬 Ação: {context['action_needed']}\n"
-
-        if context['key_topics']:
-            summary += f"\n📌 Tópicos: {', '.join(context['key_topics'])}\n"
-
-        if context['objections_raised']:
-            summary += f"⚠️ Objeções: {', '.join(context['objections_raised'])}\n"
-
-        return summary
