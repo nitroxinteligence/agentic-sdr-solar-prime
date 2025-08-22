@@ -3,6 +3,7 @@ Prompt Builder for the Agentic SDR
 """
 import os
 from typing import Dict, Any, List
+from datetime import datetime
 
 class PromptBuilder:
     """Builds prompts for the agent."""
