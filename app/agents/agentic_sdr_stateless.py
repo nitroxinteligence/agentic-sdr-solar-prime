@@ -194,10 +194,6 @@ class AgenticSDRStateless:
 
             # 5. ANÁLISE DE INTENÇÃO E EXECUÇÃO FORÇADA (BYPASS DO LLM)
             context = {}
-            # context = self.context_analyzer.analyze_context(
-            #     conversation_history,
-            #     lead_info
-            # )
             user_intent = self.context_analyzer._extract_intent(message)
 
             if user_intent in ["reagendamento", "cancelamento", "agendamento"]:
@@ -226,11 +222,12 @@ class AgenticSDRStateless:
 
                 # Formatação direta da resposta, bypassando o LLM
                 if tool_results:
-                    result = tool_results.get(tool_name, {})
+                    result = next(iter(tool_results.values()), {})
+                    
                     if result.get("success"):
                         if "available_slots" in result:
                             slots = result['available_slots']
-                            date_str = datetime.strptime(result['date'], '%Y-%m-%d').strftime('%d/%m')
+                            date_str = datetime.strptime(result['date'], '%Y-%m-%d').strftime('%d/%m/%Y')
                             if slots:
                                 response = f"Perfeito! Para o dia {date_str}, tenho os seguintes horários disponíveis: {', '.join(slots)}. Qual prefere?"
                             else:
@@ -319,7 +316,7 @@ class AgenticSDRStateless:
         """
         Parse e executa tool calls na resposta do agente.
         """
-        tool_pattern = r'\[TOOL:\s*([^|\]]+?)\s*(?:\|\s*([^\]]*))?\]'
+        tool_pattern = r'\\[TOOL:\s*([^|\\]+?)\s*(?:\\|\s*([^\\]*))?\]'
         tool_matches = re.findall(tool_pattern, response)
 
         if not tool_matches:
@@ -383,7 +380,7 @@ class AgenticSDRStateless:
                     time=params.get("time"),
                     lead_info={
                         **lead_info,
-                        "email": params.get("email", lead_info.get("email"))
+                        "email": params.get("email", lead_info.get("email")),
                     }
                 )
                 if result and result.get("success"):
