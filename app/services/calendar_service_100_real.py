@@ -46,16 +46,19 @@ class CalendarServiceReal:
                     "Não foi possível construir serviço - autorização OAuth necessária."
                 )
                 return
+
             if self.calendar_id:
-                calendar = self.service.calendars().get(
-                    calendarId=self.calendar_id
-                ).execute()
+                calendar = await asyncio.to_thread(
+                    self.service.calendars().get(calendarId=self.calendar_id).execute
+                )
                 emoji_logger.service_ready(
                     f"Google Calendar conectado via OAuth: "
                     f"{calendar.get('summary', 'Calendar')}"
                 )
             else:
-                calendar_list = self.service.calendarList().list().execute()
+                calendar_list = await asyncio.to_thread(
+                    self.service.calendarList().list().execute
+                )
                 primary_calendar = next(
                     (
                         cal for cal in calendar_list.get('items', [])
@@ -163,12 +166,14 @@ class CalendarServiceReal:
         import random
         for attempt in range(max_retries):
             try:
-                created_event = self.service.events().insert(
-                    calendarId=self.calendar_id,
-                    body=event_data,
-                    conferenceDataVersion=1,
-                    sendUpdates='all' if event_data.get('attendees') else 'none'
-                ).execute()
+                created_event = await asyncio.to_thread(
+                    self.service.events().insert(
+                        calendarId=self.calendar_id,
+                        body=event_data,
+                        conferenceDataVersion=1,
+                        sendUpdates='all' if event_data.get('attendees') else 'none'
+                    ).execute
+                )
                 return created_event
             except HttpError as e:
                 if e.resp.status == 409 and attempt < max_retries - 1:
@@ -203,10 +208,12 @@ class CalendarServiceReal:
             time_max = tomorrow.replace(
                 hour=23, minute=59, second=59
             ).isoformat() + 'Z'
-            events_result = self.service.events().list(
-                calendarId=self.calendar_id, timeMin=time_min,
-                timeMax=time_max, singleEvents=True, orderBy='startTime'
-            ).execute()
+            events_result = await asyncio.to_thread(
+                self.service.events().list(
+                    calendarId=self.calendar_id, timeMin=time_min,
+                    timeMax=time_max, singleEvents=True, orderBy='startTime'
+                ).execute
+            )
             events = events_result.get('items', [])
             all_slots = []
             for hour in range(
@@ -406,9 +413,11 @@ Equipe SolarPrime
                 "message": "Sistema ocupado."
             }
         try:
-            self.service.events().delete(
-                calendarId=self.calendar_id, eventId=meeting_id
-            ).execute()
+            await asyncio.to_thread(
+                self.service.events().delete(
+                    calendarId=self.calendar_id, eventId=meeting_id
+                ).execute
+            )
             return {
                 "success": True, "message": "Reunião cancelada.",
                 "meeting_id": meeting_id, "real": True
@@ -460,9 +469,11 @@ Equipe SolarPrime
         if not self.is_initialized:
             await self.initialize()
         try:
-            return self.service.events().get(
-                calendarId=self.calendar_id, eventId=event_id
-            ).execute()
+            return await asyncio.to_thread(
+                self.service.events().get(
+                    calendarId=self.calendar_id, eventId=event_id
+                ).execute
+            )
         except HttpError as e:
             if e.resp.status == 404:
                 return None
@@ -473,8 +484,10 @@ Equipe SolarPrime
         try:
             if not self.is_initialized:
                 await self.initialize()
-            return self.service.calendars().get(
-                calendarId=self.calendar_id
-            ).execute() is not None
+            
+            calendar_info = await asyncio.to_thread(
+                self.service.calendars().get(calendarId=self.calendar_id).execute
+            )
+            return calendar_info is not None
         except Exception:
             return False
