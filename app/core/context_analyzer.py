@@ -95,6 +95,8 @@ class ContextAnalyzer:
     def _extract_intent(self, message: str) -> str:
         message_lower = message.lower()
         intents = {
+            "reagendamento": ["reagendar", "reagende", "remarcar", "mudar o horário", "outro horário"],
+            "cancelamento": ["cancelar", "cancela", "não vou poder", "cancele"],
             "informação": ["quanto", "como", "qual", "quando", "onde", "quem"],
             "interesse": ["quero", "gostaria", "interessado"], "dúvida": ["será", "não sei", "talvez"],
             "objeção": ["caro", "difícil", "problema"], "agendamento": ["agendar", "marcar", "reunião"],

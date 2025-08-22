@@ -201,19 +201,54 @@ class AgenticSDRStateless:
                 except Exception as e:
                     emoji_logger.system_error("Falha ao criar lead no Kommo", error=str(e))
 
-            # 5. GERAR RESPOSTA
+            # 5. ANÁLISE DE INTENÇÃO E EXECUÇÃO FORÇADA (BYPASS DO LLM)
             context = self.context_analyzer.analyze_context(
                 conversation_history,
                 lead_info
             )
+            user_intent = context.get("user_intent")
 
-            response = await self._generate_response(
-                message,
-                context,
-                lead_info,
-                conversation_history,
-                execution_context
-            )
+            if user_intent in ["reagendamento", "cancelamento"]:
+                tool_to_call = f"calendar.{'reschedule_meeting' if user_intent == 'reagendamento' else 'cancel_meeting'}"
+                emoji_logger.system_info(f"Intenção '{user_intent}' detectada. Forçando a chamada da ferramenta: {tool_to_call}")
+                
+                try:
+                    # Passa a mensagem do usuário para o contexto da ferramenta
+                    context["message"] = message
+                    tool_result = await self._execute_single_tool(tool_to_call, {{}}, lead_info, context)
+                    
+                    # Gera a resposta final baseada no resultado da ferramenta
+                    tool_results_str = f"- {tool_to_call}: {tool_result}"
+                    final_instruction = (
+                        f"=== RESULTADO DA FERRAMENTA EXECUTADA DIRETAMENTE ===\n"
+                        f"A ferramenta '{tool_to_call}' foi executada com o seguinte resultado:\n{tool_results_str}\n\n"
+                        f"=== INSTRUÇÃO FINAL ===\n"
+                        f"Com base no resultado, gere a resposta final, clara e amigável para o usuário. "
+                        f"Não inclua mais chamadas de ferramentas."
+                    )
+                    
+                    # Prepara o histórico para a chamada final ao LLM
+                    messages_for_final_response = list(conversation_history)
+                    messages_for_final_response.append({"role": "user", "content": final_instruction})
+
+                    response = await self.model_manager.get_response(
+                        messages=messages_for_final_response,
+                        system_prompt="Você é um assistente prestativo." # Usar um prompt simples para formatação
+                    )
+
+                except Exception as e:
+                    emoji_logger.system_error("Execução Forçada", f"Erro ao executar ferramenta diretamente: {e}")
+                    response = "Tive um problema ao processar sua solicitação. Você poderia tentar novamente?"
+
+            else:
+                # 6. GERAR RESPOSTA (FLUXO NORMAL COM LLM)
+                response = await self._generate_response(
+                    message,
+                    context,
+                    lead_info,
+                    conversation_history,
+                    execution_context
+                )
 
             assistant_message = {
                 "role": "assistant",
