@@ -303,73 +303,12 @@ class MultimodalProcessor:
                 analysis["is_bill"] = True
 
             if analysis["is_bill"]:
-                import re
-                patterns = [
-                    r"R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
-                    r"R\$\s*(\d+,\d{2})",
-                    r"(\d{1,3}(?:\.\d{3})*,\d{2})",
-                    r"(\d+,\d{2})"
-                ]
-                all_values = []
-                for pattern in patterns:
-                    matches = re.findall(pattern, text)
-                    for match in matches:
-                        try:
-                            value_str = match.replace(
-                                ".", ""
-                            ).replace(",", ".")
-                            value = float(value_str)
-                            if 10 <= value <= 100000:
-                                all_values.append(value)
-                        except Exception:
-                            pass
-                if all_values:
-                    selected_value = None
-                    total_patterns = [
-                        r"total\s*a?\s*pagar[:\s]*R?$\\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
-                        r"valor\s*total[:\s]*R?$\\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
-                        r"total[:\s]*R?$\\s*(\d{1,3}(?:\.\d{3})*,\d{2})"
-                    ]
-                    for pattern in total_patterns:
-                        matches = re.findall(pattern, text_lower)
-                        if matches:
-                            try:
-                                value_str = matches[0].replace(
-                                    ".", ""
-                                ).replace(",", ".")
-                                selected_value = float(value_str)
-                                break
-                            except Exception:
-                                pass
-                    if selected_value is None:
-                        from collections import Counter
-                        rounded_values = [round(v, 2) for v in all_values]
-                        value_counts = Counter(rounded_values)
-                        for value, count in value_counts.most_common():
-                            if count >= 3:
-                                selected_value = value
-                                break
-                    if selected_value is None:
-                        residential_values = [
-                            v for v in all_values if 100 <= v <= 1000
-                        ]
-                        if residential_values:
-                            from collections import Counter
-                            value_counts = Counter(residential_values)
-                            selected_value = value_counts.most_common(1)[0][0]
-                    if selected_value is None:
-                        selected_value = max(all_values)
-                    analysis["bill_value"] = selected_value
-                    emoji_logger.multimodal_event(
-                        f"💵 Valores encontrados: "
-                        f"{sorted(set([round(v, 2) for v in all_values]))[:10]},"
-                        f" selecionado: R$ {analysis['bill_value']:.2f}"
-                    )
+                analysis["bill_value"] = self._extract_bill_value_from_text(text)
         return analysis
 
     def _analyze_image_content(self, text: str) -> Dict[str, Any]:
         """
-        Análise simples do conteúdo da imagem
+        Análise do conteúdo da imagem, agora usando a lógica de extração robusta.
         """
         analysis = {
             "has_text": bool(text and text.strip()),
@@ -381,18 +320,70 @@ class MultimodalProcessor:
             text_lower = text.lower()
             if any(keyword in text_lower for keyword in bill_keywords):
                 analysis["is_bill"] = True
-                import re
-                value_pattern = r"R\$?s*(\d+[.,]\d{2})"
-                matches = re.findall(value_pattern, text)
-                if matches:
-                    try:
-                        values = [
-                            float(m.replace(",", ".")) for m in matches
-                        ]
-                        analysis["bill_value"] = max(values)
-                    except Exception:
-                        pass
+                analysis["bill_value"] = self._extract_bill_value_from_text(text)
         return analysis
+
+    def _extract_bill_value_from_text(self, text: str) -> Optional[float]:
+        """
+        Lógica de extração de valor de conta robusta e centralizada.
+        """
+        import re
+        from collections import Counter
+
+        patterns = [
+            r"R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
+            r"R\$\s*(\d+,\d{2})",
+            r"(\d{1,3}(?:\.\d{3})*,\d{2})",
+            r"(\d+,\d{2})"
+        ]
+        all_values = []
+        for pattern in patterns:
+            matches = re.findall(pattern, text)
+            for match in matches:
+                try:
+                    value_str = match.replace(".", "").replace(",", ".")
+                    value = float(value_str)
+                    if 10 <= value <= 100000:
+                        all_values.append(value)
+                except Exception:
+                    pass
+        
+        if not all_values:
+            return None
+
+        # Lógica de seleção do valor mais provável
+        selected_value = None
+        text_lower = text.lower()
+        total_patterns = [
+            r"total\s*a?\s*pagar[:\s]*R?$\\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
+            r"valor\s*total[:\s]*R?$\\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
+            r"total[:\s]*R?$\\s*(\d{1,3}(?:\.\d{3})*,\d{2})"
+        ]
+        for pattern in total_patterns:
+            matches = re.findall(pattern, text_lower)
+            if matches:
+                try:
+                    value_str = matches[0].replace(".", "").replace(",", ".")
+                    selected_value = float(value_str)
+                    break
+                except Exception:
+                    pass
+        
+        if selected_value is None:
+            rounded_values = [round(v, 2) for v in all_values]
+            value_counts = Counter(rounded_values)
+            most_common = value_counts.most_common(1)
+            if most_common and most_common[0][1] >= 2: # Se um valor aparece 2+ vezes
+                selected_value = most_common[0][0]
+
+        if selected_value is None:
+            selected_value = max(all_values) # Fallback para o maior valor encontrado
+
+        emoji_logger.multimodal_event(
+            f"💵 Valores encontrados: {sorted(set([round(v, 2) for v in all_values]))[:10]},"
+            f" selecionado: R$ {selected_value:.2f}"
+        )
+        return selected_value
 
     def get_supported_types(self) -> List[str]:
         """Retorna tipos de mídia suportados"""
