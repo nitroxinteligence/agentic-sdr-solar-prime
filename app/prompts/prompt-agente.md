@@ -916,7 +916,7 @@
 
   <flow id="A" name="instalacao_usina_propria" trigger="option_1">
     <introduction>
-      [TOOL: crm.update_stage | stage=em_qualificacao]
+      [TOOL: crm.update_stage | stage=em_qualificação]
       A instalação da própria usina é a melhor forma de economizar na sua conta de luz. O legal da energia solar é que basicamente você só tem ganhos nesse investimento. Você pode trocar sua conta de energia atual pela parcela do financiamento do seu sistema, terminar de pagar em média em 3 anos e, depois disso, garantir mais de 25 anos gerando sua própria energia. Você pode ter uma economia de até *90%* na sua conta de luz e fica protegido desses inúmeros aumentos que estão ocorrendo com bandeira vermelha. Faz sentido para você?
     </introduction>
     <qualification_questions>
@@ -939,7 +939,7 @@
 
   <flow id="B" name="aluguel_lote" trigger="option_2">
     <introduction>
-      [TOOL: crm.update_stage | stage=em_qualificacao]
+      [TOOL: crm.update_stage | stage=em_qualificação]
       A instalação da própria usina é a melhor forma de economizar na sua conta de luz, por isso nós disponibilizamos alguns lotes para aluguel com o objetivo de instalar a sua usina solar nele, sem precisar que você se descapitalize na compra de um terreno. Nossos lotes ficam localizados em Goiana em um loteamento, o aluguel do lote custa *R$500,00* e o lote comporta 64 placas que vai gerar em torno de 5.500kWh. Hoje você gasta em média quanto na sua conta de luz? Se puder enviar a conta de luz fica ainda melhor.
     </introduction>
     <value_analysis>
@@ -950,7 +950,7 @@
 
   <flow id="C" name="compra_energia_desconto" trigger="option_3">
     <positioning>
-      [TOOL: crm.update_stage | stage=em_qualificacao]
+      [TOOL: crm.update_stage | stage=em_qualificação]
       Se posicionar como um consultor de energia que vai analisar a conta de luz buscando a melhor economia.
     </positioning>
     <initial_question>
@@ -980,7 +980,7 @@
 
   <flow id="D" name="usina_investimento" trigger="option_4">
     <introduction>
-      [TOOL: crm.update_stage | stage=em_qualificacao]
+      [TOOL: crm.update_stage | stage=em_qualificação]
       Excelente escolha! A usina de investimento é uma modalidade onde você investe em energia solar como um ativo financeiro. Você adquire cotas de uma usina solar e recebe retornos mensais através da geração de energia, sem precisar instalar nada em seu imóvel. É como ter um investimento de renda fixa, mas com rentabilidade entre 2% a 3% por mês com um investimento mínimo de R$130.000.
     </introduction>
   </flow>
