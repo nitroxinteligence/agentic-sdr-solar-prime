@@ -126,37 +126,32 @@ class AgenticSDRStateless:
                     emoji_logger.system_info("Sanity Check: Forçando estágio de agendamento.")
 
         try:
-            user_content = message  # Começa com a mensagem de texto original
-
+            # 1. PROCESSAR MÍDIA PRIMEIRO
             if media_data:
                 media_result = await self.multimodal.process_media(media_data)
                 if media_result.get("success"):
                     media_context = self._format_media_context(media_result)
-                    
-                    # Anexa o contexto da mídia diretamente à mensagem do usuário
                     message = f"{message}\n\n{media_context}".strip()
 
-                    # Injeta o valor da conta extraído diretamente nas informações do lead
                     extracted_bill_value = media_result.get("analysis", {}).get("bill_value")
                     if extracted_bill_value:
                         lead_info['bill_value'] = extracted_bill_value
                         emoji_logger.system_info(f"Valor da conta R${extracted_bill_value} extraído e injetado no lead_info.")
                     
-                    emoji_logger.multimodal_event(
-                        "📎 Mídia processada com sucesso"
-                    )
+                    emoji_logger.multimodal_event("📎 Mídia processada com sucesso")
                 else:
-                    # Se o processamento de mídia falhar, retorne a mensagem de erro diretamente
                     error_message = media_result.get("message", "Ocorreu um erro ao processar a mídia.")
                     return response_formatter.ensure_response_tags(error_message), lead_info
 
+            # 2. ATUALIZAR HISTÓRICO
             user_message = {
                 "role": "user",
-                "content": user_content,
+                "content": message,
                 "timestamp": datetime.now().isoformat()
             }
             conversation_history.append(user_message)
 
+            # 3. EXECUTAR ANÁLISES COM DADOS ATUALIZADOS
             new_lead_info = self.lead_manager.extract_lead_info(
                 conversation_history,
                 existing_lead_info=lead_info
@@ -172,26 +167,26 @@ class AgenticSDRStateless:
 
             lead_info.update(new_lead_info)
 
-            # CRIA O LEAD NO KOMMO SE AINDA NÃO EXISTIR
+            # 4. SINCRONIZAR CRM
             if lead_info.get("name") and not lead_info.get("kommo_lead_id"):
                 try:
                     kommo_response = await self.crm_service.create_lead(lead_info)
                     if kommo_response.get("success"):
                         new_kommo_id = kommo_response.get("lead_id")
                         lead_info["kommo_lead_id"] = new_kommo_id
-                        # Atualiza o Supabase com o novo ID do Kommo
                         await supabase_client.update_lead(lead_info["id"], {"kommo_lead_id": new_kommo_id})
                         emoji_logger.team_crm(f"Lead criado no Kommo com ID: {new_kommo_id}")
                 except Exception as e:
                     emoji_logger.system_error("Falha ao criar lead no Kommo", error=str(e))
 
+            # 5. GERAR RESPOSTA
             context = self.context_analyzer.analyze_context(
                 conversation_history,
                 lead_info
             )
 
             response = await self._generate_response(
-                user_content,
+                message,
                 context,
                 lead_info,
                 conversation_history,
