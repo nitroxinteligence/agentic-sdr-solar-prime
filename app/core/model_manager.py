@@ -46,65 +46,46 @@ class Gemini:
             self.model = genai.GenerativeModel(model_name)
 
     async def achat(self, messages):
-        """Chamada REAL para Gemini API com suporte multimodal, seguindo a documentação."""
+        """Chamada REAL para Gemini API com suporte multimodal, usando dicionários simples."""
         import google.generativeai as genai
         import base64
-        from PIL import Image
-        import io
 
         if not GEMINI_AVAILABLE or not self.model:
             return type('Response', (), {'content': 'Gemini não disponível. Configure GOOGLE_API_KEY.'})()
 
         try:
-            # A API espera uma lista simples de conteúdos.
-            # Vamos extrair o texto e a mídia da última mensagem do usuário.
-            final_prompt_parts = []
-            
-            # Processa o histórico para extrair a última mensagem do usuário
-            user_message = None
-            for msg in reversed(messages):
-                if msg['role'] == 'user':
-                    user_message = msg
-                    break
-            
-            if not user_message:
-                 # Fallback se não houver mensagem do usuário (improvável)
-                return type('Response', (), {'content': 'Nenhuma mensagem do usuário para processar.'})()
+            gemini_history = []
+            for msg in messages:
+                role = 'user' if msg['role'] == 'user' else 'model'
+                content = msg.get('content', '')
+                
+                parts = []
+                if isinstance(content, list):
+                    # Mensagem multimodal
+                    for item in content:
+                        if item.get("type") == "text":
+                            parts.append({"text": item.get("text", "")})
+                        elif item.get("type") == "media":
+                            media_data = item.get("media_data", {})
+                            mime_type = media_data.get("mime_type")
+                            base64_content = media_data.get("content")
+                            if mime_type and base64_content:
+                                parts.append({
+                                    "inline_data": {
+                                        "mime_type": mime_type,
+                                        "data": base64_content 
+                                    }
+                                })
+                else:
+                    # Mensagem de texto simples
+                    parts.append({"text": str(content)})
 
-            content = user_message.get('content', '')
-            if isinstance(content, list):
-                # Mensagem multimodal
-                for item in content:
-                    if item.get("type") == "text":
-                        final_prompt_parts.append(item.get("text", ""))
-                    elif item.get("type") == "media":
-                        media_data = item.get("media_data", {})
-                        mime_type = media_data.get("mime_type")
-                        base64_content = media_data.get("content")
-                        if mime_type and base64_content:
-                            try:
-                                # A API do Gemini pode lidar com os bytes diretamente
-                                image_bytes = base64.b64decode(base64_content)
-                                final_prompt_parts.append(genai.types.Blob(
-                                    mime_type=mime_type,
-                                    data=image_bytes
-                                ))
-                            except Exception as e:
-                                emoji_logger.system_warning(f"Não foi possível processar a mídia com mime_type {mime_type}: {e}")
-                                final_prompt_parts.append(f"(Mídia do tipo {mime_type} recebida, mas não pôde ser processada)")
+                if parts:
+                    gemini_history.append({'role': role, 'parts': parts})
 
-            elif isinstance(content, str):
-                # Mensagem de texto simples
-                final_prompt_parts.append(content)
-
-            if not final_prompt_parts:
-                return type('Response', (), {'content': 'Nenhum conteúdo válido para enviar ao modelo.'})()
-
-            # O histórico de chat ainda não é totalmente suportado com imagens da mesma forma.
-            # A abordagem mais segura é enviar a última instrução multimodal.
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: self.model.generate_content(final_prompt_parts)
+                lambda: self.model.generate_content(gemini_history)
             )
 
             return type('Response', (), {'content': response.text})()
