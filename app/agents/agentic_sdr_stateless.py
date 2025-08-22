@@ -202,11 +202,12 @@ class AgenticSDRStateless:
                     emoji_logger.system_error("Falha ao criar lead no Kommo", error=str(e))
 
             # 5. ANÁLISE DE INTENÇÃO E EXECUÇÃO FORÇADA (BYPASS DO LLM)
-            context = self.context_analyzer.analyze_context(
-                conversation_history,
-                lead_info
-            )
-            user_intent = context.get("user_intent")
+            context = {}
+            # context = self.context_analyzer.analyze_context(
+            #     conversation_history,
+            #     lead_info
+            # )
+            user_intent = self.context_analyzer._extract_intent(message)
 
             if user_intent in ["reagendamento", "cancelamento"]:
                 tool_name = "calendar.reschedule_meeting" if user_intent == "reagendamento" else "calendar.cancel_meeting"
@@ -497,70 +498,50 @@ class AgenticSDRStateless:
         # 1. Carrega o prompt do sistema (persona).
         try:
             with open("app/prompts/prompt-agente.md", "r", encoding="utf-8") as f:
-                base_system_prompt = f.read()
+                system_prompt = f.read()
         except FileNotFoundError:
-            base_system_prompt = "Você é um assistente de vendas."
+            system_prompt = "Você é um assistente de vendas."
 
-        # 2. Formata o contexto dinâmico para ser injetado DIRETAMENTE no system_prompt.
-        # Esta é a abordagem correta para não poluir o histórico da conversa.
-        def format_dict_for_prompt(data: dict) -> str:
-            return json.dumps(data, indent=2, ensure_ascii=False, default=str)
-
-        period_of_day = get_period_of_day(settings.timezone)
-        
-        # Monta o bloco de contexto que será inserido no topo do system prompt.
-        context_injection = (
-            f"<dynamic_context>\n"
-            f"  <timestamp>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</timestamp>\n"
-            f"  <period_of_day>{period_of_day}</period_of_day>\n"
-            f"  <lead_info>{format_dict_for_prompt(lead_info)}</lead_info>\n"
-            f"  <conversation_analysis>{format_dict_for_prompt(context)}</conversation_analysis>\n"
-        )
-        if is_followup:
-            context_injection += f"  <task>Follow-up: {message}</task>\n"
-        context_injection += "</dynamic_context>\n\n"
-
-        # Injeta o contexto dinâmico no início do prompt do sistema.
-        system_prompt = context_injection + base_system_prompt
-
-        # 3. Prepara o histórico para o modelo. O histórico agora está limpo,
-        # terminando com a última mensagem real do usuário.
+        # 2. O histórico agora está limpo, terminando com a última mensagem real do usuário.
         messages_for_model = list(conversation_history)
 
-        # 4. Primeira chamada ao modelo para obter a resposta inicial (que pode conter tools).
+        # 3. Primeira chamada ao modelo para obter a resposta inicial (que pode conter tools).
         response_text = await self.model_manager.get_response(
             messages=messages_for_model,
             system_prompt=system_prompt
         )
 
-        # 5. VALIDAÇÃO ESTRITA DA SAÍDA (CODE GUARDIAN)
-        # Se a resposta não for uma chamada de ferramenta válida nem uma resposta final formatada,
-        # consideramos uma falha e retornamos uma mensagem de segurança.
-        is_tool_call = response_text and response_text.strip().startswith("[TOOL:")
-        is_final_response = "<RESPOSTA_FINAL>" in response_text
-
-        if not is_tool_call and not is_final_response:
-            emoji_logger.system_warning(
-                "Saída do modelo inválida - fallback para resposta padrão.",
-                details=f"Saída recebida: '{response_text}'"
-            )
-            return "Desculpe, não consegui processar sua solicitação. Poderia tentar novamente?"
-
         if response_text:
-            # 6. Analisa e executa ferramentas, se houver.
+            # 4. VALIDAÇÃO ESTRITA DA SAÍDA (CODE GUARDIAN)
+            # Se a resposta não for uma chamada de ferramenta válida nem uma resposta final formatada,
+            # consideramos uma falha e retornamos uma mensagem de segurança.
+            is_tool_call = response_text and response_text.strip().startswith("[TOOL:")
+            is_final_response = "<RESPOSTA_FINAL>" in response_text
+
+            if not is_tool_call and not is_final_response:
+                emoji_logger.system_warning(
+                    "Saída do modelo inválida - fallback para resposta padrão.",
+                    details=f"Saída recebida: '{response_text}'"
+                )
+                return "Desculpe, não consegui processar sua solicitação. Poderia tentar novamente?"
+
+            # 5. Analisa e executa ferramentas, se houver.
             tool_results = await self._parse_and_execute_tools(
                 response_text, lead_info, context
             )
             if tool_results:
-                # 7. Se ferramentas foram usadas, faz uma segunda chamada ao modelo com os resultados.
+                # 6. Se ferramentas foram usadas, faz uma segunda chamada ao modelo com os resultados.
                 tool_results_str = "\n".join(
                     [f"- {tool}: {result}" for tool, result in tool_results.items()]
                 )
 
                 final_instruction = (
                     f"=== RESULTADO DAS FERRAMENTAS ===\n"
-                    f"Sua resposta inicial foi: '{response_text}'\n"
-                    f"As seguintes ferramentas foram executadas com estes resultados:\n{tool_results_str}\n\n"
+                    f"Sua resposta inicial foi: 
+'{response_text}'
+"
+                    f"As seguintes ferramentas foram executadas com estes resultados:
+{tool_results_str}\n\n"
                     f"=== INSTRUÇÃO FINAL ===\n"
                     f"Com base nos resultados das ferramentas, gere a resposta final, clara e amigável para o usuário. "
                     f"Siga TODAS as regras do seu prompt de sistema. "
