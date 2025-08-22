@@ -209,36 +209,35 @@ class AgenticSDRStateless:
             user_intent = context.get("user_intent")
 
             if user_intent in ["reagendamento", "cancelamento"]:
-                tool_to_call = f"calendar.{'reschedule_meeting' if user_intent == 'reagendamento' else 'cancel_meeting'}"
-                emoji_logger.system_info(f"Intenção '{user_intent}' detectada. Forçando a chamada da ferramenta: {tool_to_call}")
+                tool_name = "calendar.reschedule_meeting" if user_intent == "reagendamento" else "calendar.cancel_meeting"
+                emoji_logger.system_info(f"Intenção '{user_intent}' detectada. Forçando a chamada da ferramenta: {tool_name}")
                 
-                try:
-                    # Passa a mensagem do usuário para o contexto da ferramenta
-                    context["message"] = message
-                    tool_result = await self._execute_single_tool(tool_to_call, {{}}, lead_info, context)
-                    
-                    # Gera a resposta final baseada no resultado da ferramenta
-                    tool_results_str = f"- {tool_to_call}: {tool_result}"
-                    final_instruction = (
-                        f"=== RESULTADO DA FERRAMENTA EXECUTADA DIRETAMENTE ===\n"
-                        f"A ferramenta '{tool_to_call}' foi executada com o seguinte resultado:\n{tool_results_str}\n\n"
-                        f"=== INSTRUÇÃO FINAL ===\n"
-                        f"Com base no resultado, gere a resposta final, clara e amigável para o usuário. "
-                        f"Não inclua mais chamadas de ferramentas."
-                    )
-                    
-                    # Prepara o histórico para a chamada final ao LLM
-                    messages_for_final_response = list(conversation_history)
-                    messages_for_final_response.append({"role": "user", "content": final_instruction})
+                # Constrói a string da ferramenta para ser processada pelo parser
+                tool_call_string = f"[TOOL: {tool_name}]"
+                
+                # Passa a mensagem do usuário para o contexto, para que a ferramenta possa extrair a hora se necessário
+                context["message"] = message
 
-                    response = await self.model_manager.get_response(
-                        messages=messages_for_final_response,
-                        system_prompt="Você é um assistente prestativo." # Usar um prompt simples para formatação
-                    )
+                # Usa o parser de ferramentas existente para executar a chamada e obter os resultados
+                tool_results = await self._parse_and_execute_tools(tool_call_string, lead_info, context)
 
-                except Exception as e:
-                    emoji_logger.system_error("Execução Forçada", f"Erro ao executar ferramenta diretamente: {e}")
-                    response = "Tive um problema ao processar sua solicitação. Você poderia tentar novamente?"
+                # Gera a resposta final baseada no resultado da ferramenta
+                tool_results_str = "\n".join([f"- {tool}: {result}" for tool, result in tool_results.items()])
+                final_instruction = (
+                    f"=== RESULTADO DA FERRAMENTA EXECUTADA DIRETAMENTE ===\n"
+                    f"A ferramenta '{tool_name}' foi executada com o seguinte resultado:\n{tool_results_str}\n\n"
+                    f"=== INSTRUÇÃO FINAL ===\n"
+                    f"Com base no resultado, gere a resposta final, clara e amigável para o usuário. "
+                    f"Não inclua mais chamadas de ferramentas."
+                )
+                
+                messages_for_final_response = list(conversation_history)
+                messages_for_final_response.append({"role": "user", "content": final_instruction})
+
+                response = await self.model_manager.get_response(
+                    messages=messages_for_final_response,
+                    system_prompt="Você é um assistente prestativo."
+                )
 
             else:
                 # 6. GERAR RESPOSTA (FLUXO NORMAL COM LLM)
