@@ -533,13 +533,26 @@ class AgenticSDRStateless:
             system_prompt=system_prompt
         )
 
+        # 5. VALIDAÇÃO ESTRITA DA SAÍDA (CODE GUARDIAN)
+        # Se a resposta não for uma chamada de ferramenta válida nem uma resposta final formatada,
+        # consideramos uma falha e retornamos uma mensagem de segurança.
+        is_tool_call = response_text and response_text.strip().startswith("[TOOL:")
+        is_final_response = "<RESPOSTA_FINAL>" in response_text
+
+        if not is_tool_call and not is_final_response:
+            emoji_logger.system_warning(
+                "Saída do modelo inválida - fallback para resposta padrão.",
+                details=f"Saída recebida: '{response_text}'"
+            )
+            return "Desculpe, não consegui processar sua solicitação. Poderia tentar novamente?", lead_info
+
         if response_text:
-            # 5. Analisa e executa ferramentas, se houver.
+            # 6. Analisa e executa ferramentas, se houver.
             tool_results = await self._parse_and_execute_tools(
                 response_text, lead_info, context
             )
             if tool_results:
-                # 6. Se ferramentas foram usadas, faz uma segunda chamada ao modelo com os resultados.
+                # 7. Se ferramentas foram usadas, faz uma segunda chamada ao modelo com os resultados.
                 tool_results_str = "\n".join(
                     [f"- {tool}: {result}" for tool, result in tool_results.items()]
                 )
