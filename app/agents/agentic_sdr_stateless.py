@@ -16,6 +16,8 @@ from app.core.context_analyzer import ContextAnalyzer
 from app.services.conversation_monitor import get_conversation_monitor
 from app.utils.logger import emoji_logger
 from app.core.response_formatter import response_formatter
+from app.utils.time_utils import get_period_of_day
+from app.config import settings
 
 # Importar serviços diretamente
 from app.services.calendar_service_100_real import CalendarServiceReal
@@ -525,9 +527,11 @@ class AgenticSDRStateless:
         def format_dict_for_prompt(data: dict) -> str:
             return json.dumps(data, indent=2, ensure_ascii=False, default=str)
 
+        period_of_day = get_period_of_day(settings.timezone)
         context_as_user_message = (
             f"=== CONTEXTO ATUALIZADO PARA ESTA RESPOSTA ===\n"
             f"Data e Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"Período do Dia: {period_of_day}\n"
             f"Informações do Lead: {format_dict_for_prompt(lead_info)}\n"
             f"Análise da Conversa: {format_dict_for_prompt(context)}\n"
         )
