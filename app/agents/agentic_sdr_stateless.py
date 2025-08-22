@@ -316,7 +316,7 @@ class AgenticSDRStateless:
         """
         Parse e executa tool calls na resposta do agente.
         """
-        tool_pattern = r'\\[TOOL:\s*([^|\\]+?)\s*(?:\\|\s*([^\\]*))?\]'
+        tool_pattern = r'\[TOOL:\s*([^|\]]+?)\s*(?:\|\s*([^\]]*))?\]'
         tool_matches = re.findall(tool_pattern, response)
 
         if not tool_matches:
