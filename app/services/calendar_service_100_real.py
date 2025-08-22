@@ -362,6 +362,8 @@ Equipe SolarPrime
                 }
             }
             created_event = await self._schedule_meeting_with_retry(event)
+            emoji_logger.system_debug(f"Resposta da API do Google (insert): {created_event}")
+
             meet_link = next(
                 (
                     ep['uri'] for ep in created_event.get(
