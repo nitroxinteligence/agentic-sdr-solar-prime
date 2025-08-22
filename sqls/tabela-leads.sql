@@ -17,6 +17,7 @@ create table public.leads (
   preferences jsonb null default '{}'::jsonb,
   total_messages integer null default 0,
   interaction_count integer null default 0,
+  processed_message_count integer null default 0,
   constraint leads_pkey primary key (id),
   constraint leads_phone_number_key unique (phone_number),
   constraint leads_chosen_flow_check check (
