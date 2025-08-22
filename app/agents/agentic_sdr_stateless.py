@@ -133,6 +133,13 @@ class AgenticSDRStateless:
                 media_result = await self.multimodal.process_media(media_data)
                 if media_result.get("success"):
                     media_context = self._format_media_context(media_result)
+                    
+                    # Injeta o contexto de mídia como uma mensagem do sistema no histórico
+                    conversation_history.append({
+                        "role": "system",
+                        "content": media_context,
+                        "timestamp": datetime.now().isoformat()
+                    })
 
                     # Injeta o valor da conta extraído diretamente nas informações do lead
                     extracted_bill_value = media_result.get("analysis", {}).get("bill_value")
@@ -200,7 +207,6 @@ class AgenticSDRStateless:
                 conversation_history[-1]['content'],
                 context,
                 lead_info,
-                media_context,
                 conversation_history,
                 execution_context
             )
@@ -566,7 +572,6 @@ class AgenticSDRStateless:
         message: str,
         context: dict,
         lead_info: dict,
-        media_context: str,
         conversation_history: list,
         execution_context: dict,
         is_followup: bool = False
@@ -581,7 +586,6 @@ class AgenticSDRStateless:
             conversation_history,
             lead_info,
             context,
-            media_context,
             is_followup
         )
 
