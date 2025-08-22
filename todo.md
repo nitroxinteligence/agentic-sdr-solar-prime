@@ -1,14 +1,16 @@
-# Plano de Ação - Finalização da Capacidade Multimodal
+# Plano de Ação - Estabilização Final Multimodal e Follow-up
 
-## Tarefa 1: Generalizar a Estrutura de Dados de Mídia
+## Tarefa 1: Tornar os Módulos Core Compatíveis com Conteúdo Multimodal
 
-- [x] **Refatorar `agentic_sdr_stateless.py`:** Modificado o método `process_message` para parar de usar a estrutura hardcoded `{"type": "image_url", ...}`. Em vez disso, ele agora cria uma estrutura genérica, `{"type": "media", "media_data": {...}}`, que contém o `mime_type` e o conteúdo base64, independentemente do tipo de arquivo.
+- [x] **Corrigir `lead_manager.py`:** Modificado o método `extract_lead_info` para que ele saiba extrair o texto de uma mensagem, mesmo que o conteúdo seja uma lista (formato multimodal).
+- [x] **Corrigir `context_analyzer.py`:** Aplicada a mesma lógica ao `ContextAnalyzer`. Todos os seus métodos que processam o conteúdo da mensagem foram atualizados para extrair a parte textual da nova estrutura de lista.
 
-## Tarefa 2: Adaptar o Model Manager para a Estrutura Genérica
+## Tarefa 2: Corrigir o Erro de Importação no Follow-up Worker
 
-- [x] **Refatorar `model_manager.py`:** Atualizado o método `Gemini.achat` para que ele reconheça a nova estrutura genérica `{"type": "media", ...}`. A lógica interna extrai o `mime_type` e o conteúdo para criar o `Blob` para a API do Gemini, tornando o `ModelManager` agnóstico ao tipo de mídia.
+- [x] **Refatorar `model_manager.py`:** Movida a importação do `google.generativeai` para dentro do método `Gemini.achat`, garantindo que a biblioteca esteja sempre carregada e disponível, resolvendo o `AttributeError` no worker.
 
-## Tarefa 3: Validação e Conclusão
+## Tarefa 3: Verificação Final
 
-- [x] O fluxo de ponta a ponta foi revisado e agora suporta corretamente áudios, PDFs e imagens.
-- [x] O `todo.md` foi atualizado para marcar a tarefa como 100% concluída.
+- [x] O fluxo de dados completo foi revisado e agora suporta corretamente mensagens de texto e multimodais (áudio, PDF, imagem) em todos os componentes.
+- [x] O sistema de follow-up agora pode gerar e enviar mensagens com sucesso.
+- [x] O `todo.md` foi atualizado para refletir a conclusão de todas as tarefas.

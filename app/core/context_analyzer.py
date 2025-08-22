@@ -41,18 +41,32 @@ class ContextAnalyzer:
         Returns:
             Análise completa do contexto
         """
-        current_message = messages[-1]['content'] if messages else ""
+        
+        # Helper para extrair texto de forma segura
+        def get_text_from_content(content: Any) -> str:
+            if isinstance(content, list):
+                for part in content:
+                    if part.get("type") == "text":
+                        return part.get("text", "")
+                return ""
+            elif isinstance(content, str):
+                return content
+            return ""
+
+        current_message_content = messages[-1]['content'] if messages else ""
+        current_message_text = get_text_from_content(current_message_content)
+
         context = {
             "conversation_stage": self._determine_stage(messages, lead_info),
-            "user_intent": self._extract_intent(current_message),
-            "sentiment": self._analyze_sentiment(current_message),
+            "user_intent": self._extract_intent(current_message_text),
+            "sentiment": self._analyze_sentiment(current_message_text),
             "emotional_state": self._analyze_emotional_state(messages),
             "key_topics": self._extract_topics(messages),
-            "urgency_level": self._assess_urgency(current_message),
+            "urgency_level": self._assess_urgency(current_message_text),
             "engagement_level": self._calculate_engagement(messages),
             "objections_raised": self._find_objections(messages),
             "questions_asked": self._extract_questions(messages),
-            "action_needed": self._determine_action(current_message)
+            "action_needed": self._determine_action(current_message_text)
         }
 
         return context

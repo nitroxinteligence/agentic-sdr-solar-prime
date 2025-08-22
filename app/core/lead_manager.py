@@ -65,18 +65,30 @@ class LeadManager:
             return lead_info
 
         for msg in new_messages:
-            content = msg.get("content", "").lower()
+            content_data = msg.get("content", "")
+            
+            # Extrai o texto, seja de uma string ou de uma lista multimodal
+            text_content = ""
+            if isinstance(content_data, list):
+                for part in content_data:
+                    if part.get("type") == "text":
+                        text_content = part.get("text", "")
+                        break
+            elif isinstance(content_data, str):
+                text_content = content_data
+            
+            content_lower = text_content.lower()
             role = msg.get("role", "")
 
             if role == "user":
                 # Extrai o nome apenas se ainda não existir
                 if not lead_info.get("name"):
-                    name = self._extract_name(content)
+                    name = self._extract_name(content_lower)
                     if name:
                         lead_info["name"] = name
                     else:
                         # Fallback for simple name extraction
-                        words = content.split()
+                        words = content_lower.split()
                         if 1 <= len(words) <= 4:
                             blacklist = [
                                 "oi", "olá", "ola", "sim", "não", "nao",
@@ -98,36 +110,36 @@ class LeadManager:
 
                 # Extrai outras informações apenas se não existirem
                 if not lead_info.get("email"):
-                    email = self._extract_email(content)
+                    email = self._extract_email(content_lower)
                     if email:
                         lead_info["email"] = email
 
                 if not lead_info.get("bill_value"):
-                    value = self._extract_bill_value(content)
+                    value = self._extract_bill_value(content_lower)
                     if value:
                         lead_info["bill_value"] = value
 
                 if not lead_info.get("preferences", {}).get("property_type"):
-                    prop_type = self._extract_property_type(content)
+                    prop_type = self._extract_property_type(content_lower)
                     if prop_type:
                         lead_info["preferences"]["property_type"] = prop_type
 
                 if not lead_info.get("preferences", {}).get("location"):
-                    location = self._extract_location(content)
+                    location = self._extract_location(content_lower)
                     if location:
                         lead_info["preferences"]["location"] = location
 
             # Interesses e objeções podem ser adicionados cumulativamente
-            interests = self._extract_interests(content)
+            interests = self._extract_interests(content_lower)
             if interests:
                 lead_info["preferences"]["interests"].extend(interests)
 
-            objections = self._extract_objections(content)
+            objections = self._extract_objections(content_lower)
             if objections:
                 lead_info["preferences"]["objections"].extend(objections)
 
             if not lead_info.get("chosen_flow"):
-                chosen_flow = self._extract_chosen_flow(content)
+                chosen_flow = self._extract_chosen_flow(content_lower)
                 if chosen_flow:
                     lead_info["chosen_flow"] = chosen_flow
 

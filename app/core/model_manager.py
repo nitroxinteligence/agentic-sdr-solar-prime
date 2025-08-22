@@ -47,6 +47,9 @@ class Gemini:
 
     async def achat(self, messages):
         """Chamada REAL para Gemini API com suporte multimodal"""
+        import google.generativeai as genai
+        import base64
+
         if not GEMINI_AVAILABLE or not self.model:
             return type('Response', (), {
                 'content': 'Gemini não disponível. Configure GOOGLE_API_KEY.'
