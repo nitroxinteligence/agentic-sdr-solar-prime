@@ -1,23 +1,21 @@
-# Histórico de Correções Críticas - 22/08/2025
+# TODO - Correção Definitiva do Fluxo Multimodal (Análise de Causa Raiz)
 
-## ✅ **CLOSED** - Falha no Cancelamento de Reuniões e Erro de Redis
+- [x] **Análise Forense:**
+  - [x] Identificada a causa raiz: A ordem das operações em `process_message` estava incorreta. `LeadManager` e `ContextAnalyzer` eram executados com estado desatualizado, antes do processamento de mídia.
 
--   **[DONE]** Corrigido `TypeError` na chamada `eval` do Redis em `calendar_service_100_real.py` para usar a sintaxe posicional correta.
--   **[DONE]** Refatorado o fluxo de agendamento para salvar o `google_event_id` na tabela `leads_qualifications` após uma reunião ser criada com sucesso.
--   **[DONE]** Refatorado o fluxo de cancelamento e reagendamento para buscar o `meeting_id` da qualificação mais recente do lead, garantindo a manutenção do estado.
+- [x] **Refatorar a Ordem de Operações em `agentic_sdr_stateless.py`:**
+  - [x] Mover o bloco de processamento de mídia (`if media_data: ...`) para o **início** do método `process_message`.
+  - [x] Garantir que o `lead_info` seja atualizado com o `extracted_bill_value` **antes** de qualquer outra análise.
+  - [x] Unificar a mensagem do usuário com o `media_context` **antes** de adicioná-la ao histórico.
+  - [x] Executar `lead_manager.extract_lead_info` e `context_analyzer.analyze_context` **APÓS** o processamento de mídia e a atualização do histórico.
 
-## ✅ **CLOSED** - Cascata de Erros no Workflow Pós-Agendamento
+- [x] **Simplificar `prompt_builder.py`:**
+  - [x] Confirmado que o parâmetro `media_context` foi removido da função `build_user_prompt` e que a lógica depende apenas do `conversation_history`.
 
--   **[DONE]** Corrigida a inconsistência de `case` e acentuação no nome do estágio `em_qualificação` para o Kommo CRM.
--   **[DONE]** Corrigido `AttributeError` no agente ao chamar `crm_service.update_lead` (anteriormente chamava `update_fields` de forma incorreta).
--   **[DONE]** Resolvido `TypeError` de fuso horário ao agendar follow-ups, padronizando o uso de datetimes "cientes" (com fuso horário).
+- [ ] **Publicação:**
+  - [ ] Adicionar o arquivo modificado ao git.
+  - [ ] Criar um commit claro e descritivo que explique a correção da ordem de operações.
+  - [ ] Enviar as alterações para o repositório remoto.
 
-## ✅ **CLOSED** - Agente Ignorando Análise de Mídia (Imagens/Documentos)
-
--   **[DONE]** **Causa Raiz Identificada:** A ordem das operações no `agentic_sdr_stateless.py` estava incorreta. As análises de contexto e de lead eram executadas *antes* do processamento da mídia, resultando em decisões baseadas em estado desatualizado.
--   **[DONE]** **Solução Implementada:** O método `process_message` foi refatorado para garantir que o processamento de mídia ocorra **primeiro**. A informação extraída (ex: valor da conta) é imediatamente injetada no `lead_info` e no conteúdo da mensagem do usuário.
--   **[DONE]** As análises de `LeadManager` e `ContextAnalyzer` agora rodam **após** a atualização do contexto com os dados da mídia, garantindo que o agente tenha a informação mais recente para tomar decisões e evitando o loop de perguntas.
-
-## ✅ **CLOSED** - Refinamentos de Comportamento
-
--   **[DONE]** Adicionada regra `ABSOLUTA` e `INVIOLÁVEL` ao prompt do agente para proibir o uso de emojis nas respostas, garantindo um tom mais profissional.
+- [ ] **Validação Final:**
+  - [ ] Testar o fluxo com uma imagem de conta de luz para confirmar que o agente reconhece o valor e prossegue para a próxima pergunta de qualificação.
