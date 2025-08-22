@@ -533,9 +533,9 @@ class AgenticSDRStateless:
                 field_name = params.get("field")
                 field_value = params.get("value")
                 if field_name and field_value:
-                    return await self.crm_service.update_fields(
+                    return await self.crm_service.update_lead(
                         lead_info.get("kommo_lead_id"),
-                        {field_name: field_value}
+                        {"custom_fields_values": [{"field_id": self.crm_service.custom_fields.get(field_name), "values": [{"value": field_value}]}]}
                     )
 
         elif service_name == "followup":

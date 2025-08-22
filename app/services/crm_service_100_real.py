@@ -511,10 +511,14 @@ class CRMServiceReal:
         if not self.is_initialized:
             await self.initialize()
         try:
-            normalized_stage = stage_name.strip().upper().replace(" ", "_")
+            normalized_stage = stage_name.strip().lower().replace(" ", "_")
             stage_id = self.stage_map.get(normalized_stage)
             if not stage_id:
-                raise ValueError(f"Estágio '{stage_name}' não encontrado")
+                # Fallback para tentar sem normalização ou com outras variações
+                stage_id = self.stage_map.get(stage_name.strip()) or self.stage_map.get(stage_name.strip().upper())
+                if not stage_id:
+                    raise ValueError(f"Estágio '{stage_name}' não encontrado no mapa: {list(self.stage_map.keys())}")
+            
             update_data = {
                 "status_id": stage_id,
                 "updated_at": int(datetime.now().timestamp())

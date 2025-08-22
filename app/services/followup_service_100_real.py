@@ -77,7 +77,7 @@ class FollowUpServiceReal:
         if not self.is_initialized:
             await self.initialize()
         try:
-            scheduled_time = datetime.now() + timedelta(hours=delay_hours)
+            scheduled_time = datetime.now(pytz.utc) + timedelta(hours=delay_hours)
             clean_phone = ''.join(filter(str.isdigit, phone_number))
             if not clean_phone.startswith('55'):
                 clean_phone = '55' + clean_phone
