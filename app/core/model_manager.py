@@ -30,31 +30,30 @@ class Gemini:
     def __init__(self, id, api_key):
         self.id = id
         self.api_key = api_key
-        self.model = None
+        self.base_model_name = id
+        if id == "gemini-2.5-pro":
+            self.base_model_name = "gemini-1.5-pro"
+        elif id == "gemini-2.0-flash-thinking":
+            self.base_model_name = "gemini-1.5-flash"
 
         if GEMINI_AVAILABLE:
-            # Configurar Gemini REAL
             genai.configure(api_key=api_key)
 
-            # Mapear nomes de modelo
-            model_name = id
-            if id == "gemini-2.5-pro":
-                model_name = "gemini-1.5-pro"
-            elif id == "gemini-2.0-flash-thinking":
-                model_name = "gemini-1.5-flash"
-
-            self.model = genai.GenerativeModel(model_name)
-
-    async def achat(self, messages):
-        """Chamada REAL para Gemini API com suporte multimodal, usando a estrutura de histórico correta."""
+    async def achat(self, messages, system_prompt: Optional[str] = None):
+        """Chamada REAL para Gemini API com suporte multimodal, criando um modelo com o system_prompt a cada chamada."""
         import google.generativeai as genai
         import base64
 
-        if not GEMINI_AVAILABLE or not self.model:
+        if not GEMINI_AVAILABLE:
             return type('Response', (), {'content': 'Gemini não disponível. Configure GOOGLE_API_KEY.'})()
 
         try:
-            # Converte o histórico de mensagens completo para o formato do Gemini API
+            # Cria uma nova instância do modelo a cada chamada, garantindo que o system_prompt seja aplicado.
+            model = genai.GenerativeModel(
+                model_name=self.base_model_name,
+                system_instruction=system_prompt
+            )
+
             gemini_history = []
             for msg in messages:
                 role = 'user' if msg['role'] == 'user' else 'model'
@@ -62,7 +61,6 @@ class Gemini:
                 
                 parts = []
                 if isinstance(content, list):
-                    # Mensagem multimodal
                     for item in content:
                         if item.get("type") == "text":
                             parts.append(item.get("text", ""))
@@ -71,7 +69,6 @@ class Gemini:
                             mime_type = media_data.get("mime_type")
                             base64_content = media_data.get("content")
                             if mime_type and base64_content:
-                                # A API espera os dados brutos, não um objeto Blob
                                 parts.append({
                                     "inline_data": {
                                         "mime_type": mime_type,
@@ -79,16 +76,14 @@ class Gemini:
                                     }
                                 })
                 else:
-                    # Mensagem de texto simples
                     parts.append(str(content))
 
                 if parts:
                     gemini_history.append({'role': role, 'parts': parts})
 
-            # A system_instruction já foi definida no objeto do modelo no método get_response
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: self.model.generate_content(gemini_history)
+                lambda: model.generate_content(gemini_history)
             )
 
             return type('Response', (), {'content': response.text})()
@@ -214,24 +209,10 @@ class ModelManager:
     ) -> Optional[str]:
         """
         Obtém resposta REAL do modelo com fallback automático
-
-        Args:
-            messages: Lista de mensagens da conversa (incluindo a do usuário)
-            system_prompt: Prompt do sistema (opcional, pode ser injetado)
-            use_reasoning: Se deve usar modelo de reasoning
-            temperature: Temperatura para geração
-            max_tokens: Máximo de tokens
-
-        Returns:
-            Resposta REAL do modelo ou None se falhar
         """
-        # Injeta o system_prompt no modelo Gemini, se aplicável
         model_to_use = self.primary_model
         if use_reasoning and self.reasoning_model:
             model_to_use = self.reasoning_model
-        
-        if isinstance(model_to_use, Gemini) and system_prompt:
-            model_to_use.model.system_instruction = system_prompt
 
         if use_reasoning and self.reasoning_model:
             try:
@@ -275,23 +256,17 @@ class ModelManager:
     ) -> Optional[str]:
         """
         Tenta obter resposta de um modelo específico
-
-        Args:
-            model: Modelo a usar
-            messages: Lista de mensagens da conversa
-            system_prompt: Prompt do sistema
-
-        Returns:
-            Resposta ou None se falhar
         """
         try:
-            # Para modelos OpenAI, o system prompt é apenas outra mensagem
             if isinstance(model, OpenAI) and system_prompt:
                 messages_with_system = [{"role": "system", "content": system_prompt}] + messages
+                response = await model.achat(messages_with_system)
+            elif isinstance(model, Gemini):
+                # Passa o system_prompt para o achat do Gemini, que criará um modelo com ele
+                response = await model.achat(messages, system_prompt=system_prompt)
             else:
-                messages_with_system = messages
-
-            response = await model.achat(messages_with_system)
+                # Fallback para outros modelos que possam ser adicionados
+                response = await model.achat(messages)
 
             if response and response.content:
                 return response.content
@@ -309,14 +284,6 @@ class ModelManager:
     ):
         """
         Retry com backoff exponencial SIMPLES
-
-        Args:
-            func: Fun	ilde;	ilde;o a executar
-            max_attempts: M	ilde;ximo de tentativas
-            initial_delay: Delay inicial em segundos
-
-        Returns:
-            Resultado da fun	ilde;	ilde;o ou None
         """
         delay = initial_delay
 
