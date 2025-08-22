@@ -1,16 +1,15 @@
-# Plano de Ação - Estabilização Final Multimodal e Follow-up
+# Plano de Análise e Correção Definitiva do Agente
 
-## Tarefa 1: Tornar os Módulos Core Compatíveis com Conteúdo Multimodal
+O agente está sofrendo de "amnésia" e respondendo de forma genérica, ignorando o prompt do sistema e o histórico da conversa. A causa raiz não está no `model_manager`, mas sim na forma como o contexto e o histórico são montados e enviados ao modelo.
 
-- [x] **Corrigir `lead_manager.py`:** Modificado o método `extract_lead_info` para que ele saiba extrair o texto de uma mensagem, mesmo que o conteúdo seja uma lista (formato multimodal).
-- [x] **Corrigir `context_analyzer.py`:** Recriado o arquivo com a lógica correta para extrair a parte textual da nova estrutura de lista em todos os seus métodos.
+## Tarefas
 
-## Tarefa 2: Corrigir o Erro de Importação no Follow-up Worker
+1.  **[CONCLUÍDO] Análise Profunda do Fluxo de Dados:** Rastrear o ciclo de vida de uma mensagem, desde o recebimento no webhook (`webhooks.py`) até a montagem do prompt no agente (`agentic_sdr_stateless.py`) e o envio final ao modelo (`model_manager.py`).
 
-- [x] **Refatorar `model_manager.py`:** Confirmado que a importação do `google.generativeai` já está dentro do método `Gemini.achat`, o que resolve o `AttributeError` no worker.
+2.  **[CONCLUÍDO] Identificação da Causa Raiz:** O problema foi localizado em `app/agents/agentic_sdr_stateless.py`. A estratégia de "injetar" o contexto dinâmico (informações do lead, análise da conversa) diretamente no prompt do sistema está causando um conflito, fazendo com que o modelo ignore suas instruções de persona e o histórico.
 
-## Tarefa 3: Verificação Final
+3.  **[EM ANDAMENTO] Refatorar a Injeção de Contexto:** Implementar uma abordagem mais robusta e clara. Em vez de poluir o prompt do sistema, o contexto dinâmico será formatado e adicionado como a **última mensagem do usuário** no histórico enviado ao modelo. Isso separa a identidade central do agente (system prompt) do contexto da tarefa atual (última mensagem), dando o peso correto a cada um.
 
-- [x] O fluxo de dados completo foi revisado e agora suporta corretamente mensagens de texto e multimodais (áudio, PDF, imagem) em todos os componentes.
-- [x] O sistema de follow-up agora pode gerar e enviar mensagens com sucesso.
-- [x] O `todo.md` foi atualizado para refletir a conclusão de todas as tarefas.
+4.  **[PENDENTE] Implementar a Correção:** Substituir a função `_generate_response` em `app/agents/agentic_sdr_stateless.py` pela nova versão refatorada.
+
+5.  **[PENDENTE] Publicar a Correção:** Após a implementação, adicionar, comitar e enviar a correção final para o repositório.

@@ -578,82 +578,80 @@ class AgenticSDRStateless:
         execution_context: dict,
         is_followup: bool = False
     ) -> str:
-        """Gera a resposta do agente usando o ModelManager."""
-        
-        # Carrega o prompt do sistema diretamente
+        """Gera a resposta do agente usando o ModelManager com injeção de contexto robusta."""
+        import json
+
+        # 1. Carrega o prompt do sistema (persona) e o mantém limpo.
         try:
             with open("app/prompts/prompt-agente.md", "r", encoding="utf-8") as f:
                 system_prompt = f.read()
         except FileNotFoundError:
             system_prompt = "Você é um assistente de vendas."
 
-        # Constrói o prompt do usuário com contexto, mas sem achatar o histórico
-        user_prompt_context = (
-            f"Data e Hora Atuais: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-            f"=== Informações do Lead ===\n{lead_info}\n\n"
-            f"=== Contexto da Conversa ===\n{context}\n\n"
+        # 2. Formata o contexto dinâmico para ser injetado como uma mensagem de usuário.
+        # Isso evita "poluir" o system_prompt e dá mais peso ao contexto atual.
+        def format_dict_for_prompt(data: dict) -> str:
+            return json.dumps(data, indent=2, ensure_ascii=False, default=str)
+
+        context_as_user_message = (
+            f"=== CONTEXTO ATUALIZADO PARA ESTA RESPOSTA ===\n"
+            f"Data e Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"Informações do Lead: {format_dict_for_prompt(lead_info)}\n"
+            f"Análise da Conversa: {format_dict_for_prompt(context)}\n"
         )
 
         if is_followup:
-            user_prompt_context += f"=== Tarefa de Follow-up ===\n{message}\n"
-        else:
-            user_prompt_context += f"=== Instrução ===\nCom base em todo o histórico e contexto, gere a próxima resposta para o usuário.\n"
+            context_as_user_message += f"Tarefa de Follow-up: {message}\n"
 
-        # O histórico já contém a mensagem do usuário com a mídia.
-        # Adicionamos o contexto como a ÚLTIMA mensagem do usuário para dar-lhe peso.
-        # A API espera uma lista de dicionários.
-        
-        # Limpa o conteúdo de texto simples do histórico para evitar duplicação
-        history_for_model = []
-        for msg in conversation_history:
-            if isinstance(msg['content'], list): # Mensagem multimodal
-                history_for_model.append(msg)
-            else: # Mensagem de texto
-                # Mantém apenas a última mensagem de texto do usuário se for a mais recente
-                if msg['role'] == 'user':
-                    # A mensagem de texto já foi adicionada ao user_message_content
-                    pass
-                else:
-                    history_for_model.append(msg)
+        context_as_user_message += (
+            f"=== INSTRUÇÃO ===\n"
+            f"Com base no histórico completo da conversa e no contexto atualizado acima, "
+            f"gere sua próxima resposta para o usuário final."
+        )
 
-        # A última mensagem do usuário já está formatada com a mídia.
-        # Agora, vamos garantir que o contexto seja adicionado corretamente.
-        # A melhor abordagem é injetar o contexto no final do prompt do sistema
-        # ou como uma mensagem de sistema separada, mas vamos manter simples por enquanto.
-        
-        final_system_prompt = f"{system_prompt}\n\n{user_prompt_context}"
+        # 3. Prepara o histórico para o modelo, adicionando o contexto como a última mensagem.
+        messages_for_model = list(conversation_history)
+        messages_for_model.append({
+            "role": "user",
+            "content": context_as_user_message
+        })
 
+        # 4. Primeira chamada ao modelo para obter a resposta inicial (que pode conter tools).
         response_text = await self.model_manager.get_response(
-            messages=conversation_history, # Envia o histórico completo
-            system_prompt=final_system_prompt
+            messages=messages_for_model,
+            system_prompt=system_prompt  # Envia o prompt do sistema limpo
         )
 
         if response_text:
+            # 5. Analisa e executa ferramentas, se houver.
             tool_results = await self._parse_and_execute_tools(
                 response_text, lead_info, context
             )
             if tool_results:
-                # Adiciona os resultados das ferramentas ao histórico para a chamada final
+                # 6. Se ferramentas foram usadas, faz uma segunda chamada ao modelo com os resultados.
                 tool_results_str = "\n".join(
-                    [f"Tool {tool}: {result}" for tool, result in tool_results.items()]
+                    [f"- {tool}: {result}" for tool, result in tool_results.items()]
                 )
-                
+
                 final_instruction = (
-                    f"=== Resposta do Modelo e Uso de Ferramentas ===\n"
-                    f"Resposta do modelo: {response_text}\n"
-                    f"Resultados das ferramentas: {tool_results_str}\n\n"
-                    f"=== Instrução Final ===\n"
-                    f"Com base nos resultados das ferramentas, gere a resposta final para o usuário."
+                    f"=== RESULTADO DAS FERRAMENTAS ===\n"
+                    f"Sua resposta inicial foi: '{response_text}'\n"
+                    f"As seguintes ferramentas foram executadas com estes resultados:\n{tool_results_str}\n\n"
+                    f"=== INSTRUÇÃO FINAL ===\n"
+                    f"Com base nos resultados das ferramentas, gere a resposta final, clara e amigável para o usuário. "
+                    f"Não inclua mais chamadas de ferramentas. Apenas a resposta final."
                 )
-                
-                conversation_history.append({"role": "assistant", "content": response_text})
-                conversation_history.append({"role": "user", "content": final_instruction})
+
+                # Adiciona a resposta do assistente (com tools) e a instrução final ao histórico
+                messages_for_final_response = list(messages_for_model)
+                messages_for_final_response.append({"role": "assistant", "content": response_text})
+                messages_for_final_response.append({"role": "user", "content": final_instruction})
 
                 response_text = await self.model_manager.get_response(
-                    messages=conversation_history,
-                    system_prompt=final_system_prompt
+                    messages=messages_for_final_response,
+                    system_prompt=system_prompt
                 )
-        
+
         return response_text or "Não consegui gerar uma resposta no momento."
 
     def _detect_lead_changes(self, old_info: dict, new_info: dict) -> dict:
