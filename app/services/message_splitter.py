@@ -33,7 +33,7 @@ class MessageSplitter:
     """
 
     def __init__(
-        self, max_length: int = 4096, add_indicators: bool = False,
+        self, max_length: int = 250, add_indicators: bool = False,
         enable_smart_splitting: bool = True,
         smart_splitting_fallback: bool = True
     ):
@@ -221,8 +221,8 @@ class MessageSplitter:
 
     def _format_four_solutions_message(self, text: str) -> str:
         """Formata a mensagem das 4 soluções com quebras de linha, usando o exemplo do usuário como base."""
-        # Extrai o nome do lead da primeira linha, se houver
-        name_match = regex.match(r"(\w+),? fico feliz", text)
+        # Extrai o nome do lead da primeira linha, se houver, de forma robusta
+        name_match = regex.search(r"(?:Perfeito|Ótimo|Excelente|Maravilha|Certo|Entendi|Show|Legal),\s*([A-Za-zÀ-ÿ]+)", text, regex.IGNORECASE)
         name = name_match.group(1) if name_match else "Cliente"
 
         # Monta a mensagem no formato desejado
