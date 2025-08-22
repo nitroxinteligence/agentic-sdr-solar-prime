@@ -95,13 +95,13 @@ class ContextAnalyzer:
     def _extract_intent(self, message: str) -> str:
         message_lower = message.lower()
         intents = {
-            "reagendamento": ["reagendar", "reagende", "remarcar", "mudar o horário", "outro horário"],
-            "cancelamento": ["cancelar", "cancela", "não vou poder", "cancele"],
+            "reagendamento": ["reagendar", "reagende", "remarcar", "mudar o horario", "outro horario"],
+            "cancelamento": ["cancelar", "cancela", "nao vou poder", "cancele"],
             "informação": ["quanto", "como", "qual", "quando", "onde", "quem"],
-            "interesse": ["quero", "gostaria", "interessado"], "dúvida": ["será", "não sei", "talvez"],
-            "objeção": ["caro", "difícil", "problema"], "agendamento": ["agendar", "marcar", "reunião"],
-            "compra": ["comprar", "adquirir", "fechar"], "reclamação": ["ruim", "péssimo", "horrível"],
-            "elogio": ["ótimo", "excelente", "adorei"]
+            "interesse": ["quero", "gostaria", "interessado"], "dúvida": ["sera", "nao sei", "talvez"],
+            "objeção": ["caro", "dificil", "problema"], "agendamento": ["agendar", "marcar", "reuniao", "reunião"],
+            "compra": ["comprar", "adquirir", "fechar"], "reclamação": ["ruim", "pessimo", "horrivel"],
+            "elogio": ["otimo", "excelente", "adorei"]
         }
         for intent, keywords in intents.items():
             if any(keyword in message_lower for keyword in keywords):

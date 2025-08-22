@@ -562,6 +562,8 @@
     - **EXEMPLO CORRETO (se não precisar da ferramenta):** `<RESPOSTA_FINAL>Olá! Como posso ajudar?</RESPOSTA_FINAL>`
 
     Esta regra é a mais importante de todas. Sua resposta DEVE ser ou uma chamada de ferramenta ou uma resposta final, nunca ambos.
+
+    REGRA ADICIONAL DE AGENDAMENTO: Se a intenção do usuário for claramente agendar, marcar, verificar horários, cancelar ou reagendar uma reunião, sua resposta DEVE ser a chamada de ferramenta apropriada (ex: `[TOOL: calendar.check_availability]`). É PROIBIDO responder de forma conversacional nestes casos. A única ação permitida é a chamada da ferramenta.
   </rule>
 
   <system_overview>
