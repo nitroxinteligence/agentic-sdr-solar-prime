@@ -6,6 +6,7 @@ ZERO complexidade, m	ilde;xima confiabilidade
 from typing import Optional, Dict, Any
 import asyncio
 import base64
+import re
 from app.utils.logger import emoji_logger
 from app.config import settings
 
@@ -258,6 +259,12 @@ class ModelManager:
         Tenta obter resposta de um modelo específico
         """
         try:
+            emoji_logger.system_debug(
+                "Enviando para o LLM",
+                model=model.id,
+                history_length=len(messages),
+                system_prompt_length=len(system_prompt or "")
+            )
             if isinstance(model, OpenAI) and system_prompt:
                 messages_with_system = [{"role": "system", "content": system_prompt}] + messages
                 response = await model.achat(messages_with_system)
@@ -269,7 +276,17 @@ class ModelManager:
                 response = await model.achat(messages)
 
             if response and response.content:
+                emoji_logger.system_debug(
+                    "Resposta recebida do LLM",
+                    model=model.id,
+                    response_length=len(response.content)
+                )
                 return response.content
+            else:
+                emoji_logger.system_warning(
+                    "Resposta do LLM vazia",
+                    model=model.id
+                )
 
         except Exception as e:
             emoji_logger.model_error(f"Erro ao chamar modelo: {e}")

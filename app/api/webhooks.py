@@ -192,8 +192,11 @@ def extract_final_response(full_response: str) -> str:
     if match:
         final_response = match.group(1).strip()
     else:
-        # Fallback: se a tag não for encontrada, limpa o texto de outras tags conhecidas
-        # para evitar vazar o raciocínio interno.
+        # Fallback: se a tag não for encontrada, loga um aviso e limpa o texto de outras tags conhecidas
+        emoji_logger.system_warning(
+            "Tag <RESPOSTA_FINAL> não encontrada na resposta do LLM.",
+            raw_response=full_response[:500]  # Loga os primeiros 500 caracteres da resposta bruta
+        )
         temp_response = re.sub(r'</?analise_interna>.*?</analise_interna>', '', full_response, flags=re.DOTALL | re.IGNORECASE)
         temp_response = re.sub(r'</?RESPOSTA_FINAL>', '', temp_response, flags=re.IGNORECASE)
         

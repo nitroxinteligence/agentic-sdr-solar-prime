@@ -58,3 +58,18 @@ class HandoffException(BaseSDRException):
 class ConversationException(BaseSDRException):
     """Exception raised for conversation processing errors"""
     pass
+
+
+class LLMResponseError(BaseSDRException):
+    """Exception raised for errors in LLM response generation or parsing."""
+    pass
+
+
+class ToolExecutionError(BaseSDRException):
+    """Exception raised when a tool fails to execute."""
+    pass
+
+
+class DataExtractionError(BaseSDRException):
+    """Exception raised when data extraction from text fails."""
+    pass

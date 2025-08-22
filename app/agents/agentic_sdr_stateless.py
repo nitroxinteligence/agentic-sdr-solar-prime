@@ -94,196 +94,154 @@ class AgenticSDRStateless:
             execution_context: Dict[str, Any]
     ) -> tuple[str, Dict[str, Any]]:
         """
-        Processa mensagem com contexto isolado
+        Processa mensagem com contexto isolado, orquestrando o fluxo de trabalho.
         """
         if not self.is_initialized:
             await self.initialize()
 
-        emoji_logger.agentic_start(
-            f"Processando (stateless): {message[:100]}..."
-        )
-
-        conversation_history = execution_context.get(
-            "conversation_history", []
-        )
-        lead_info = execution_context.get("lead_info", {})
-        phone = execution_context.get("phone")
-        conversation_id = execution_context.get("conversation_id")
-        media_data = execution_context.get("media")
-
-        if phone:
-            await self.conversation_monitor.register_message(
-                phone=phone,
-                is_from_user=True,
-                lead_info=lead_info
-            )
+        emoji_logger.agentic_start(f"Processando (stateless): {message[:100]}...")
 
         try:
-            # 1. PROCESSAR MÍDIA (SE EXISTIR)
-            user_message_content = [
-                {"type": "text", "text": message}
-            ]
-            if media_data:
-                if media_data.get("type") == "error":
-                    error_message = media_data.get("content", "Desculpe, tive um problema ao processar a mídia que você enviou.")
-                    emoji_logger.system_warning(f"Retornando erro de mídia para o usuário: {error_message}")
-                    return response_formatter.ensure_response_tags(error_message), lead_info
+            # Etapa 1: Preparar o contexto da execução
+            conversation_history = execution_context.get("conversation_history", [])
+            lead_info = execution_context.get("lead_info", {})
+            phone = execution_context.get("phone")
 
-                media_content = media_data.get("content") or media_data.get("data", "")
-                mime_type = media_data.get("mimetype", "application/octet-stream")
+            await self.conversation_monitor.register_message(phone=phone, is_from_user=True, lead_info=lead_info)
 
-                if "base64," in media_content:
-                    media_content = media_content.split("base64,")[1]
+            # Etapa 2: Atualizar histórico e contexto do lead
+            conversation_history, lead_info = await self._update_context(message, conversation_history, lead_info, execution_context.get("media"))
 
-                user_message_content.append({
-                    "type": "media",
-                    "media_data": {
-                        "mime_type": mime_type,
-                        "content": media_content
-                    }
-                })
-                emoji_logger.multimodal_event(f"📎 Mídia do tipo {mime_type} adicionada de forma genérica ao prompt.")
+            # Etapa 3: Sincronizar com serviços externos (CRM)
+            lead_info = await self._sync_external_services(lead_info)
 
-            # 2. ATUALIZAR HISTÓRICO
-            user_message = {
-                "role": "user",
-                "content": user_message_content,
-                "timestamp": datetime.now().isoformat()
-            }
-            conversation_history.append(user_message)
-
-            # Extrair texto da mídia para análise de contexto, se necessário
-            # Isso é feito de forma assíncrona para não bloquear a resposta principal
-            if media_data:
-                media_result = await self.multimodal.process_media(media_data)
-                if media_result.get("success"):
-                    extracted_bill_value = media_result.get("analysis", {}).get("bill_value")
-                    if extracted_bill_value:
-                        lead_info['bill_value'] = extracted_bill_value
-                        emoji_logger.system_info(f"Valor da conta R${extracted_bill_value} extraído e injetado no lead_info.")
-                else:
-                    emoji_logger.system_warning(f"Falha na extração de texto da mídia: {media_result.get('message')}")
-
-            # 3. EXECUTAR ANÁLISES COM DADOS ATUALIZADOS
-            new_lead_info = self.lead_manager.extract_lead_info(
-                conversation_history,
-                existing_lead_info=lead_info
-            )
-
-            lead_changes = self._detect_lead_changes(lead_info, new_lead_info)
-            if lead_changes:
-                from app.integrations.supabase_client import supabase_client
-                lead_id_to_update = lead_info.get("id")
-                if lead_id_to_update:
-                    await supabase_client.update_lead(lead_id_to_update, lead_changes)
-                    emoji_logger.system_info("Estado do lead sincronizado com o banco de dados.", changes=lead_changes)
-
-            lead_info.update(new_lead_info)
-
-            # 4. SINCRONIZAR CRM
-            if lead_info.get("name") and not lead_info.get("kommo_lead_id"):
-                try:
-                    kommo_response = await self.crm_service.create_lead(lead_info)
-                    if kommo_response.get("success"):
-                        new_kommo_id = kommo_response.get("lead_id")
-                        lead_info["kommo_lead_id"] = new_kommo_id
-                        await supabase_client.update_lead(lead_info["id"], {"kommo_lead_id": new_kommo_id})
-                        emoji_logger.team_crm(f"Lead criado no Kommo com ID: {new_kommo_id}")
-                except Exception as e:
-                    emoji_logger.system_error("Falha ao criar lead no Kommo", error=str(e))
-
-            # 5. ANÁLISE DE INTENÇÃO E EXECUÇÃO FORÇADA (BYPASS DO LLM)
-            context = {}
+            # Etapa 4: Determinar a estratégia de resposta (Bypass ou LLM)
             user_intent = self.context_analyzer._extract_intent(message)
-
             if user_intent in ["reagendamento", "cancelamento", "agendamento"]:
-                tool_name = ""
-                tool_params = {}
-                response = ""
-
-                if user_intent == "reagendamento":
-                    tool_name = "calendar.reschedule_meeting"
-                elif user_intent == "cancelamento":
-                    tool_name = "calendar.cancel_meeting"
-                elif user_intent == "agendamento":
-                    tool_name = "calendar.check_availability"
-                    date, time = self._extract_schedule_details(message)
-                    if date:
-                        tool_params['date_request'] = date
-
-                emoji_logger.system_info(f"Intenção '{user_intent}' detectada. Forçando a chamada da ferramenta: {tool_name}")
-                
-                params_str = " | ".join([f"{k}={v}" for k, v in tool_params.items()])
-                tool_call_string = f"[TOOL: {tool_name}{' | ' + params_str if params_str else ''}]"
-                
-                context["message"] = message
-
-                tool_results = await self._parse_and_execute_tools(tool_call_string, lead_info, context)
-
-                # Formatação direta da resposta, bypassando o LLM
-                if tool_results:
-                    result = next(iter(tool_results.values()), {})
-                    
-                    if result.get("success"):
-                        if "available_slots" in result:
-                            slots = result['available_slots']
-                            date_str = datetime.strptime(result['date'], '%Y-%m-%d').strftime('%d/%m/%Y')
-                            if slots:
-                                response = f"Perfeito! Para o dia {date_str}, tenho os seguintes horários disponíveis: {', '.join(slots)}. Qual prefere?"
-                            else:
-                                response = f"Poxa, não tenho horários disponíveis para o dia {date_str}. Podemos tentar outro dia?"
-                        elif "message" in result:
-                            response = result["message"]
-                        else:
-                            response = "Sua solicitação foi processada com sucesso."
-                    else:
-                        response = f"Desculpe, tive um problema ao processar sua solicitação: {result.get('message', 'erro desconhecido')}. Podemos tentar de outra forma?"
-                else:
-                    response = "Não consegui processar sua solicitação no momento. Pode tentar novamente?"
-
+                response = await self._handle_intent_bypass(user_intent, message, lead_info)
             else:
-                # 6. GERAR RESPOSTA (FLUXO NORMAL COM LLM)
-                response = await self._generate_response(
-                    message,
-                    context,
-                    lead_info,
-                    conversation_history,
-                    execution_context
-                )
+                response = await self._generate_llm_response(message, lead_info, conversation_history, execution_context)
 
-            assistant_message = {
-                "role": "assistant",
-                "content": response,
-                "timestamp": datetime.now().isoformat()
-            }
-
-            if phone:
-                await self.conversation_monitor.register_message(
-                    phone=phone,
-                    is_from_user=False,
-                    lead_info=lead_info
-                )
-
-            emoji_logger.system_success(
-                f"Resposta gerada: {response[:100]}..."
-            )
+            # Etapa 5: Finalizar e registrar a resposta
+            await self.conversation_monitor.register_message(phone=phone, is_from_user=False, lead_info=lead_info)
+            emoji_logger.system_success(f"Resposta gerada: {response[:100]}...")
             return response_formatter.ensure_response_tags(response), lead_info
 
         except Exception as e:
             import traceback
             emoji_logger.system_error(
                 "AgenticSDRStateless",
-                error=f"Erro: {e}"
-            )
-            emoji_logger.system_error(
-                "AgenticSDRStateless",
-                error=f"Traceback: {traceback.format_exc()}"
+                error=f"Erro: {e}",
+                traceback=traceback.format_exc()
             )
             return (
                 "<RESPOSTA_FINAL>Desculpe, tive um problema aqui. "
                 "Pode repetir?</RESPOSTA_FINAL>",
-                lead_info
+                execution_context.get("lead_info", {})
             )
+
+    async def _update_context(self, message: str, conversation_history: list, lead_info: dict, media_data: dict) -> tuple[list, dict]:
+        """Prepara a mensagem do usuário, atualiza o histórico e enriquece as informações do lead."""
+        # 1. PROCESSAR MÍDIA (SE EXISTIR)
+        user_message_content = [{"type": "text", "text": message}]
+        if media_data:
+            if media_data.get("type") == "error":
+                raise ValueError(media_data.get("content", "Erro ao processar mídia."))
+
+            media_content = media_data.get("content") or media_data.get("data", "")
+            mime_type = media_data.get("mimetype", "application/octet-stream")
+            if "base64," in media_content:
+                media_content = media_content.split("base64,")[1]
+            user_message_content.append({
+                "type": "media",
+                "media_data": {"mime_type": mime_type, "content": media_content}
+            })
+            emoji_logger.multimodal_event(f"📎 Mídia do tipo {mime_type} adicionada.")
+
+            media_result = await self.multimodal.process_media(media_data)
+            if media_result.get("success"):
+                extracted_bill_value = media_result.get("analysis", {}).get("bill_value")
+                if extracted_bill_value:
+                    lead_info['bill_value'] = extracted_bill_value
+                    emoji_logger.system_info(f"Valor da conta R${extracted_bill_value} extraído e injetado no lead_info.")
+            else:
+                emoji_logger.system_warning(f"Falha na extração de texto da mídia: {media_result.get('message')}")
+
+        # 2. ATUALIZAR HISTÓRICO
+        user_message = {"role": "user", "content": user_message_content, "timestamp": datetime.now().isoformat()}
+        conversation_history.append(user_message)
+
+        # 3. EXECUTAR ANÁLISES DE LEAD
+        new_lead_info = self.lead_manager.extract_lead_info(conversation_history, existing_lead_info=lead_info)
+        lead_changes = self._detect_lead_changes(lead_info, new_lead_info)
+        if lead_changes:
+            from app.integrations.supabase_client import supabase_client
+            lead_id_to_update = lead_info.get("id")
+            if lead_id_to_update:
+                await supabase_client.update_lead(lead_id_to_update, lead_changes)
+                emoji_logger.system_info("Estado do lead sincronizado com o banco de dados.", changes=lead_changes)
+        lead_info.update(new_lead_info)
+
+        return conversation_history, lead_info
+
+    async def _sync_external_services(self, lead_info: dict) -> dict:
+        """Sincroniza informações do lead com serviços externos como o CRM."""
+        if lead_info.get("name") and not lead_info.get("kommo_lead_id"):
+            try:
+                from app.integrations.supabase_client import supabase_client
+                kommo_response = await self.crm_service.create_lead(lead_info)
+                if kommo_response.get("success"):
+                    new_kommo_id = kommo_response.get("lead_id")
+                    lead_info["kommo_lead_id"] = new_kommo_id
+                    await supabase_client.update_lead(lead_info["id"], {"kommo_lead_id": new_kommo_id})
+                    emoji_logger.team_crm(f"Lead criado no Kommo com ID: {new_kommo_id}")
+            except Exception as e:
+                emoji_logger.system_error("Falha ao criar lead no Kommo", error=str(e))
+        return lead_info
+
+    async def _handle_intent_bypass(self, user_intent: str, message: str, lead_info: dict) -> str:
+        """Lida com intenções que podem ser resolvidas sem o fluxo principal do LLM."""
+        emoji_logger.system_info(f"Intenção '{user_intent}' detectada. Usando fluxo de bypass.")
+        tool_name, tool_params = "", {}
+        if user_intent == "reagendamento":
+            tool_name = "calendar.reschedule_meeting"
+        elif user_intent == "cancelamento":
+            tool_name = "calendar.cancel_meeting"
+        elif user_intent == "agendamento":
+            tool_name = "calendar.check_availability"
+            date, _ = self._extract_schedule_details(message)
+            if date:
+                tool_params['date_request'] = date
+
+        params_str = " | ".join([f"{k}={v}" for k, v in tool_params.items()])
+        tool_call_string = f"[TOOL: {tool_name}{' | ' + params_str if params_str else ''}]"
+        
+        context = {"message": message}
+        tool_results = await self._parse_and_execute_tools(tool_call_string, lead_info, context)
+
+        if not tool_results:
+            return "Não consegui processar sua solicitação no momento. Pode tentar novamente?"
+
+        result = next(iter(tool_results.values()), {})
+        if result.get("success"):
+            if "available_slots" in result:
+                slots = result['available_slots']
+                date_str = datetime.strptime(result['date'], '%Y-%m-%d').strftime('%d/%m/%Y')
+                return f"Perfeito! Para o dia {date_str}, tenho os seguintes horários disponíveis: {', '.join(slots)}. Qual prefere?" if slots else f"Poxa, não tenho horários disponíveis para o dia {date_str}. Podemos tentar outro dia?"
+            return result.get("message", "Sua solicitação foi processada com sucesso.")
+        else:
+            return f"Desculpe, tive um problema ao processar sua solicitação: {result.get('message', 'erro desconhecido')}. Podemos tentar de outra forma?"
+
+    async def _generate_llm_response(self, message: str, lead_info: dict, conversation_history: list, execution_context: dict) -> str:
+        """Executa o fluxo normal de geração de resposta com o LLM."""
+        context = {}  # Contexto pode ser enriquecido aqui se necessário
+        return await self._generate_response(
+            message=message,
+            context=context,
+            lead_info=lead_info,
+            conversation_history=conversation_history,
+            execution_context=execution_context
+        )
 
     async def _execute_post_scheduling_workflow(
             self,
@@ -387,7 +345,6 @@ class AgenticSDRStateless:
                     # CRIA UM REGISTRO DE QUALIFICAÇÃO COM O ID DO EVENTO
                     event_id = result.get("google_event_id")
                     if event_id and lead_info.get("id"):
-                        from app.integrations.supabase_client import supabase_client
                         qualification_data = {
                             "lead_id": lead_info["id"],
                             "qualification_status": "QUALIFIED",
@@ -395,7 +352,7 @@ class AgenticSDRStateless:
                             "meeting_scheduled_at": result.get("start_time"),
                             "notes": "Reunião agendada pelo agente de IA."
                         }
-                        await supabase_client.create_lead_qualification(qualification_data)
+                        await self.db.create_lead_qualification(qualification_data)
                         emoji_logger.system_info(f"Registro de qualificação criado para o evento: {event_id}")
 
                     await self._execute_post_scheduling_workflow(
@@ -407,8 +364,7 @@ class AgenticSDRStateless:
             elif method_name == "suggest_times":
                 return await self.calendar_service.suggest_times(lead_info)
             elif method_name == "cancel_meeting":
-                from app.integrations.supabase_client import supabase_client
-                latest_qualification = await supabase_client.get_latest_qualification(lead_info["id"])
+                latest_qualification = await self.db.get_latest_qualification(lead_info["id"])
                 meeting_id = params.get("meeting_id") or (latest_qualification and latest_qualification.get("google_event_id"))
                 
                 if not meeting_id:
@@ -417,10 +373,8 @@ class AgenticSDRStateless:
                     )
                 return await self.calendar_service.cancel_meeting(meeting_id)
             elif method_name == "reschedule_meeting":
-                from app.integrations.supabase_client import supabase_client
-                
                 # Lógica robusta: Ignora o meeting_id do LLM e busca sempre do Supabase.
-                latest_qualification = await supabase_client.get_latest_qualification(lead_info.get("id"))
+                latest_qualification = await self.db.get_latest_qualification(lead_info.get("id"))
                 meeting_id = latest_qualification.get("google_event_id") if latest_qualification else None
                 
                 if not meeting_id:
@@ -506,6 +460,14 @@ class AgenticSDRStateless:
 
         # 2. O histórico agora está limpo, terminando com a última mensagem real do usuário.
         messages_for_model = list(conversation_history)
+
+        # Limita o histórico para as últimas 200 mensagens para evitar sobrecarga de contexto
+        if len(messages_for_model) > 200:
+            emoji_logger.system_warning(
+                "Histórico longo detectado, truncando para as últimas 30 mensagens.",
+                original_size=len(messages_for_model)
+            )
+            messages_for_model = messages_for_model[-30:]
 
         # 3. Primeira chamada ao modelo para obter a resposta inicial (que pode conter tools).
         response_text = await self.model_manager.get_response(

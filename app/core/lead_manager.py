@@ -11,7 +11,7 @@ from app.config import settings
 
 class LeadManager:
     """
-    Gerenciador SIMPLES de leads e qualificação
+    Gerenciador de SIMPLES leads e qualificação
     Mantém toda a lógica de extração e scoring
     """
 
@@ -265,21 +265,12 @@ class LeadManager:
     def _extract_bill_value(self, text: str) -> Optional[float]:
         """Extrai valor da conta do texto"""
         patterns = [
-            r"conta.{0,20}R?\
-?$\
-s*(\d+(?:[.,]\d{0,2})?)",
-            r"pago.{0,20}R?\
-?$\
-s*(\d+(?:[.,]\d{0,2})?)",
-            r"valor.{0,20}R?\
-?$\
-s*(\d+(?:[.,]\d{0,2})?)",
-            r"(\d+(?:[.,]\d{0,2})?)\
-s*reais",
+            r"conta.{0,20}R?\s*\$?\s*(\d+(?:[.,]\d{0,2})?)",
+            r"pago.{0,20}R?\s*\$?\s*(\d+(?:[.,]\d{0,2})?)",
+            r"valor.{0,20}R?\s*\$?\s*(\d+(?:[.,]\d{0,2})?)",
+            r"(\d+(?:[.,]\d{0,2})?)\s*reais",
             r"uns\s*(\d+(?:[.,]\d{0,2})?)",
-            r"R?\
-?$\
-s*(\d+(?:[.,]\d{0,2})?)"
+            r"R?\s*\$?\s*(\d+(?:[.,]\d{0,2})?)"
         ]
         for pattern in patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
