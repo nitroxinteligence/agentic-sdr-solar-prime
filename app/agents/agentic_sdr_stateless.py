@@ -203,29 +203,17 @@ class AgenticSDRStateless:
             if user_intent in ["reagendamento", "cancelamento", "agendamento"]:
                 tool_name = ""
                 tool_params = {}
-                final_instruction_template = (
-                    "=== RESULTADO DA FERRAMENTA EXECUTADA DIRETAMENTE ===\n"
-                    "A ferramenta '{tool_name}' foi executada com o seguinte resultado:\n{tool_results_str}\n\n"
-                    "=== INSTRUÇÃO FINAL ===\n"
-                    "Com base no resultado, gere a resposta final, clara e amigável para o usuário. "
-                    "Se for uma lista de horários, apresente-os de forma clara. "
-                    "Se for uma confirmação, confirme com todos os detalhes. "
-                    "Se for um erro (por exemplo, horário indisponível), peça desculpas, informe o problema e ofereça uma alternativa, como verificar outros horários. "
-                    "Não inclua mais chamadas de ferramentas."
-                )
+                response = ""
 
                 if user_intent == "reagendamento":
                     tool_name = "calendar.reschedule_meeting"
                 elif user_intent == "cancelamento":
                     tool_name = "calendar.cancel_meeting"
                 elif user_intent == "agendamento":
-                    # Para agendamento direto, a melhor ação é verificar a disponibilidade para a data sugerida.
-                    # O agendamento em si requer um e-mail, que o agente deve solicitar após confirmar a disponibilidade.
                     tool_name = "calendar.check_availability"
                     date, time = self._extract_schedule_details(message)
                     if date:
                         tool_params['date_request'] = date
-                    # O 'time' extraído não é usado diretamente por check_availability, mas a lógica do LLM pode usá-lo no próximo passo.
 
                 emoji_logger.system_info(f"Intenção '{user_intent}' detectada. Forçando a chamada da ferramenta: {tool_name}")
                 
@@ -236,16 +224,25 @@ class AgenticSDRStateless:
 
                 tool_results = await self._parse_and_execute_tools(tool_call_string, lead_info, context)
 
-                tool_results_str = "\n".join([f"- {tool}: {result}" for tool, result in tool_results.items()])
-                final_instruction = final_instruction_template.format(tool_name=tool_name, tool_results_str=tool_results_str)
-                
-                messages_for_final_response = list(conversation_history)
-                messages_for_final_response.append({"role": "user", "content": final_instruction})
-
-                response = await self.model_manager.get_response(
-                    messages=messages_for_final_response,
-                    system_prompt="Você é um assistente prestativo."
-                )
+                # Formatação direta da resposta, bypassando o LLM
+                if tool_results:
+                    result = tool_results.get(tool_name, {})
+                    if result.get("success"):
+                        if "available_slots" in result:
+                            slots = result['available_slots']
+                            date_str = datetime.strptime(result['date'], '%Y-%m-%d').strftime('%d/%m')
+                            if slots:
+                                response = f"Perfeito! Para o dia {date_str}, tenho os seguintes horários disponíveis: {', '.join(slots)}. Qual prefere?"
+                            else:
+                                response = f"Poxa, não tenho horários disponíveis para o dia {date_str}. Podemos tentar outro dia?"
+                        elif "message" in result:
+                            response = result["message"]
+                        else:
+                            response = "Sua solicitação foi processada com sucesso."
+                    else:
+                        response = f"Desculpe, tive um problema ao processar sua solicitação: {result.get('message', 'erro desconhecido')}. Podemos tentar de outra forma?"
+                else:
+                    response = "Não consegui processar sua solicitação no momento. Pode tentar novamente?"
 
             else:
                 # 6. GERAR RESPOSTA (FLUXO NORMAL COM LLM)

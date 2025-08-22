@@ -360,11 +360,11 @@ class EvolutionAPIClient:
             else:
                 duration = duration_seconds
             
-            # Payload para o endpoint de presença
+            # Payload corrigido para o padrão da Evolution API
             payload = {
                 "number": phone,
                 "presence": "composing",
-                "duration": int(duration * 1000)
+                "delay": int(duration * 1000)
             }
             
             # Endpoint corrigido para 'sendPresence'

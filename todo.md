@@ -1,35 +1,20 @@
-# Relatório de Diagnóstico Final e Plano de Ação Definitivo
+# TODO - 2025-08-22
 
-## 1. Diagnóstico da Causa Raiz
+## Problema Principal
+O agente continua a responder de forma conversacional a pedidos diretos de agendamento, em vez de executar a ferramenta de calendário diretamente. Adicionalmente, a funcionalidade do indicador de digitação ("typing") está a causar erros 400.
 
-**Data:** 22 de Agosto de 2025
+## Plano de Ação
 
-**Problema:** O agente de IA, ao receber um pedido direto de agendamento, entra em um loop de qualificação em vez de executar a ferramenta de calendário.
+1.  **Corrigir o Indicador de Digitação (`evolution.py`):**
+    -   [ ] Ler o ficheiro `app/integrations/evolution.py`.
+    -   [ ] Modificar o método `send_typing` para usar o endpoint correto (`/chat/sendPresence/{self.instance_name}`).
+    -   [ ] Corrigir o payload da requisição para incluir o parâmetro `delay` em milissegundos, conforme exigido pela API.
 
-**Causa Raiz Identificada:** Uma falha de lógica no `prompt-agente.md`. Uma regra com `priority="ABSOLUTA"` (`flow_enforcement_qualification`) proíbe o agente de chamar a ferramenta de calendário ANTES que o lead esteja 100% qualificado. Um dos critérios de qualificação é a confirmação de que o usuário é o "tomador de decisão".
+2.  **Corrigir a Lógica de Agendamento Direto (`agentic_sdr_stateless.py`):**
+    -   [ ] Ler o ficheiro `app/agents/agentic_sdr_stateless.py`.
+    -   [ ] Na função `process_message`, dentro do bloco que deteta a intenção de `agendamento`, remover a chamada final ao `model_manager.get_response`.
+    -   [ ] Implementar uma lógica para formatar diretamente o resultado da ferramenta `check_availability` numa resposta final para o utilizador, garantindo que a resposta seja direta e funcional.
 
-**Mecanismo da Falha:**
-1. O usuário pede para agendar.
-2. O agente entende a intenção, mas a regra de prioridade absoluta o força a verificar se o lead está qualificado primeiro.
-3. O agente percebe que o critério "tomador de decisão" não foi confirmado.
-4. Para cumprir a regra, ele ignora o pedido de agendamento e, em vez disso, faz a pergunta de qualificação que falta.
-5. Essa resposta não é uma chamada de ferramenta, o que causa o erro de fluxo.
-
-O agente não está desobedecendo, ele está obedecendo a uma regra falha que cria um paradoxo.
-
----
-
-## 2. Plano de Ação Definitivo
-
-O objetivo é remover a regra contraditória e restaurar a estabilidade do código.
-
-- [ ] **Tarefa 1: Remover a Regra de Bloqueio do Prompt**
-  - **Arquivo:** `app/prompts/prompt-agente.md`
-  - **Ação:** Remover completamente a seção `<rule priority="ABSOLUTA" id="flow_enforcement_qualification">`. Isso permitirá que o agente use o bom senso para agendar quando solicitado, sem ser bloqueado por um critério de qualificação pendente.
-
-- [ ] **Tarefa 2: Restaurar o Code Guardian**
-  - **Arquivo:** `app/agents/agentic_sdr_stateless.py`
-  - **Ação:** Reintroduzir a lógica de validação de saída (`Code Guardian`) que foi removida anteriormente. Ela provou ser eficaz em capturar saídas malformadas e serve como uma importante rede de segurança.
-
-- [ ] **Tarefa 3: Publicar a Correção Final**
-  - **Ação:** Adicionar, commitar e dar push nas alterações com uma mensagem clara que documenta a remoção da regra de bloqueio como a solução definitiva.
+3.  **Verificação Final:**
+    -   [ ] Após as correções, testar novamente o fluxo de agendamento direto para garantir que a ferramenta é chamada e o resultado é apresentado corretamente.
+    -   [ ] Monitorizar os logs para confirmar que os erros 400 do indicador de digitação foram resolvidos.
