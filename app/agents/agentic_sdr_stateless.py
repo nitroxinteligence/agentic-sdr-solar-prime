@@ -381,14 +381,16 @@ class AgenticSDRStateless:
                 return await self.calendar_service.cancel_meeting(meeting_id)
             elif method_name == "reschedule_meeting":
                 from app.integrations.supabase_client import supabase_client
-                latest_qualification = await supabase_client.get_latest_qualification(lead_info["id"])
-                meeting_id = params.get("meeting_id") or (latest_qualification and latest_qualification.get("google_event_id"))
+                # Lógica robusta: Ignora o meeting_id do LLM e busca sempre do Supabase.
+                latest_qualification = await supabase_client.get_latest_qualification(lead_info.get("id"))
+                meeting_id = latest_qualification.get("google_event_id") if latest_qualification else None
+                
                 date = params.get("date")
                 time = params.get("time")
+                
                 if not meeting_id:
-                    raise ValueError(
-                        "ID da reunião não encontrado para reagendamento."
-                    )
+                    raise ValueError("Não foi encontrada uma reunião ativa para reagendar.")
+                
                 return await self.calendar_service.reschedule_meeting(
                     meeting_id=meeting_id,
                     date=date,
