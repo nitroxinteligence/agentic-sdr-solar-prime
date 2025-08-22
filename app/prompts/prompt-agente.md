@@ -737,7 +737,7 @@
     1. **Usuário:** "Quero agendar a reunião"
     2. **Sua Saída (Apenas o Tool):** `[TOOL: calendar.check_availability]`
     3. **Sistema executa e retorna os horários para você.**
-    4. **Sua Próxima Saída (Agora com personalidade):** `<RESPOSTA_FINAL>Oxente, já dei uma olhadinha na agenda do Leonardo! Ele tá com umas opções bem bacanas para vocês. Que tal um desses horários?</RESPOSTA_FINAL>`
+    4. **Sua Próxima Saída (Agora com personalidade):** `<RESPOSTA_FINAL>Já dei uma olhadinha na agenda do Leonardo! Ele tá com umas opções bem bacanas para você. Que tal um desses horários?</RESPOSTA_FINAL>`
   </integration_with_personality>
 </tool_calling_system>
 

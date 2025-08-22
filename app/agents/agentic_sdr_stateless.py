@@ -200,28 +200,44 @@ class AgenticSDRStateless:
             # )
             user_intent = self.context_analyzer._extract_intent(message)
 
-            if user_intent in ["reagendamento", "cancelamento"]:
-                tool_name = "calendar.reschedule_meeting" if user_intent == "reagendamento" else "calendar.cancel_meeting"
+            if user_intent in ["reagendamento", "cancelamento", "agendamento"]:
+                tool_name = ""
+                tool_params = {}
+                final_instruction_template = (
+                    "=== RESULTADO DA FERRAMENTA EXECUTADA DIRETAMENTE ===\n"
+                    "A ferramenta '{tool_name}' foi executada com o seguinte resultado:\n{tool_results_str}\n\n"
+                    "=== INSTRUÇÃO FINAL ===\n"
+                    "Com base no resultado, gere a resposta final, clara e amigável para o usuário. "
+                    "Se for uma lista de horários, apresente-os de forma clara. "
+                    "Se for uma confirmação, confirme com todos os detalhes. "
+                    "Se for um erro (por exemplo, horário indisponível), peça desculpas, informe o problema e ofereça uma alternativa, como verificar outros horários. "
+                    "Não inclua mais chamadas de ferramentas."
+                )
+
+                if user_intent == "reagendamento":
+                    tool_name = "calendar.reschedule_meeting"
+                elif user_intent == "cancelamento":
+                    tool_name = "calendar.cancel_meeting"
+                elif user_intent == "agendamento":
+                    # Para agendamento direto, a melhor ação é verificar a disponibilidade para a data sugerida.
+                    # O agendamento em si requer um e-mail, que o agente deve solicitar após confirmar a disponibilidade.
+                    tool_name = "calendar.check_availability"
+                    date, time = self._extract_schedule_details(message)
+                    if date:
+                        tool_params['date_request'] = date
+                    # O 'time' extraído não é usado diretamente por check_availability, mas a lógica do LLM pode usá-lo no próximo passo.
+
                 emoji_logger.system_info(f"Intenção '{user_intent}' detectada. Forçando a chamada da ferramenta: {tool_name}")
                 
-                # Constrói a string da ferramenta para ser processada pelo parser
-                tool_call_string = f"[TOOL: {tool_name}]"
+                params_str = " | ".join([f"{k}={v}" for k, v in tool_params.items()])
+                tool_call_string = f"[TOOL: {tool_name}{' | ' + params_str if params_str else ''}]"
                 
-                # Passa a mensagem do usuário para o contexto, para que a ferramenta possa extrair a hora se necessário
                 context["message"] = message
 
-                # Usa o parser de ferramentas existente para executar a chamada e obter os resultados
                 tool_results = await self._parse_and_execute_tools(tool_call_string, lead_info, context)
 
-                # Gera a resposta final baseada no resultado da ferramenta
                 tool_results_str = "\n".join([f"- {tool}: {result}" for tool, result in tool_results.items()])
-                final_instruction = (
-                    f"=== RESULTADO DA FERRAMENTA EXECUTADA DIRETAMENTE ===\n"
-                    f"A ferramenta '{tool_name}' foi executada com o seguinte resultado:\n{tool_results_str}\n\n"
-                    f"=== INSTRUÇÃO FINAL ===\n"
-                    f"Com base no resultado, gere a resposta final, clara e amigável para o usuário. "
-                    f"Não inclua mais chamadas de ferramentas."
-                )
+                final_instruction = final_instruction_template.format(tool_name=tool_name, tool_results_str=tool_results_str)
                 
                 messages_for_final_response = list(conversation_history)
                 messages_for_final_response.append({"role": "user", "content": final_instruction})
@@ -360,8 +376,9 @@ class AgenticSDRStateless:
 
         if service_name == "calendar":
             if method_name == "check_availability":
+                date_req = params.get("date_request", "")
                 return await self.calendar_service.check_availability(
-                    context.get("message", "")
+                    date_req
                 )
             elif method_name == "schedule_meeting":
                 result = await self.calendar_service.schedule_meeting(
@@ -542,6 +559,52 @@ class AgenticSDRStateless:
             if value and value != old_info.get(key):
                 changes[key] = value
         return changes
+
+    def _extract_schedule_details(self, message: str) -> (str, str):
+        """Extrai data e hora de uma mensagem de agendamento."""
+        from datetime import datetime, timedelta
+        import re
+
+        time_str = None
+        time_match = re.search(r'(\d{1,2})\s*h(?:(\d{1,2}))?', message, re.IGNORECASE)
+        if time_match:
+            hour = int(time_match.group(1))
+            minute = int(time_match.group(2) or 0)
+            time_str = f"{hour:02d}:{minute:02d}"
+        else:
+            time_match = re.search(r'(\d{1,2}):(\d{1,2})', message, re.IGNORECASE)
+            if time_match:
+                hour = int(time_match.group(1))
+                minute = int(time_match.group(2))
+                time_str = f"{hour:02d}:{minute:02d}"
+
+        date_str = None
+        message_lower = message.lower()
+        today = datetime.now()
+
+        if 'hoje' in message_lower:
+            date_str = today.strftime('%Y-%m-%d')
+        elif 'amanhã' in message_lower:
+            date_str = (today + timedelta(days=1)).strftime('%Y-%m-%d')
+        else:
+            weekdays = {
+                'segunda': 0, 'terça': 1, 'quarta': 2,
+                'quinta': 3, 'sexta': 4, 'sábado': 5, 'domingo': 6
+            }
+            for day_name, day_index in weekdays.items():
+                if day_name in message_lower:
+                    days_ahead = day_index - today.weekday()
+                    if days_ahead <= 0:
+                        days_ahead += 7
+                    target_date = today + timedelta(days=days_ahead)
+                    date_str = target_date.strftime('%Y-%m-%d')
+                    break
+        
+        # Fallback se nenhuma data for encontrada
+        if not date_str:
+            date_str = (today + timedelta(days=1)).strftime('%Y-%m-%d')
+
+        return date_str, time_str
 
     async def _sync_lead_changes(self, changes: dict, phone: str, lead_info: dict):
         """Sincroniza as mudanças do lead com o CRM."""

@@ -199,13 +199,24 @@ class CalendarServiceReal:
                 "message": "Sistema ocupado, tente novamente."
             }
         try:
-            tomorrow = self.get_next_business_day(
-                datetime.now() + timedelta(days=1)
-            )
-            time_min = tomorrow.replace(
+            target_day = None
+            if date_request:
+                try:
+                    # Tenta parsear a data no formato YYYY-MM-DD
+                    target_day = datetime.strptime(date_request, "%Y-%m-%d")
+                except ValueError:
+                    emoji_logger.service_warning(f"Formato de data inválido: {date_request}. Usando fallback para o próximo dia útil.")
+                    target_day = None
+
+            if target_day is None:
+                target_day = self.get_next_business_day(
+                    datetime.now() + timedelta(days=1)
+                )
+
+            time_min = target_day.replace(
                 hour=0, minute=0, second=0
             ).isoformat() + 'Z'
-            time_max = tomorrow.replace(
+            time_max = target_day.replace(
                 hour=23, minute=59, second=59
             ).isoformat() + 'Z'
             events_result = await asyncio.to_thread(
@@ -220,7 +231,7 @@ class CalendarServiceReal:
                     self.business_hours["start_hour"],
                     self.business_hours["end_hour"]
             ):
-                slot_start = tomorrow.replace(hour=hour, minute=0, second=0)
+                slot_start = target_day.replace(hour=hour, minute=0, second=0)
                 slot_end = slot_start + timedelta(hours=1)
                 is_free = all(
                     slot_end <= datetime.fromisoformat(
@@ -250,11 +261,11 @@ class CalendarServiceReal:
             selected_slots.sort()
 
             return {
-                "success": True, "date": tomorrow.strftime("%Y-%m-%d"),
+                "success": True, "date": target_day.strftime("%Y-%m-%d"),
                 "available_slots": selected_slots,
                 "message": (
                     f"Leonardo tem {len(selected_slots)} horários para "
-                    f"{tomorrow.strftime('%d/%m')}"
+                    f"{target_day.strftime('%d/%m')}"
                 ),
                 "real": True
             }

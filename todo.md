@@ -1,53 +1,35 @@
-# Relatório de Diagnóstico e Plano de Ação
+# Relatório de Diagnóstico Final e Plano de Ação Definitivo
 
-## 1. Relatório do Problema
+## 1. Diagnóstico da Causa Raiz
 
 **Data:** 22 de Agosto de 2025
 
-**Problema:** O agente de IA falha consistentemente em executar a ferramenta `calendar.check_availability` quando recebe uma instrução direta para agendar uma reunião (ex: "Agende para mim..."). Em vez de chamar a ferramenta, o agente responde com perguntas de qualificação, ignorando as regras do prompt e a intenção explícita do usuário.
+**Problema:** O agente de IA, ao receber um pedido direto de agendamento, entra em um loop de qualificação em vez de executar a ferramenta de calendário.
 
-**Histórico de Tentativas:**
-1.  **Modificações no Prompt:** Múltiplas tentativas de reforçar as regras de execução de ferramentas no `prompt-agente.md` falharam.
-2.  **Implementação do Code Guardian:** Uma barreira de código foi adicionada para capturar as respostas inválidas do modelo. Os logs confirmam que o guardião **funcionou** ao detectar a saída incorreta, mas isso apenas tratou o sintoma, não a causa, e introduziu um bug de tipo de dado.
+**Causa Raiz Identificada:** Uma falha de lógica no `prompt-agente.md`. Uma regra com `priority="ABSOLUTA"` (`flow_enforcement_qualification`) proíbe o agente de chamar a ferramenta de calendário ANTES que o lead esteja 100% qualificado. Um dos critérios de qualificação é a confirmação de que o usuário é o "tomador de decisão".
 
-A persistência do problema, mesmo com um prompt extremamente explícito, indicou que a causa raiz não estava nas instruções, mas sim nos **dados e contexto que o código estava injetando no prompt**.
+**Mecanismo da Falha:**
+1. O usuário pede para agendar.
+2. O agente entende a intenção, mas a regra de prioridade absoluta o força a verificar se o lead está qualificado primeiro.
+3. O agente percebe que o critério "tomador de decisão" não foi confirmado.
+4. Para cumprir a regra, ele ignora o pedido de agendamento e, em vez disso, faz a pergunta de qualificação que falta.
+5. Essa resposta não é uma chamada de ferramenta, o que causa o erro de fluxo.
 
----
-
-## 2. Diagnóstico da Causa Raiz
-
-Após uma análise completa de todos os arquivos em `app/`, a causa raiz foi identificada:
-
-**Causa Raiz:** O módulo `ContextAnalyzer` (`app/core/context_analyzer.py`) está analisando o histórico da conversa e **forçando um estágio de "qualificação" incorreto**, que sobrescreve a intenção imediata do usuário.
-
-### Mecanismo Detalhado da Falha:
-
-1.  **Análise de Contexto Incorreta:** A função `_determine_stage` no `ContextAnalyzer` usa uma lógica rígida baseada no histórico (se o nome foi coletado, se as soluções foram apresentadas, etc.). Com base nisso, ele conclui que o estágio da conversa é `qualificação`.
-2.  **Injeção de Contexto Conflitante:** O `agentic_sdr_stateless.py` pega essa análise (`'conversation_stage': 'qualificação'`) e a injeta no topo do prompt do sistema dentro de um bloco `<dynamic_context>`.
-3.  **Conflito de Instruções:** O modelo de linguagem (LLM) recebe duas instruções conflitantes:
-    *   **Do Usuário:** "Agende uma reunião para mim agora." (Intenção: `agendamento`)
-    *   **Do Código (via Contexto Injetado):** "O estágio atual desta conversa é `qualificação`."
-4.  **Decisão Equivocada do Modelo:** O modelo prioriza o contexto injetado pelo código, pois ele parece ser uma diretiva de sistema mais forte. Ele então conclui: "O usuário quer agendar, mas o sistema me diz que a tarefa atual é qualificar. Portanto, preciso fazer mais uma pergunta de qualificação antes de poder agendar."
-5.  **Resultado:** O modelo gera uma pergunta de qualificação (ex: "Você é o tomador de decisão?"), a qual não contém um `[TOOL:...]`, fazendo com que o fluxo falhe.
-
-**Conclusão do Diagnóstico:** O problema não é que o modelo ignora o prompt. O problema é que o **código o está confundindo**, fornecendo um contexto que contradiz a intenção imediata do usuário. A solução é parar de injetar essa análise de estágio falha e deixar o modelo decidir a próxima ação com base apenas no histórico da conversa e nas regras do prompt.
+O agente não está desobedecendo, ele está obedecendo a uma regra falha que cria um paradoxo.
 
 ---
 
-## 3. Plano de Ação e Checklist de Tarefas
+## 2. Plano de Ação Definitivo
 
-O objetivo é eliminar a injeção de contexto conflitante e simplificar o fluxo de decisão do agente, seguindo o princípio de que "O SIMPLES FUNCIONA".
+O objetivo é remover a regra contraditória e restaurar a estabilidade do código.
 
-- [x] **Tarefa 1: Remover o Code Guardian (Concluído)**
-  - `git restore app/agents/agentic_sdr_stateless.py` foi executado para reverter a lógica de validação que estava apenas mascarando o problema.
+- [ ] **Tarefa 1: Remover a Regra de Bloqueio do Prompt**
+  - **Arquivo:** `app/prompts/prompt-agente.md`
+  - **Ação:** Remover completamente a seção `<rule priority="ABSOLUTA" id="flow_enforcement_qualification">`. Isso permitirá que o agente use o bom senso para agendar quando solicitado, sem ser bloqueado por um critério de qualificação pendente.
 
-- [ ] **Tarefa 2: Desativar a Análise de Contexto Conflitante**
-  - **Arquivo a ser modificado:** `app/agents/agentic_sdr_stateless.py`
-  - **Ação:** Localizar a linha `context = self.context_analyzer.analyze_context(...)` e substituí-la por `context = {}`. Isso irá neutralizar completamente o `ContextAnalyzer`, impedindo que ele injete o estágio incorreto no prompt.
+- [ ] **Tarefa 2: Restaurar o Code Guardian**
+  - **Arquivo:** `app/agents/agentic_sdr_stateless.py`
+  - **Ação:** Reintroduzir a lógica de validação de saída (`Code Guardian`) que foi removida anteriormente. Ela provou ser eficaz em capturar saídas malformadas e serve como uma importante rede de segurança.
 
-- [ ] **Tarefa 3: Simplificar a Geração de Resposta**
-  - **Arquivo a ser modificado:** `app/agents/agentic_sdr_stateless.py`
-  - **Ação:** Na função `_generate_response`, remover a lógica que formata e injeta o `context_injection` no `system_prompt`. Como o `context` agora estará sempre vazio, essa lógica se tornou desnecessária. O `system_prompt` será usado em sua forma pura, diretamente do arquivo `.md`.
-
-- [ ] **Tarefa 4: Publicar a Correção Definitiva**
-  - **Ação:** Adicionar as alterações ao git, commitar com uma mensagem clara explicando a remoção da análise de contexto como a solução definitiva, e fazer o push para o repositório.
+- [ ] **Tarefa 3: Publicar a Correção Final**
+  - **Ação:** Adicionar, commitar e dar push nas alterações com uma mensagem clara que documenta a remoção da regra de bloqueio como a solução definitiva.

@@ -359,14 +359,18 @@ class EvolutionAPIClient:
                 duration = decision.duration or 2.0
             else:
                 duration = duration_seconds
+            
+            # Payload para o endpoint de presença
             payload = {
                 "number": phone,
-                "delay": int(duration * 1000),
-                "state": "composing"
+                "presence": "composing",
+                "duration": int(duration * 1000)
             }
+            
+            # Endpoint corrigido para 'sendPresence'
             await self._make_request(
                 "post",
-                f"/chat/updatePresence/{self.instance_name}",
+                f"/chat/sendPresence/{self.instance_name}",
                 json=payload
             )
             emoji_logger.evolution_send(
