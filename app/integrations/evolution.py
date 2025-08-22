@@ -753,7 +753,7 @@ class EvolutionAPIClient:
                 f"/chat/getBase64FromMediaMessage/{self.instance_name}",
                 json=payload
             )
-            if response.status_code == 200:
+            if response.status_code in [200, 201]:  # Aceita 200 (OK) e 201 (Created)
                 result = response.json()
                 return result.get("base64")
             else:
