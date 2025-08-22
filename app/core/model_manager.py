@@ -88,7 +88,10 @@ class Gemini:
             # A system_instruction já foi definida no objeto do modelo no método get_response
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: self.model.generate_content(gemini_history)
+                lambda: self.model.generate_content(
+                    contents=gemini_history,
+                    generation_config={"temperature": 0.7}
+                )
             )
 
             return type('Response', (), {'content': response.text})()
