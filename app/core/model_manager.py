@@ -234,10 +234,7 @@ class ModelManager:
             model_to_use = self.reasoning_model
         
         if isinstance(model_to_use, Gemini) and system_prompt:
-            model_to_use.model.system_instruction = genai.types.Content(
-                role="system",
-                parts=[genai.types.Part(text=system_prompt)]
-            )
+            model_to_use.model.system_instruction = system_prompt
 
         if use_reasoning and self.reasoning_model:
             try:
