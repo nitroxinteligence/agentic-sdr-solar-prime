@@ -1,19 +1,22 @@
-# TODO - Correção Definitiva do AttributeError no Webhook
+# Plano de Ação para Sincronização do Agente (Prompt vs. Código)
 
-## Tarefa 1: Análise e Diagnóstico
+Este plano detalha as tarefas necessárias para alinhar a implementação do código com as funcionalidades descritas no `prompt-agente.md`.
 
-- [x] **Analisar `logs-console.md`**: Identificar a recorrência do `AttributeError: 'str' object has no attribute 'get'`.
-- [x] **Diagnosticar Causa Raiz**: Concluir que a função `process_new_message` em `app/api/webhooks.py` não lida corretamente com payloads que contêm um único objeto de mensagem em vez de um array, fazendo com que o loop itere sobre as chaves (strings) do dicionário.
+## Tarefas de Prioridade Alta
 
-## Tarefa 2: Implementar a Correção
+- [x] **GAP 1: Integrar a Base de Conhecimento (Knowledge Base)**
+    - [x] **Código:** Importar e inicializar `KnowledgeService` no `AgenticSDRStateless`.
+    - [x] **Código:** Modificar `_execute_single_tool` para incluir um novo `service_name` chamado `knowledge` com o método `search`.
+    - [x] **Prompt:** Adicionar a ferramenta `[TOOL: knowledge.search | query=<termo_de_busca>]` à seção `<tool_calling_system>` para que o agente possa acioná-la.
 
-- [x] **Modificar `app/api/webhooks.py`**:
-    - [x] Refatorar o início da função `process_new_message` para normalizar o payload `data`.
-    - [x] A lógica deve verificar se `data` é um dicionário e, em caso afirmativo, envolvê-lo em uma lista (ex: `messages = [data]`). Se já for uma lista, deve usá-la diretamente.
-    - [x] Isso garante que o loop `for message in messages:` sempre opere sobre uma lista de dicionários, tornando a função resiliente a ambas as estruturas de payload.
+## Tarefas de Prioridade Média
 
-## Tarefa 3: Publicar Correção
+- [ ] **GAP 2: Implementar Gerenciamento de Estado dos Fluxos de Vendas (A, B, C, D)**
+    - [ ] **Código:** Expandir `ContextAnalyzer` para detectar e retornar `current_flow` e `flow_step`.
+    - [ ] **Código:** Garantir que `lead_info` persista o estado do fluxo entre as mensagens.
+    - [ ] **Prompt:** Adicionar placeholders no prompt para receber as novas variáveis de estado do fluxo.
 
-- [ ] **Executar `git add .`**: Adicionar o arquivo modificado.
-- [ ] **Executar `git commit`**: Criar um commit com uma mensagem clara sobre a correção do `AttributeError`.
-- [ ] **Executar `git push`**: Enviar a correção para o repositório remoto.
+## Tarefas de Prioridade Baixa (Correções Rápidas)
+
+- [x] **INCONSISTÊNCIA 1: Corrigir Horário de Atendimento**
+    - [x] **Código:** Alterar `"end_hour": 17` para `"end_hour": 18` em `app/services/calendar_service_100_real.py`.

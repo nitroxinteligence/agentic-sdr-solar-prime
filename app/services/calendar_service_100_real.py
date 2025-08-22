@@ -28,7 +28,7 @@ class CalendarServiceReal:
         self.oauth_handler = get_oauth_handler()
         self.business_hours = {
             "start_hour": 8,
-            "end_hour": 17,
+            "end_hour": 18,
             "weekdays": [0, 1, 2, 3, 4]
         }
         self.lock_timeout = 30
