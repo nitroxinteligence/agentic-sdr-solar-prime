@@ -610,14 +610,13 @@
       </tool>
       
       <tool name="calendar.reschedule_meeting">
-        <description>Reagendar reunião para nova data/horário</description>
-        <usage>Usar quando cliente quiser mudar horário de reunião existente</usage>
+        <description>Reagendar a última reunião marcada para uma nova data/horário. A ferramenta encontrará a reunião automaticamente.</description>
+        <usage>Usar quando cliente quiser mudar o horário da reunião. Não precisa de ID.</usage>
         <parameters>
-          - meeting_id: ID da reunião atual (obrigatório)
           - date: Nova data YYYY-MM-DD (opcional, mantém atual se não informado)
           - time: Novo horário HH:MM (opcional, mantém atual se não informado)
         </parameters>
-        <example>[TOOL: calendar.reschedule_meeting | meeting_id=abc123def456 | date=2024-08-22 | time=15:00]</example>
+        <example>[TOOL: calendar.reschedule_meeting | date=2024-08-22 | time=15:00]</example>
       </tool>
     </calendar_tools>
     
