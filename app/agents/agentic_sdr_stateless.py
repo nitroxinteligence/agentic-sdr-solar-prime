@@ -494,47 +494,43 @@ class AgenticSDRStateless:
         """Gera a resposta do agente usando o ModelManager com injeção de contexto robusta."""
         import json
 
-        # 1. Carrega o prompt do sistema (persona) e o mantém limpo.
+        # 1. Carrega o prompt do sistema (persona).
         try:
             with open("app/prompts/prompt-agente.md", "r", encoding="utf-8") as f:
-                system_prompt = f.read()
+                base_system_prompt = f.read()
         except FileNotFoundError:
-            system_prompt = "Você é um assistente de vendas."
+            base_system_prompt = "Você é um assistente de vendas."
 
-        # 2. Formata o contexto dinâmico para ser injetado como uma mensagem de usuário.
-        # Isso evita "poluir" o system_prompt e dá mais peso ao contexto atual.
+        # 2. Formata o contexto dinâmico para ser injetado DIRETAMENTE no system_prompt.
+        # Esta é a abordagem correta para não poluir o histórico da conversa.
         def format_dict_for_prompt(data: dict) -> str:
             return json.dumps(data, indent=2, ensure_ascii=False, default=str)
 
         period_of_day = get_period_of_day(settings.timezone)
-        context_as_user_message = (
-            f"=== CONTEXTO ATUALIZADO PARA ESTA RESPOSTA ===\n"
-            f"Data e Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"Período do Dia: {period_of_day}\n"
-            f"Informações do Lead: {format_dict_for_prompt(lead_info)}\n"
-            f"Análise da Conversa: {format_dict_for_prompt(context)}\n"
+        
+        # Monta o bloco de contexto que será inserido no topo do system prompt.
+        context_injection = (
+            f"<dynamic_context>\n"
+            f"  <timestamp>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</timestamp>\n"
+            f"  <period_of_day>{period_of_day}</period_of_day>\n"
+            f"  <lead_info>{format_dict_for_prompt(lead_info)}</lead_info>\n"
+            f"  <conversation_analysis>{format_dict_for_prompt(context)}</conversation_analysis>\n"
         )
-
         if is_followup:
-            context_as_user_message += f"Tarefa de Follow-up: {message}\n"
+            context_injection += f"  <task>Follow-up: {message}</task>\n"
+        context_injection += "</dynamic_context>\n\n"
 
-        context_as_user_message += (
-            f"=== INSTRUÇÃO ===\n"
-            f"Com base no histórico completo da conversa e no contexto atualizado acima, "
-            f"gere sua próxima resposta para o usuário final."
-        )
+        # Injeta o contexto dinâmico no início do prompt do sistema.
+        system_prompt = context_injection + base_system_prompt
 
-        # 3. Prepara o histórico para o modelo, adicionando o contexto como a última mensagem.
+        # 3. Prepara o histórico para o modelo. O histórico agora está limpo,
+        # terminando com a última mensagem real do usuário.
         messages_for_model = list(conversation_history)
-        messages_for_model.append({
-            "role": "user",
-            "content": context_as_user_message
-        })
 
         # 4. Primeira chamada ao modelo para obter a resposta inicial (que pode conter tools).
         response_text = await self.model_manager.get_response(
             messages=messages_for_model,
-            system_prompt=system_prompt  # Envia o prompt do sistema limpo
+            system_prompt=system_prompt
         )
 
         if response_text:
@@ -554,6 +550,7 @@ class AgenticSDRStateless:
                     f"As seguintes ferramentas foram executadas com estes resultados:\n{tool_results_str}\n\n"
                     f"=== INSTRUÇÃO FINAL ===\n"
                     f"Com base nos resultados das ferramentas, gere a resposta final, clara e amigável para o usuário. "
+                    f"Siga TODAS as regras do seu prompt de sistema. "
                     f"Não inclua mais chamadas de ferramentas. Apenas a resposta final."
                 )
 
@@ -564,7 +561,7 @@ class AgenticSDRStateless:
 
                 response_text = await self.model_manager.get_response(
                     messages=messages_for_final_response,
-                    system_prompt=system_prompt
+                    system_prompt=system_prompt # Reutiliza o mesmo system_prompt com contexto
                 )
 
         return response_text or "Não consegui gerar uma resposta no momento."
