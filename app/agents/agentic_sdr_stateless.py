@@ -191,10 +191,9 @@ class AgenticSDRStateless:
             )
 
             response = await self._generate_response(
-                conversation_history[-1]['content'],
+                user_content,
                 context,
                 lead_info,
-                "", # media_context agora é parte do histórico
                 conversation_history,
                 execution_context
             )
@@ -560,7 +559,6 @@ class AgenticSDRStateless:
         message: str,
         context: dict,
         lead_info: dict,
-        media_context: str,
         conversation_history: list,
         execution_context: dict,
         is_followup: bool = False
@@ -575,7 +573,6 @@ class AgenticSDRStateless:
             conversation_history,
             lead_info,
             context,
-            media_context,
             is_followup
         )
 
