@@ -33,7 +33,7 @@ class MessageSplitter:
     """
 
     def __init__(
-        self, max_length: int = 200, add_indicators: bool = False,
+        self, max_length: int = 4096, add_indicators: bool = False,
         enable_smart_splitting: bool = True,
         smart_splitting_fallback: bool = True
     ):
@@ -60,21 +60,20 @@ class MessageSplitter:
 
     def split_message(self, text: str) -> List[str]:
         """
-        Divide mensagem em chunks preservando palavras, emojis e frases.
-        Aplica formatação especial para a mensagem das 4 soluções.
+        Divide mensagem em chunks, com tratamento especial para a mensagem das 4 soluções,
+        que é formatada com quebras de linha e nunca é dividida.
         """
         if not text:
             return []
 
-        # Verifica e formata a mensagem das 4 soluções ANTES de qualquer outra lógica
+        # Lógica de detecção e formatação da mensagem especial
         if self._is_four_solutions_message(text):
+            emoji_logger.system_info("Mensagem das 4 soluções detectada. Formatando e enviando como bloco único.")
             formatted_text = self._format_four_solutions_message(text)
-            # Se mesmo formatada for curta, retorna como um único chunk
-            if len(formatted_text) <= self.max_length:
-                return [formatted_text]
-            # Se for longa, a lógica abaixo cuidará do split
-            text = formatted_text
+            # Retorna a mensagem formatada como um único item na lista, ignorando o max_length
+            return [formatted_text]
 
+        # Lógica padrão de divisão para todas as outras mensagens
         if len(text) <= self.max_length:
             return [text.strip()]
         
@@ -207,36 +206,35 @@ class MessageSplitter:
         return result
 
     def _is_four_solutions_message(self, text: str) -> bool:
-        """Detecta se é a mensagem especial das 4 soluções"""
-        indicators = [
-            "hoje na solarprime", "quatro modelos de soluções",
-            "instalação de usina própria", "aluguel de lote",
-            "compra de energia com desconto", "usina de investimento"
-        ]
+        """Detecta se é a mensagem especial das 4 soluções de forma mais robusta."""
         text_lower = text.lower()
-        matches = sum(1 for indicator in indicators if indicator in text_lower)
-        has_options = all(f"{i})" in text for i in range(1, 5))
-        return matches >= 3 or (matches >= 2 and has_options)
+        # Critérios mais flexíveis
+        has_intro = "hoje na solarprime" in text_lower or "quatro modelos de soluções" in text_lower
+        has_option1 = "instalação de usina própria" in text_lower or "1." in text or "1)" in text
+        has_option2 = "aluguel de lote" in text_lower or "2." in text or "2)" in text
+        has_option3 = "compra de energia com desconto" in text_lower or "3." in text or "3)" in text
+        has_option4 = "usina de investimento" in text_lower or "4." in text or "4)" in text
+        has_closing_question = "qual desses modelos" in text_lower or "qual te interessa" in text_lower
+
+        # Precisa ter a introdução, a pergunta final e pelo menos 3 das 4 opções
+        return has_intro and has_closing_question and (has_option1 + has_option2 + has_option3 + has_option4 >= 3)
 
     def _format_four_solutions_message(self, text: str) -> str:
-        """Formata a mensagem das 4 soluções com quebras de linha"""
-        replacements = [
-            (
-                "quatro modelos de soluções energéticas:",
-                "quatro modelos de soluções energéticas:\n"
-            ),
-            ("quatro modelos de soluções:", "quatro modelos de soluções:\n"),
-            (" 1)", "\n1)"), (" 2)", "\n2)"),
-            (" 3)", "\n3)"), (" 4)", "\n4)"),
-            ("Qual desses modelos", "\n\nQual desses modelos"),
-            ("Qual te interessa", "\n\nQual te interessa"),
-        ]
-        formatted_text = text
-        for old, new in replacements:
-            formatted_text = formatted_text.replace(old, new)
-        while "\n\n\n" in formatted_text:
-            formatted_text = formatted_text.replace("\n\n\n", "\n\n")
-        return formatted_text.strip()
+        """Formata a mensagem das 4 soluções com quebras de linha, usando o exemplo do usuário como base."""
+        # Extrai o nome do lead da primeira linha, se houver
+        name_match = regex.match(r"(\w+),? fico feliz", text)
+        name = name_match.group(1) if name_match else "Cliente"
+
+        # Monta a mensagem no formato desejado
+        formatted_message = (
+            f"{name}, fico feliz em saber do seu interesse na SolarPrime! Hoje, nós oferecemos quatro soluções em energia solar:\n\n"
+            "1. Instalação de usina própria: Você adquire seu próprio sistema de energia solar e garante economia a longo prazo.\n"
+            "2. Aluguel de lote para usina: Ideal para quem não tem espaço próprio ou quer investir em um sistema maior.\n"
+            "3. Compra de energia com desconto: Receba energia solar com desconto na sua conta de luz, sem precisar instalar painéis.\n"
+            "4. Usina de investimento: Invista em energia solar e receba retornos financeiros com a geração de energia.\n\n"
+            "Qual dessas opções te interessa mais?"
+        )
+        return formatted_message
 
 
 message_splitter: Optional[MessageSplitter] = None
@@ -254,3 +252,4 @@ def set_message_splitter(splitter: MessageSplitter) -> None:
     """Define instância global do splitter"""
     global message_splitter
     message_splitter = splitter
+
