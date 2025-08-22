@@ -116,8 +116,7 @@ class AgenticSDRStateless:
                 lead_info=lead_info
             )
 
-        # LÓGICA DE CONTROLE EXPLÍCITO PARA MÍDIA
-            try:
+        try:
             media_context = ""
             synthetic_message = message  # Começa com a mensagem original
 
@@ -173,62 +172,6 @@ class AgenticSDRStateless:
 
             response = await self._generate_response(
                 synthetic_message,  # Usa a mensagem sintética
-                context,
-                lead_info,
-                media_context,
-                conversation_history,
-                execution_context
-            )
-
-            assistant_message = {
-                "role": "assistant",
-                "content": response,
-                "timestamp": datetime.now().isoformat()
-            }
-
-            if phone:
-                await self.conversation_monitor.register_message(
-                    phone=phone,
-                    is_from_user=False,
-                    lead_info=lead_info
-                )
-
-            emoji_logger.system_success(
-                f"Resposta gerada: {response[:100]}..."
-            )
-            return response_formatter.ensure_response_tags(response), lead_info
-
-            # Fluxo padrão baseado em LLM para mensagens de texto ou áudio
-            synthetic_message = message
-            if not message.strip() and media_data:
-                media_type_pt = media_data.get('type', 'desconhecido')
-                synthetic_message = f"[O usuário enviou uma mídia do tipo '{media_type_pt}'. A análise está no contexto de mídia. Responda sobre ela.]"
-
-            user_message = {
-                "role": "user",
-                "content": synthetic_message,
-                "timestamp": datetime.now().isoformat()
-            }
-            conversation_history.append(user_message)
-
-            context = self.context_analyzer.analyze_context(
-                conversation_history,
-                synthetic_message
-            )
-
-            new_lead_info = self.lead_manager.extract_lead_info(
-                conversation_history,
-                existing_lead_info=lead_info
-            )
-
-            lead_changes = self._detect_lead_changes(lead_info, new_lead_info)
-            if lead_changes and phone:
-                await self._sync_lead_changes(lead_changes, phone, lead_info)
-
-            lead_info.update(new_lead_info)
-
-            response = await self._generate_response(
-                synthetic_message,
                 context,
                 lead_info,
                 media_context,
