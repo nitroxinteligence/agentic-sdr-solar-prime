@@ -374,6 +374,20 @@ Equipe SolarPrime
                     f"✅ Reunião confirmada para {date} às {time}."
                 ), "real": True
             }
+        except HttpError as e:
+            if e.resp.status == 409:
+                emoji_logger.service_warning(f"Conflito de agendamento detectado para {date} {time}. Buscando novos horários.")
+                availability_result = await self.check_availability("")
+                return {
+                    "success": False,
+                    "error": "conflict",
+                    "message": f"O horário {time} no dia {date} já está ocupado.",
+                    "available_slots": availability_result.get("available_slots", []),
+                    "date": availability_result.get("date")
+                }
+            else:
+                emoji_logger.service_error(f"Erro HTTP não tratado ao agendar: {e}")
+                return {"success": False, "message": f"Erro ao agendar: {e}"}
         except Exception as e:
             emoji_logger.service_error(f"Erro ao agendar: {e}")
             return {"success": False, "message": f"Erro ao agendar: {e}"}
