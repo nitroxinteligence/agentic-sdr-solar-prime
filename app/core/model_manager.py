@@ -110,13 +110,16 @@ class OpenAI:
         if OPENAI_AVAILABLE and api_key:
             # Configurar OpenAI REAL
             self.client = openai.AsyncOpenAI(api_key=api_key)
+        else:
+            emoji_logger.system_warning(
+                "OpenAI client não pôde ser inicializado. Verifique a disponibilidade da biblioteca e a OPENAI_API_KEY."
+            )
 
     async def achat(self, messages):
         """Chamada REAL para OpenAI API"""
-        if not OPENAI_AVAILABLE or not self.client:
-            return type('Response', (), {
-                'content': 'OpenAI não disponível. Configure OPENAI_API_KEY.'
-            })()
+        if not self.client:
+            emoji_logger.model_error("Tentativa de usar o fallback OpenAI, mas o cliente não está configurado.")
+            return None  # Retorna None para que a lógica de fallback possa continuar (ou falhar)
 
         try:
             # Fazer chamada REAL para OpenAI
@@ -131,10 +134,8 @@ class OpenAI:
             })()
 
         except Exception as e:
-            emoji_logger.system_error("OpenAI", f"Erro na API: {e}")
-            return type('Response', (), {
-                'content': f'Erro OpenAI: {str(e)}'
-            })()
+            emoji_logger.model_error(f"Erro na API OpenAI: {e}")
+            return None # Retorna None em caso de erro na API
 
 
 class ModelManager:
