@@ -296,7 +296,7 @@ class Settings(BaseSettings):
         default="gemini-2.5-pro", env="PRIMARY_AI_MODEL"
     )
     fallback_ai_model: str = Field(
-        default="o1-mini", env="FALLBACK_AI_MODEL"
+        default="o3-mini", env="FALLBACK_AI_MODEL"
     )
     enable_model_fallback: bool = Field(
         default=True, env="ENABLE_MODEL_FALLBACK"

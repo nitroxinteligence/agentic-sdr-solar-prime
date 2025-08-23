@@ -174,13 +174,14 @@ class ModelManager:
         # Modelo fallback - OpenAI
         try:
             if (settings.fallback_ai_model and
-                    settings.fallback_ai_model.startswith("gpt")):
+                    (settings.fallback_ai_model.startswith("gpt") or settings.fallback_ai_model.startswith("o3"))):
                 self.fallback_model = OpenAI(
                     id=settings.fallback_ai_model,
                     api_key=settings.openai_api_key
                 )
                 emoji_logger.system_ready(
-                    "Modelo fallback OpenAI o3-mini configurado"
+                    "Modelo fallback OpenAI configurado",
+                    model=settings.fallback_ai_model
                 )
         except Exception as e:
             emoji_logger.system_warning(f"Erro ao configurar OpenAI: {e}")
@@ -243,12 +244,13 @@ class ModelManager:
                 emoji_logger.model_error(f"Erro no modelo primário: {e}")
 
         if self.fallback_model:
+            emoji_logger.model_warning(f"Modelo primário falhou. Acionando fallback para {self.fallback_model.id}.")
             try:
                 response = await self._try_model(
                     self.fallback_model, messages, system_prompt
                 )
                 if response:
-                    emoji_logger.model_warning("Usando modelo fallback")
+                    emoji_logger.model_warning(f"Usando modelo fallback: {self.fallback_model.id}")
                     return response
             except Exception as e:
                 emoji_logger.model_error(f"Erro no modelo fallback: {e}")
