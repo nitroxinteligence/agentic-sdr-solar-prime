@@ -459,7 +459,9 @@ class AgenticSDRStateless:
                     time_match = re.search(r'(\d{1,2}h\d{0,2}|\d{1,2}:\d{2})', user_message)
                     if time_match:
                         time = time_match.group(1).replace('h', ':')
-                        if ':' not in time:
+                        if time.endswith(':'):
+                            time += '00'
+                        elif ':' not in time:
                             time += ':00'
 
                 return await self.calendar_service.reschedule_meeting(
