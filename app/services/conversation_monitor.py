@@ -8,8 +8,9 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 import asyncio
 from app.utils.logger import emoji_logger
-from app.integrations.supabase_client import SupabaseClient
+from app.integrations.supabase_client import SupabaseClient # Manter para get_lead_by_phone
 from app.integrations.redis_client import redis_client
+from app.services.followup_manager import followup_manager_service
 
 
 class ConversationMonitor:
@@ -19,7 +20,7 @@ class ConversationMonitor:
 
     def __init__(self):
         """Inicializa o monitor de conversas"""
-        self.db = SupabaseClient()
+        self.db = SupabaseClient() # Manter para buscar lead_info
         self.redis = redis_client
         self.is_monitoring = False
 
@@ -102,59 +103,36 @@ class ConversationMonitor:
                 inactive_time = now - last_message_time
                 status_key = f"monitor:status:{phone}"
                 current_status = await self.redis.get(status_key) or 'active'
-                if (inactive_time > timedelta(minutes=30) and
-                        current_status != 'followup_30min_sent'):
-                    await self._schedule_followup(
-                        phone, 'IMMEDIATE_REENGAGEMENT', last_message_iso
-                    )
+
+                lead = await self.db.get_lead_by_phone(phone)
+                if not lead:
+                    emoji_logger.system_warning(f"⚠️ Lead não encontrado para monitoramento: {phone[:8]}...")
+                    continue
+
+                # Delega a lógica de agendamento para o FollowUpManagerService
+                await followup_manager_service.handle_conversation_inactivity(
+                    lead_id=lead['id'],
+                    phone_number=phone,
+                    inactive_since=last_message_time,
+                    current_status=current_status
+                )
+
+                # Atualiza o status no Redis com base na decisão do FollowUpManagerService
+                # A lógica de atualização do status no Redis é movida para cá
+                if inactive_time > timedelta(minutes=30) and current_status != 'followup_30min_sent':
                     await self.redis.set(status_key, 'followup_30min_sent')
                     emoji_logger.system_info(
-                        f"⏰ Follow-up 30min agendado: {phone[:8]}..."
+                        f"⏰ Status Redis atualizado: followup_30min_sent para {phone[:8]}..."
                     )
-                elif (inactive_time > timedelta(hours=24) and
-                        current_status != 'followup_24h_sent'):
-                    await self._schedule_followup(
-                        phone, 'DAILY_NURTURING', last_message_iso
-                    )
+                elif inactive_time > timedelta(hours=24) and current_status != 'followup_24h_sent':
                     await self.redis.set(status_key, 'followup_24h_sent')
                     emoji_logger.system_info(
-                        f"📅 Follow-up 24h agendado: {phone[:8]}..."
+                        f"📅 Status Redis atualizado: followup_24h_sent para {phone[:8]}..."
                     )
+
         except Exception as e:
             emoji_logger.system_error(
                 "ConversationMonitor", f"Erro ao verificar inatividade: {e}"
-            )
-
-    async def _schedule_followup(
-            self, phone: str, followup_type: str, inactive_since_iso: str
-    ):
-        """Agenda um follow-up no banco de dados"""
-        try:
-            lead = await self.db.get_lead_by_phone(phone)
-            if lead:
-                followup_data = {
-                    'lead_id': lead['id'], 'phone_number': phone,
-                    'type': 'reengagement', 'follow_up_type': followup_type,
-                    'scheduled_at': datetime.now().isoformat(),
-                    'status': 'pending', 'message': '', 'priority': 'medium',
-                    'attempt': 0,
-                    'metadata': {
-                        'source': 'conversation_monitor',
-                        'inactive_since': inactive_since_iso,
-                        'original_type': followup_type
-                    }
-                }
-                await self.db.create_follow_up(followup_data)
-                emoji_logger.system_info(
-                    f"✅ Follow-up agendado: {followup_type} para {phone[:8]}..."
-                )
-            else:
-                emoji_logger.system_warning(
-                    f"⚠️ Lead não encontrado para follow-up: {phone[:8]}..."
-                )
-        except Exception as e:
-            emoji_logger.system_error(
-                "ConversationMonitor", f"Erro ao agendar follow-up: {e}"
             )
 
     async def shutdown(self):

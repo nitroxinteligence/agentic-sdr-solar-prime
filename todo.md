@@ -6,9 +6,9 @@
 
 ### Fase 1: Diagnóstico e Análise de Código
 
-- [ ] **1.1. Analisar o Fluxo de Dados:**
+- [x] **1.1. Analisar o Fluxo de Dados:**
   - [x] Mapear o ciclo de vida de um follow-up: `followup_service` (cria no DB) -> `followup_executor_service` (lê do DB e enfileira no Redis) -> `followup_worker` (consome do Redis e executa).
-- [ ] **1.2. Isolar a Lógica de Contagem:**
+- [x] **1.2. Isolar a Lógica de Contagem:**
   - [x] Revisar o método `enqueue_pending_followups` em `followup_executor_service.py`.
   - [x] Revisar o método `get_recent_followup_count` em `supabase_client.py` para entender como a contagem é feita. A hipótese é que a consulta SQL está incorreta.
 
@@ -16,10 +16,10 @@
 
 ### Fase 2: Correção e Refatoração
 
-- [ ] **2.1. Corrigir a Contagem de Follow-ups:**
+- [x] **2.1. Corrigir a Contagem de Follow-ups:**
   - **Ação:** Modificar a consulta em `get_recent_followup_count` para que ela **não** inclua follow-ups com status `pending` ou `queued` na contagem de "tentativas". Apenas follow-ups `executed` ou `failed` devem contar como uma tentativa real. Isso resolverá o problema do "limite atingido" imediatamente.
 
-- [ ] **2.2. Centralizar e Simplificar a Lógica de Agendamento:**
+- [x] **2.2. Centralizar e Simplificar a Lógica de Agendamento:**
   - **Problema:** A lógica de quando agendar um follow-up está espalhada (o `ConversationMonitor` agenda, o `AgenticSDRStateless` também pode).
   - **Ação:** Criar um novo serviço `FollowUpManagerService` (`app/services/followup_manager.py`).
   - **Responsabilidade:** Este novo serviço terá um único método, como `handle_conversation_inactivity(lead_id, phone_number)`, que será chamado pelo `ConversationMonitor`. Ele conterá a lógica de verificar o limite e agendar o follow-up, centralizando a regra de negócio.
