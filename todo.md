@@ -1,29 +1,33 @@
-# TODO - Refatoração do Fluxo de Reagendamento
+# TODO - Correção do Agendamento no Google Calendar
 
-Este documento detalha as tarefas necessárias para refatorar o sistema de agendamento, eliminando o "bypass de intenção" e centralizando a lógica no fluxo principal do LLM.
+Este documento detalha as tarefas para corrigir a falha silenciosa que faz com que os eventos sejam agendados no calendário errado.
 
 ## Tarefas
 
-### Fase 1: Refatoração do `AgenticSDRStateless`
+### Fase 1: Tornar a Configuração do Calendário Explícita
 
--   [ ] **Remover `_handle_intent_bypass`:** Excluir completamente o método `_handle_intent_bypass` de `app/agents/agentic_sdr_stateless.py`.
--   [ ] **Simplificar `process_message`:** Modificar o método `process_message` para que todas as mensagens, sem exceção, sejam direcionadas para `_generate_llm_response`. A verificação de intenção (`user_intent`) deve ser removida.
--   [ ] **Remover `_extract_schedule_details`:** Excluir o método `_extract_schedule_details` de `app/agents/agentic_sdr_stateless.py`, pois a extração de data/hora será responsabilidade do LLM.
+-   [x] **Modificar `app/services/calendar_service_100_real.py`:**
+    -   Alterar o método `initialize` para remover a lógica de fallback que busca o calendário "principal".
+    -   No método `initialize`, verificar se `self.calendar_id` (vindo de `settings.google_calendar_id`) está presente.
+    -   Se `self.calendar_id` estiver vazio ou `None`, lançar um `ValueError` com a mensagem: "A variável de ambiente GOOGLE_CALENDAR_ID não está definida. O sistema não pode operar sem saber em qual calendário agendar. Por favor, configure o ID do calendário de destino no seu arquivo .env."
+    -   Adicionar um log (`emoji_logger.service_info`) que mostre o `calendar_id` que está sendo utilizado, para clareza na inicialização.
 
-### Fase 2: Fortalecimento do `CalendarService`
+### Fase 2: Documentação para o Usuário
 
--   [ ] **Mover Lógica de Fallback para `reschedule_meeting`:** Transferir a lógica que busca a última reunião agendada do Supabase do método `_execute_single_tool` (em `agentic_sdr_stateless.py`) para dentro do método `reschedule_meeting` em `app/services/calendar_service_100_real.py`.
--   [ ] **Tornar `reschedule_meeting` mais inteligente:** O método deve ser capaz de lidar com parâmetros parciais (apenas data ou apenas hora), buscando os dados faltantes da reunião original. Se nenhuma reunião ativa for encontrada, deve retornar um erro claro.
+-   [x] **Criar/Atualizar Documentação:**
+    -   Criar um novo arquivo `docs/CONFIGURACAO_CALENDARIO.md`.
+    -   Neste arquivo, explicar passo a passo como um usuário pode encontrar o `ID do Calendário` no Google Calendar:
+        1.  Abra o Google Calendar.
+        2.  Na barra lateral esquerda, encontre o calendário desejado (ex: "Agenda do Leonardo").
+        3.  Clique nos três pontos (Opções) ao lado do nome do calendário.
+        4.  Selecione "Configurações e compartilhamento".
+        5.  Na seção "Integrar agenda", copie o valor do campo "ID da agenda".
+        6.  Cole este valor na variável `GOOGLE_CALENDAR_ID` no arquivo `.env`.
 
-### Fase 3: Aprimoramento do Prompt
+### Fase 3: Verificação Final
 
--   [ ] **Atualizar `prompt-agente.md`:** Adicionar instruções explícitas para o LLM sobre como lidar com pedidos de agendamento, reagendamento e cancelamento. O prompt deve instruir o agente a:
-    1.  Sempre coletar **todas** as informações necessárias (data, hora, e-mail) antes de chamar a ferramenta `calendar.schedule_meeting`.
-    2.  Fazer perguntas de esclarecimento se a solicitação do usuário for ambígua (ex: "às 10h" -> "Claro, para qual dia?").
-    3.  Priorizar a chamada da ferramenta `calendar.reschedule_meeting` ou `calendar.cancel_meeting` quando a intenção for clara.
+-   [x] **Revisar `app/config.py`:** Garantir que a variável `google_calendar_id` está sendo carregada corretamente do ambiente.
+-   [x] **Testar o Fluxo:** Executar o cenário de agendamento novamente, garantindo que:
+    -   Se `GOOGLE_CALENDAR_ID` não estiver definido, o sistema falhe na inicialização com o erro esperado.
+    -   Se `GOOGLE_CALENDAR_ID` estiver definido, o agendamento apareça no calendário correto.
 
-### Fase 4: Limpeza e Verificação
-
--   [ ] **Revisar `_execute_single_tool`:** Após mover a lógica de fallback, simplificar o `case` de `reschedule_meeting` dentro de `_execute_single_tool` para apenas passar os parâmetros recebidos para o `calendar_service`.
--   [ ] **Testar o Novo Fluxo:** Realizar testes manuais para garantir que os cenários de agendamento, reagendamento (com informações completas e parciais) e cancelamento estão funcionando de forma robusta e natural.
--   [ ] **Revisar Logs:** Acompanhar os logs (`logs-console.md`) durante os testes para garantir que o fluxo de execução está correto e sem erros.

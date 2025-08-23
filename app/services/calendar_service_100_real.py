@@ -36,52 +36,54 @@ class CalendarServiceReal:
 
     @async_handle_errors(retry_policy='google_calendar')
     async def initialize(self):
-        """Inicializa conexão REAL com Google Calendar usando OAuth 2.0"""
+        """Inicializa conexão REAL com Google Calendar, exigindo um ID de calendário explícito."""
         if self.is_initialized:
             return
         try:
+            # Constrói o serviço de calendário via OAuth
             self.service = self.oauth_handler.build_calendar_service()
             if not self.service:
-                emoji_logger.service_error(
-                    "Não foi possível construir serviço - autorização OAuth necessária."
-                )
-                return
+                raise ValueError("Não foi possível construir o serviço do Google Calendar. Verifique a autorização OAuth.")
 
-            if self.calendar_id:
-                calendar = await asyncio.to_thread(
-                    self.service.calendars().get(calendarId=self.calendar_id).execute
+            # Validação explícita do GOOGLE_CALENDAR_ID
+            if not self.calendar_id:
+                emoji_logger.system_error(
+                    "Configuração Incompleta",
+                    "A variável de ambiente GOOGLE_CALENDAR_ID não está definida."
                 )
-                emoji_logger.service_ready(
-                    f"Google Calendar conectado via OAuth: "
-                    f"{calendar.get('summary', 'Calendar')}"
+                raise ValueError(
+                    "A variável de ambiente GOOGLE_CALENDAR_ID não está definida. "
+                    "O sistema não pode operar sem saber em qual calendário agendar. "
+                    "Por favor, configure o ID do calendário de destino no seu arquivo .env."
                 )
-            else:
-                calendar_list = await asyncio.to_thread(
-                    self.service.calendarList().list().execute
-                )
-                primary_calendar = next(
-                    (
-                        cal for cal in calendar_list.get('items', [])
-                        if cal.get('primary')
-                    ), None
-                )
-                if primary_calendar:
-                    self.calendar_id = primary_calendar.get('id')
-                    emoji_logger.service_ready(
-                        f"Google Calendar conectado via OAuth: "
-                        f"{primary_calendar.get('summary', 'Primary Calendar')}"
-                    )
-                else:
-                    emoji_logger.service_error(
-                        "Nenhum calendário primário encontrado."
-                    )
-                    return
+
+            # Verifica se o calendário existe e temos acesso
+            calendar = await asyncio.to_thread(
+                self.service.calendars().get(calendarId=self.calendar_id).execute
+            )
+            
+            summary = calendar.get('summary', 'ID não encontrado')
+            emoji_logger.service_ready(
+                f"Google Calendar conectado via OAuth ao calendário: '{summary}'",
+                calendar_id=self.calendar_id
+            )
+            
             self.is_initialized = True
-        except Exception as e:
+
+        except HttpError as e:
             emoji_logger.service_error(
-                f"Erro ao conectar Google Calendar: {e}"
+                f"Erro de API ao verificar calendário '{self.calendar_id}': {e.reason}",
+                status_code=e.resp.status
             )
             self.is_initialized = False
+            raise ValueError(f"Não foi possível acessar o calendário com ID '{self.calendar_id}'. Verifique as permissões e se o ID está correto.")
+        
+        except Exception as e:
+            emoji_logger.service_error(
+                f"Erro inesperado ao inicializar Google Calendar: {e}"
+            )
+            self.is_initialized = False
+            raise
 
     def is_business_hours(self, datetime_obj: datetime) -> bool:
         """Verifica se a data/hora está dentro do horário comercial"""
