@@ -347,70 +347,69 @@ class CRMServiceReal:
     async def update_lead(
             self, lead_id: str, update_data: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Atualiza lead REAL no Kommo"""
+        """Atualiza lead REAL no Kommo, incluindo campos customizados e tags."""
         if not self.is_initialized:
             await self.initialize()
         try:
             kommo_update = {}
             if update_data.get("name"):
                 kommo_update["name"] = update_data["name"]
+            
+            # Handle stage update
             if update_data.get("current_stage"):
-                stage_id = self.stage_map.get(
-                    update_data["current_stage"].upper().replace(" ", "_")
-                )
+                normalized_stage = update_data["current_stage"].strip().lower().replace(" ", "_")
+                stage_id = self.stage_map.get(normalized_stage)
                 if stage_id:
                     kommo_update["status_id"] = stage_id
+                else:
+                    emoji_logger.service_warning(f"Estágio '{update_data['current_stage']}' não encontrado no mapa.")
+
+            # Handle custom fields
             custom_fields = []
-            if "bill_value" in update_data:
-                custom_fields.append({
-                    "field_id": self.custom_fields.get("bill_value", 392804),
-                    "values": [{"value": update_data["bill_value"]}]
-                })
-            if update_data.get("chosen_flow"):
-                enum_id = self.solution_type_values.get(
-                    update_data["chosen_flow"].lower()
-                )
-                if enum_id:
-                    custom_fields.append({
-                        "field_id": self.custom_fields.get(
-                            "solution_type", 392808
-                        ),
-                        "values": [{"enum_id": enum_id}]
-                    })
-            if update_data.get("google_event_link"):
-                custom_fields.append({
-                    "field_id": self.custom_fields.get(
-                        "calendar_link", 395520
-                    ),
-                    "values": [{"value": update_data["google_event_link"]}]
-                })
+            field_map = {
+                "bill_value": self.custom_fields.get("bill_value"),
+                "chosen_flow": self.custom_fields.get("solution_type"),
+                "google_event_link": self.custom_fields.get("calendar_link")
+            }
+
+            for key, field_id in field_map.items():
+                if key in update_data and field_id:
+                    value = update_data[key]
+                    if key == "chosen_flow":
+                        enum_id = self.solution_type_values.get(str(value).lower())
+                        if enum_id:
+                            custom_fields.append({"field_id": field_id, "values": [{"enum_id": enum_id}]})
+                    else:
+                        custom_fields.append({"field_id": field_id, "values": [{"value": value}]})
+            
             if custom_fields:
                 kommo_update["custom_fields_values"] = custom_fields
+
+            # Handle tags
+            tags_to_add = update_data.get("tags")
+            if tags_to_add:
+                 kommo_update["_embedded"] = {"tags": [{"name": tag} for tag in tags_to_add]}
+
+
             if not kommo_update:
                 return {"success": True, "message": "Nenhum dado para atualizar"}
+
             await wait_for_kommo()
             async with await self._get_session() as session:
                 async with session.patch(
-                    f"{self.base_url}/api/v4/leads",
+                    f"{self.base_url}/api/v4/leads/{lead_id}",
                     headers=self.headers,
-                    json={"update": [{"id": int(lead_id), **kommo_update}]}
+                    json=kommo_update
                 ) as response:
                     if response.status == 200:
-                        emoji_logger.team_crm(
-                            f"✅ Lead {lead_id} ATUALIZADO no Kommo"
-                        )
-                        return {
-                            "success": True, "message": "Lead atualizado com sucesso"
-                        }
+                        emoji_logger.team_crm(f"✅ Lead {lead_id} ATUALIZADO no Kommo")
+                        return {"success": True, "message": "Lead atualizado com sucesso"}
                     else:
                         error_text = await response.text()
                         raise KommoAPIException(
                             f"Erro ao atualizar lead: {response.status} - {error_text}",
                             error_code="KOMMO_UPDATE_LEAD_ERROR",
-                            details={
-                                "status_code": response.status,
-                                "response": error_text
-                            }
+                            details={"status_code": response.status, "response": error_text, "payload": kommo_update}
                         )
         except Exception as e:
             emoji_logger.service_error(f"Erro ao atualizar lead no Kommo: {e}")

@@ -1,8 +1,4 @@
-"""
-AgenticSDR Stateless - Arquitetura ZERO complexidade para produção
-Cada requisição é completamente isolada e independente
-Não há estado compartilhado entre conversas
-"""
+"\n""\nAgenticSDR Stateless - Arquitetura ZERO complexidade para produção\nCada requisição é completamente isolada e independente\nNão há estado compartilhado entre conversas\n"""
 
 from typing import Dict, Any
 from datetime import datetime, timedelta
@@ -25,6 +21,7 @@ from app.services.calendar_service_100_real import CalendarServiceReal
 from app.services.crm_service_100_real import CRMServiceReal
 from app.services.followup_service_100_real import FollowUpServiceReal
 from app.services.knowledge_service import KnowledgeService
+from app.services.crm_sync_service import crm_sync_service
 
 
 class AgenticSDRStateless:
@@ -83,6 +80,7 @@ class AgenticSDRStateless:
             )
 
         except Exception as e:
+            import traceback
             emoji_logger.system_error(
                 "AgenticSDRStateless",
                 error=f"Erro na inicialização: {e}"
@@ -115,6 +113,9 @@ class AgenticSDRStateless:
 
             # Etapa 3: Sincronizar com serviços externos (CRM)
             lead_info = await self._sync_external_services(lead_info)
+
+            # Etapa 3.5: Sincronizar dados de tags e campos com o CRM
+            await self._sync_crm_data(lead_info, conversation_history)
 
             # Etapa 4: Determinar a estratégia de resposta (Bypass ou LLM)
             user_intent = self.context_analyzer._extract_intent(message)
@@ -200,6 +201,27 @@ class AgenticSDRStateless:
                 emoji_logger.system_error("Falha ao criar lead no Kommo", error=str(e))
         return lead_info
 
+    async def _sync_crm_data(self, lead_info: dict, conversation_history: list):
+        """Gera e envia atualizações de campos e tags para o CRM."""
+        if not lead_info.get("kommo_lead_id"):
+            emoji_logger.system_debug("CRM Sync: Pulando, lead sem kommo_lead_id.")
+            return
+
+        update_payload = crm_sync_service.get_update_payload(
+            lead_info=lead_info,
+            conversation_history=conversation_history
+        )
+
+        if update_payload:
+            try:
+                await self.crm_service.update_lead(
+                    lead_id=str(lead_info["kommo_lead_id"]),
+                    update_data=update_payload
+                )
+                emoji_logger.system_info("CRM Sync: Dados do lead atualizados no Kommo.", payload=update_payload)
+            except Exception as e:
+                emoji_logger.system_error("CRM Sync: Falha ao atualizar dados no Kommo.", error=str(e))
+
     async def _handle_intent_bypass(self, user_intent: str, message: str, lead_info: dict) -> str:
         """Lida com intenções que podem ser resolvidas sem o fluxo principal do LLM."""
         emoji_logger.system_info(f"Intenção '{user_intent}' detectada. Usando fluxo de bypass.")
@@ -275,7 +297,7 @@ class AgenticSDRStateless:
         """
         Parse e executa tool calls na resposta do agente.
         """
-        tool_pattern = r'\[TOOL:\s*([^|\]]+?)\s*(?:\|\s*([^\]]*))?\]'
+        tool_pattern = r'\\[TOOL:\s*([^|\\]+?)\s*(?:\\|\s*([^\\]*))?\]'
         tool_matches = re.findall(tool_pattern, response)
 
         if not tool_matches:
