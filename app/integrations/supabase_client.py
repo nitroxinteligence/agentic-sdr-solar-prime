@@ -581,19 +581,30 @@ class SupabaseClient:
     async def get_recent_followup_count(
             self, lead_id: str, since: datetime
     ) -> int:
-        """Conta o número de follow-ups recentes para um lead."""
+        """
+        Conta o número de follow-ups realmente TENTADOS (executados ou falhos)
+        para um lead recentemente.
+        """
         try:
+            # Status que não devem contar como uma tentativa.
+            non_attempt_statuses = ['pending', 'queued', 'cancelled']
+
             result = self.client.table('follow_ups').select(
                 'id', count='exact'
-            ).eq('lead_id', lead_id).gte(
+            ).eq(
+                'lead_id', lead_id
+            ).gte(
                 'created_at', since.isoformat()
+            ).not_.in_(
+                'status', non_attempt_statuses
             ).execute()
+            
             return result.count
         except Exception as e:
             logger.error(
                 f"Erro ao contar follow-ups recentes para o lead {lead_id}: {e}"
             )
-            return 0
+            return 99 # Retorna um número alto para prevenir loops em caso de erro
 
     async def update_conversation(
             self, conversation_id: str, update_data: Dict[str, Any]
