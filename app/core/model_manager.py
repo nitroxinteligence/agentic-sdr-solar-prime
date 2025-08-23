@@ -336,12 +336,11 @@ class ModelManager:
                     "Resposta do LLM vazia",
                     model=model.id
                 )
+                return "Oi! Me da um minutinho que te respondo."
 
         except Exception as e:
             emoji_logger.model_error(f"Erro ao chamar modelo: {e}")
-            raise e
-
-        return None
+            return "Olá! Te retorno em alguns minutos!!"
 
     async def retry_with_backoff(
             self,

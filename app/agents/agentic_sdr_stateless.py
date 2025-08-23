@@ -337,7 +337,7 @@ class AgenticSDRStateless:
         Parse e executa tool calls na resposta do agente.
         """
         emoji_logger.system_debug(f"Raw LLM response before tool parsing: {response}")
-        tool_pattern = r'\\[TOOL:\s*([^|\\]+?)\s*(?:\\|\s*([^\\]*))?\]'
+        tool_pattern = r'\[TOOL:\s*([^|\]]+?)\s*(?:\|\s*([^\]]*))?\]'
         tool_matches = []
         try:
             tool_matches = re.findall(tool_pattern, response)
@@ -529,8 +529,12 @@ class AgenticSDRStateless:
         except FileNotFoundError:
             system_prompt = "Você é um assistente de vendas."
 
-        # 2. O histórico agora está limpo, terminando com a última mensagem real do usuário.
-        messages_for_model = list(conversation_history)
+        # 2. Prepara as mensagens para o modelo.
+        if is_followup:
+            # Para follow-ups, a 'message' é um prompt completo e contextual.
+            messages_for_model = [{"role": "user", "content": message}]
+        else:
+            messages_for_model = list(conversation_history)
 
         # Limita o histórico para as últimas 200 mensagens para evitar sobrecarga de contexto
         if len(messages_for_model) > 200:
@@ -539,6 +543,15 @@ class AgenticSDRStateless:
                 original_size=len(messages_for_model)
             )
             messages_for_model = messages_for_model[-30:]
+
+        # VERIFICAÇÃO CRÍTICA: Garantir que não estamos enviando conteúdo vazio.
+        if not messages_for_model or not any(msg.get("content") for msg in messages_for_model):
+            emoji_logger.model_error(
+                "Tentativa de chamar o modelo com conteúdo vazio.",
+                history_len=len(conversation_history),
+                is_followup=is_followup
+            )
+            return "<RESPOSTA_FINAL>Não consegui processar sua solicitação no momento.</RESPOSTA_FINAL>"
 
         # 3. Primeira chamada ao modelo para obter a resposta inicial (que pode conter tools).
         response_text = await self.model_manager.get_response(
@@ -559,7 +572,9 @@ class AgenticSDRStateless:
 
                 final_instruction = (
                     f"=== RESULTADO DAS FERRAMENTAS ===\n"
-                    f"Sua resposta inicial foi: '{response_text}'\n"
+                    f"Sua resposta inicial foi: 
+'{response_text}'
+"
                     f"As seguintes ferramentas foram executadas com estes resultados:\n{tool_results_str}\n\n"
                     f"=== INSTRUÇÃO FINAL ===\n"
                     f"Com base nos resultados das ferramentas, gere a resposta final, clara e amigável para o usuário. "
