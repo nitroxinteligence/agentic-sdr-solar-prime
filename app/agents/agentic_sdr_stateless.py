@@ -571,15 +571,14 @@ class AgenticSDRStateless:
                 )
 
                 final_instruction = (
-                    f"=== RESULTADO DAS FERRAMENTAS ===\n"
-                    f"Sua resposta inicial foi: 
+                    f"""=== RESULTADO DAS FERRAMENTAS ===
+Sua resposta inicial foi: 
 '{response_text}'
-"
-                    f"As seguintes ferramentas foram executadas com estes resultados:\n{tool_results_str}\n\n"
-                    f"=== INSTRUÇÃO FINAL ===\n"
-                    f"Com base nos resultados das ferramentas, gere a resposta final, clara e amigável para o usuário. "
-                    f"Siga TODAS as regras do seu prompt de sistema. "
-                    f"Não inclua mais chamadas de ferramentas. Apenas a resposta final."
+As seguintes ferramentas foram executadas com estes resultados:
+{tool_results_str}
+
+=== INSTRUÇÃO FINAL ===
+Com base nos resultados das ferramentas, gere a resposta final, clara e amigável para o usuário. Siga TODAS as regras do seu prompt de sistema. Não inclua mais chamadas de ferramentas. Apenas a resposta final."""
                 )
 
                 # Adiciona a resposta do assistente (com tools) e a instrução final ao histórico
