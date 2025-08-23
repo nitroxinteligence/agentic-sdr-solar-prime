@@ -1039,7 +1039,7 @@
 <response_generation>
   <output_format>
     <RESPOSTA_FINAL>
-    {apenas_a_mensagem_humanizada_para_o_lead_sem_nenhuma_análise_interna}
+    {apenas_a_mensagem_humanizada_para_o_lead_sem_nenhuma_analise_interna}
     </RESPOSTA_FINAL>
   </output_format>
 </response_generation>

@@ -11,7 +11,7 @@
     -   **Justificativa:** A causa raiz é a geração de texto pelo LLM que se assemelha a uma regex malformada, mesmo que não seja uma tool call.
 
 -   [ ] **1.2. Aprimorar a Regex de Parsing de Tools:**
-    -   **Ação:** A regex atual `r'\\\[TOOL:\s*([^|\]+?)\s*(?:\|\s*([^\]*))?\\\]'` já escapa os colchetes. O problema não é a regex em si, mas o `re.findall` tentando interpretar o *conteúdo* da resposta do LLM como uma regex. A solução mais robusta é garantir que o LLM não gere esses caracteres de forma que quebre o parser.
+    -   **Ação:** A regex atual `r'\\\\[TOOL:\s*([^|\\]+?)\s*(?:|\s*([^\\]*))\\\\]'` já escapa os colchetes. O problema não é a regex em si, mas o `re.findall` tentando interpretar o *conteúdo* da resposta do LLM como uma regex. A solução mais robusta é garantir que o LLM não gere esses caracteres de forma que quebre o parser.
     -   **Justificativa:** A correção principal virá do prompting.
 
 -   [x] **1.3. Reforçar Prompting para Saída de Ferramentas:**
@@ -51,6 +51,6 @@
 ### Fase 5: Testes e Validação
 
 -   [ ] **5.1. Testes Automatizados:**
-    -   [ ] Executar testes unitários para as correções implementadas (tentativa anterior cancelada).
+    -   [ ] Escrever testes unitários para as correções implementadas.
 -   [ ] **5.2. Validação Manual:**
     -   [ ] Executar cenários de ponta a ponta para confirmar que todos os problemas foram resolvidos e que o agente opera de forma estável.
