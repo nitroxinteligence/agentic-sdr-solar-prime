@@ -1,33 +1,41 @@
-# TODO - Correção do Agendamento no Google Calendar
+# TODO v2 - Correção e Resiliência do Agendamento no Google Calendar
 
-Este documento detalha as tarefas para corrigir a falha silenciosa que faz com que os eventos sejam agendados no calendário errado.
+Este documento detalha as tarefas para corrigir a falha de configuração do Google Calendar, restaurando a funcionalidade de fallback e adicionando validações para tornar o sistema mais resiliente.
 
 ## Tarefas
 
-### Fase 1: Tornar a Configuração do Calendário Explícita
+### Fase 1: Refatoração do `CalendarService` para Resiliência
 
--   [x] **Modificar `app/services/calendar_service_100_real.py`:**
-    -   Alterar o método `initialize` para remover a lógica de fallback que busca o calendário "principal".
-    -   No método `initialize`, verificar se `self.calendar_id` (vindo de `settings.google_calendar_id`) está presente.
-    -   Se `self.calendar_id` estiver vazio ou `None`, lançar um `ValueError` com a mensagem: "A variável de ambiente GOOGLE_CALENDAR_ID não está definida. O sistema não pode operar sem saber em qual calendário agendar. Por favor, configure o ID do calendário de destino no seu arquivo .env."
-    -   Adicionar um log (`emoji_logger.service_info`) que mostre o `calendar_id` que está sendo utilizado, para clareza na inicialização.
+-   [ ] **Modificar `app/services/calendar_service_100_real.py`:**
+    -   **Reintroduzir a Lógica de Fallback:** No método `initialize`, restaurar a lógica que busca o calendário principal (`'primary': true`) da conta Google autenticada.
+    -   **Implementar Validação de `GOOGLE_CALENDAR_ID`:**
+        -   Antes de usar o `settings.google_calendar_id`, verificar se o valor **não é** uma URL (não deve começar com `http` ou `https`).
+        -   Se o ID fornecido for inválido (é uma URL), registrar um `emoji_logger.system_warning` informando: "O GOOGLE_CALENDAR_ID fornecido é uma URL inválida. Ignorando o valor e utilizando o calendário principal da conta."
+        -   Se o ID for válido, usá-lo. Se for inválido ou não for fornecido, prosseguir com a lógica de fallback para o calendário principal.
+    -   **Garantir Logging Explícito:** Independentemente do método usado (ID explícito ou fallback), o log final da inicialização deve informar claramente qual calendário foi selecionado, mostrando seu `summary` (nome) e `id`. Ex: `emoji_logger.service_ready("Google Calendar conectado ao calendário: '{summary}'", calendar_id=self.calendar_id)`.
+    -   **Remover o `ValueError`:** A verificação que lança um `ValueError` se o ID não estiver presente deve ser removida para permitir o funcionamento do fallback.
 
-### Fase 2: Documentação para o Usuário
+### Fase 2: Aprimoramento da Documentação
 
--   [x] **Criar/Atualizar Documentação:**
-    -   Criar um novo arquivo `docs/CONFIGURACAO_CALENDARIO.md`.
-    -   Neste arquivo, explicar passo a passo como um usuário pode encontrar o `ID do Calendário` no Google Calendar:
-        1.  Abra o Google Calendar.
-        2.  Na barra lateral esquerda, encontre o calendário desejado (ex: "Agenda do Leonardo").
-        3.  Clique nos três pontos (Opções) ao lado do nome do calendário.
-        4.  Selecione "Configurações e compartilhamento".
-        5.  Na seção "Integrar agenda", copie o valor do campo "ID da agenda".
-        6.  Cole este valor na variável `GOOGLE_CALENDAR_ID` no arquivo `.env`.
+-   [ ] **Atualizar `docs/CONFIGURACAO_CALENDARIO.md`:**
+    -   Adicionar uma seção de "Exemplos de IDs Válidos e Inválidos".
+    -   **Válido:** `seunome@gmail.com`
+    -   **Válido:** `c_1234567890abcdefg12345678@group.calendar.google.com`
+    -   **INVÁLIDO:** `https://calendar.google.com/calendar/embed?src=...`
+    -   Adicionar uma nota explicando que, se o ID não for fornecido ou for inválido, o sistema usará o calendário principal da conta Google conectada.
 
-### Fase 3: Verificação Final
+### Fase 3: Teste e Verificação
 
--   [x] **Revisar `app/config.py`:** Garantir que a variável `google_calendar_id` está sendo carregada corretamente do ambiente.
--   [x] **Testar o Fluxo:** Executar o cenário de agendamento novamente, garantindo que:
-    -   Se `GOOGLE_CALENDAR_ID` não estiver definido, o sistema falhe na inicialização com o erro esperado.
-    -   Se `GOOGLE_CALENDAR_ID` estiver definido, o agendamento apareça no calendário correto.
-
+-   [ ] **Testar Cenário 1 (ID Inválido):**
+    -   Manter a URL inválida no `.env` para `GOOGLE_CALENDAR_ID`.
+    -   Reiniciar a aplicação e verificar nos logs se o aviso de ID inválido aparece.
+    -   Verificar se o serviço continua e seleciona o calendário principal.
+    -   Realizar um agendamento e confirmar se ele aparece no calendário principal da conta.
+-   [ ] **Testar Cenário 2 (Sem ID):**
+    -   Comentar ou remover a linha `GOOGLE_CALENDAR_ID` do `.env`.
+    -   Reiniciar a aplicação e verificar se o serviço inicializa usando o calendário principal.
+    -   Realizar um agendamento e confirmar o resultado.
+-   [ ] **Testar Cenário 3 (ID Válido):**
+    -   Configurar um `GOOGLE_CALENDAR_ID` **válido** no `.env`.
+    -   Reiniciar a aplicação e verificar nos logs se o calendário correto foi selecionado.
+    -   Realizar um agendamento e confirmar que o evento foi criado no calendário especificado.

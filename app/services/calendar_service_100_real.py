@@ -36,54 +36,45 @@ class CalendarServiceReal:
 
     @async_handle_errors(retry_policy='google_calendar')
     async def initialize(self):
-        """Inicializa conexão REAL com Google Calendar, exigindo um ID de calendário explícito."""
+        """Inicializa conexão REAL com Google Calendar usando OAuth 2.0."""
         if self.is_initialized:
             return
         try:
-            # Constrói o serviço de calendário via OAuth
+            if not self.calendar_id:
+                raise ValueError("O GOOGLE_CALENDAR_ID não está configurado no arquivo .env.")
+
             self.service = self.oauth_handler.build_calendar_service()
             if not self.service:
-                raise ValueError("Não foi possível construir o serviço do Google Calendar. Verifique a autorização OAuth.")
+                emoji_logger.service_error("Não foi possível construir o serviço do Google Calendar. Verifique a autorização OAuth.")
+                return
 
-            # Validação explícita do GOOGLE_CALENDAR_ID
-            if not self.calendar_id:
-                emoji_logger.system_error(
-                    "Configuração Incompleta",
-                    "A variável de ambiente GOOGLE_CALENDAR_ID não está definida."
-                )
-                raise ValueError(
-                    "A variável de ambiente GOOGLE_CALENDAR_ID não está definida. "
-                    "O sistema não pode operar sem saber em qual calendário agendar. "
-                    "Por favor, configure o ID do calendário de destino no seu arquivo .env."
-                )
-
-            # Verifica se o calendário existe e temos acesso
+            # Verifica se o calendário existe
             calendar = await asyncio.to_thread(
                 self.service.calendars().get(calendarId=self.calendar_id).execute
             )
             
-            summary = calendar.get('summary', 'ID não encontrado')
+            summary = calendar.get('summary', self.calendar_id)
             emoji_logger.service_ready(
                 f"Google Calendar conectado via OAuth ao calendário: '{summary}'",
                 calendar_id=self.calendar_id
             )
-            
             self.is_initialized = True
 
         except HttpError as e:
-            emoji_logger.service_error(
-                f"Erro de API ao verificar calendário '{self.calendar_id}': {e.reason}",
-                status_code=e.resp.status
-            )
+            if e.resp.status == 404:
+                emoji_logger.service_error(
+                    f"O calendário com ID '{self.calendar_id}' não foi encontrado. "
+                    "Verifique se o GOOGLE_CALENDAR_ID no arquivo .env está correto e se a conta de serviço tem permissão."
+                )
+            else:
+                emoji_logger.service_error(f"Ocorreu um erro na API do Google: {e}")
             self.is_initialized = False
-            raise ValueError(f"Não foi possível acessar o calendário com ID '{self.calendar_id}'. Verifique as permissões e se o ID está correto.")
-        
+        except ValueError as e:
+            emoji_logger.service_error(str(e))
+            self.is_initialized = False
         except Exception as e:
-            emoji_logger.service_error(
-                f"Erro inesperado ao inicializar Google Calendar: {e}"
-            )
+            emoji_logger.service_error(f"Erro inesperado ao inicializar o CalendarService: {e}")
             self.is_initialized = False
-            raise
 
     def is_business_hours(self, datetime_obj: datetime) -> bool:
         """Verifica se a data/hora está dentro do horário comercial"""
@@ -438,13 +429,18 @@ Equipe SolarPrime
             if not date and not time:
                  return {"success": False, "message": "É necessário fornecer uma nova data ou um novo horário para o reagendamento."}
 
-            new_datetime = datetime.strptime(f"{new_date} {new_time}", "%Y-%m-%d %H:%M")
+            import pytz
+            sao_paulo_tz = pytz.timezone('America/Sao_Paulo')
+            naive_datetime = datetime.strptime(f"{new_date} {new_time}", "%Y-%m-%d %H:%M")
+            new_datetime = sao_paulo_tz.localize(naive_datetime)
             new_datetime_end = new_datetime + timedelta(hours=1)
 
             # Passo 4: Verificar disponibilidade do novo horário
             emoji_logger.calendar_event(f"Verificando disponibilidade para {new_date} às {new_time}...")
-            time_min = new_datetime.isoformat() + 'Z'
-            time_max = new_datetime_end.isoformat() + 'Z'
+            
+            # Usar o datetime com timezone para a verificação
+            time_min = new_datetime.isoformat()
+            time_max = new_datetime_end.isoformat()
             
             events_result = await asyncio.to_thread(
                 self.service.events().list(
@@ -467,10 +463,10 @@ Equipe SolarPrime
                     "date": suggested_times.get("date")
                 }
 
-            # Passo 5: Atualizar o evento no Google Calendar
+            # Passo 5: Atualizar o evento no Google Calendar, incluindo o timezone
             emoji_logger.calendar_event(f"Horário disponível. Atualizando evento {meeting_id}...")
-            original_event['start']['dateTime'] = new_datetime.isoformat()
-            original_event['end']['dateTime'] = new_datetime_end.isoformat()
+            original_event['start'] = {'dateTime': new_datetime.isoformat(), 'timeZone': 'America/Sao_Paulo'}
+            original_event['end'] = {'dateTime': new_datetime_end.isoformat(), 'timeZone': 'America/Sao_Paulo'}
 
             updated_event = await asyncio.to_thread(
                 self.service.events().update(
