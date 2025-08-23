@@ -294,13 +294,14 @@ class AgenticSDRStateless:
             self,
             response: str,
             lead_info: dict,
-            context: dict
+            context: dict,
+            conversation_history: list
     ) -> dict:
         """
         Parse e executa tool calls na resposta do agente.
         """
         emoji_logger.system_debug(f"Raw LLM response before tool parsing: {response}")
-        tool_pattern = r'\[TOOL:\s*([^|\]]+?)\s*(?:\|\s*([^\]]*))?\]'
+        tool_pattern = r'[[TOOL:\s*([^\]]+?)\s*(?:|\s*([^]]*))?]'
         tool_matches = []
         try:
             tool_matches = re.findall(tool_pattern, response)
@@ -331,7 +332,7 @@ class AgenticSDRStateless:
 
             try:
                 result = await self._execute_single_tool(
-                    service_method, params, lead_info, context
+                    service_method, params, lead_info, context, conversation_history
                 )
                 tool_results[service_method] = result
                 emoji_logger.system_success(
@@ -351,7 +352,8 @@ class AgenticSDRStateless:
             service_method: str,
             params: dict,
             lead_info: dict,
-            context: dict
+            context: dict,
+            conversation_history: list
     ):
         """Executa um tool específico"""
         parts = service_method.split('.')
@@ -369,7 +371,7 @@ class AgenticSDRStateless:
             elif method_name == "schedule_meeting":
                 # Garante que o nome do lead está atualizado antes de agendar
                 updated_lead_info = self.lead_manager.extract_lead_info(
-                    self.conversation_monitor.get_history(lead_info.get("phone_number")),
+                    conversation_history,
                     existing_lead_info=lead_info
                 )
                 lead_info.update(updated_lead_info)
@@ -458,7 +460,7 @@ class AgenticSDRStateless:
                     raise ValueError("O parâmetro 'query' é obrigatório para a busca na base de conhecimento.")
                 return await self.knowledge_service.search_knowledge_base(query)
 
-        raise ValueError(f"Tool não reconhecido: {service_method}")
+        raise ValueError(f"Tool não reconhecido: {service_name}.{method_name}")
 
     async def _generate_response(
         self,
@@ -523,7 +525,7 @@ class AgenticSDRStateless:
         if response_text:
             # 5. Analisa e executa ferramentas, se houver.
             tool_results = await self._parse_and_execute_tools(
-                response_text, lead_info, context
+                response_text, lead_info, context, conversation_history
             )
             if tool_results:
                 # 6. Se ferramentas foram usadas, faz uma segunda chamada ao modelo com os resultados.
@@ -532,14 +534,7 @@ class AgenticSDRStateless:
                 )
 
                 final_instruction = (
-                    f"""=== RESULTADO DAS FERRAMENTAS ===
-Sua resposta inicial foi: 
-'{response_text}'
-As seguintes ferramentas foram executadas com estes resultados:
-{tool_results_str}
-
-=== INSTRUÇÃO FINAL ===
-Com base nos resultados das ferramentas, gere a resposta final, clara e amigável para o usuário. Siga TODAS as regras do seu prompt de sistema. Não inclua mais chamadas de ferramentas. Apenas a resposta final."""
+                    f"""=== RESULTADO DAS FERRAMENTAS ===\nSua resposta inicial foi: \n'{response_text}'\nAs seguintes ferramentas foram executadas com estes resultados:\n{tool_results_str}\n\n=== INSTRUÇÃO FINAL ===\nCom base nos resultados das ferramentas, gere a resposta final, clara e amigável para o usuário. Siga TODAS as regras do seu prompt de sistema. Não inclua mais chamadas de ferramentas. Apenas a resposta final."""
                 )
 
                 # Adiciona a resposta do assistente (com tools) e a instrução final ao histórico

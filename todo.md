@@ -1,36 +1,38 @@
-# TODO: Correção do Agendamento Sobreposto (Double Booking)
+# TODO: Estabilização do Agente e Correção de Erros
 
-**Objetivo:** Garantir que o sistema nunca agende ou reagende uma reunião em um horário que já esteja ocupado no Google Calendar.
+**Objetivo:** Garantir a estabilidade do agente, corrigindo o erro `AttributeError` no fluxo de agendamento e validando a solução.
 
 ---
 
-### Fase 1: Robustecer o `CalendarService`
+### Fase 1: Correção do `AttributeError`
 
--   [x] **Tarefa 1.1: Criar Verificador de Disponibilidade Interno**
+-   [x] **Tarefa 1.1: Diagnosticar a Causa Raiz**
     -   **Status:** Concluído.
-    -   **Arquivo:** `app/services/calendar_service_100_real.py`
-    -   **Ação:** Foi criado o método privado `_is_slot_available` para centralizar a lógica de verificação de conflitos.
+    -   **Análise:** O erro `AttributeError: 'ConversationMonitor' object has no attribute 'get_history'` foi causado por uma chamada incorreta ao `ConversationMonitor` para obter o histórico da conversa, que na verdade é uma variável local transitória na arquitetura stateless.
 
--   [x] **Tarefa 1.2: Refatorar `schedule_meeting` para Verificação Proativa**
+-   [x] **Tarefa 1.2: Implementar a Correção**
     -   **Status:** Concluído.
-    -   **Arquivo:** `app/services/calendar_service_100_real.py`
-    -   **Ação:** A função `schedule_meeting` agora chama `_is_slot_available` antes de qualquer tentativa de agendamento, retornando um erro de conflito se o horário estiver ocupado.
+    -   **Arquivo:** `app/agents/agentic_sdr_stateless.py`
+    -   **Ação:** A variável `conversation_history` foi passada explicitamente através da cadeia de chamadas (`_generate_response` -> `_parse_and_execute_tools` -> `_execute_single_tool`) para fornecer o contexto necessário sem violar o padrão stateless.
 
--   [x] **Tarefa 1.3: Refatorar `reschedule_meeting` para Usar o Verificador Central**
+-   [x] **Tarefa 1.3: Documentar a Análise da Solução**
     -   **Status:** Concluído.
-    -   **Arquivo:** `app/services/calendar_service_100_real.py`
-    -   **Ação:** A função `reschedule_meeting` foi atualizada para usar o novo método `_is_slot_available`, garantindo uma verificação consistente e robusta.
+    -   **Arquivo:** `ANALISE_CORRECAO_ATTRIBUTE_ERROR.md`
+    -   **Ação:** Um relatório detalhado foi criado para justificar por que a solução implementada é a mais correta e inteligente para a arquitetura do projeto.
 
-### Fase 2: Aprimoramento do Prompt e Testes
+### Fase 2: Validação e Próximos Passos
 
--   [x] **Tarefa 2.1: Atualizar o Prompt do Agente**
-    -   **Status:** Concluído.
-    -   **Arquivo:** `app/prompts/prompt-agente.md`
-    -   **Ação:** O prompt foi atualizado para instruir o agente sobre como lidar com erros de conflito de agendamento, tornando a interação com o usuário mais inteligente e resiliente.
-
--   [ ] **Tarefa 2.2: Criar Testes de Validação**
+-   [ ] **Tarefa 2.1: Validação Manual do Fluxo de Agendamento**
     -   **Status:** Pendente.
-    -   **Ação:** Criar um novo arquivo de teste, `tests/test_calendar_conflict.py`.
-    -   **Nota:** A criação de testes foi adiada conforme solicitado.
+    -   **Ação:** Executar um fluxo de conversação completo que resulte no agendamento de uma reunião.
+    -   **Verificação:**
+        -   Confirmar que o erro `AttributeError` não ocorre mais.
+        -   Verificar se o nome do lead aparece corretamente no evento do Google Calendar.
+        -   Garantir que o workflow pós-agendamento (lembretes de follow-up) é acionado com sucesso.
+
+-   [ ] **Tarefa 2.2 (Opcional): Criar Teste Automatizado**
+    -   **Status:** Pendente.
+    -   **Ação:** Adicionar um teste de integração em `tests/` que simule o fluxo de agendamento e valide que a chamada da ferramenta `calendar.schedule_meeting` é executada sem `AttributeError`.
+    -   **Justificativa:** Prevenir regressões futuras nesta funcionalidade crítica.
 
 ---
