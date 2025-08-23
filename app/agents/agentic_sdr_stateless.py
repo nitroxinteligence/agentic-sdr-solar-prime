@@ -448,27 +448,26 @@ class AgenticSDRStateless:
                     )
                 return await self.calendar_service.cancel_meeting(meeting_id)
             elif method_name == "reschedule_meeting":
-                # Lógica robusta: Ignora o meeting_id do LLM e busca sempre do Supabase.
+                # Lógica robusta: Busca sempre a última reunião do Supabase.
                 latest_qualification = await supabase_client.get_latest_qualification(lead_info.get("id"))
                 meeting_id = latest_qualification.get("google_event_id") if latest_qualification else None
                 
                 if not meeting_id:
                     raise ValueError("Não foi encontrada uma reunião ativa para reagendar.")
 
-                # Extrai a nova data/hora da mensagem do usuário se não estiver nos parâmetros
-                # Lógica de reagendamento mais inteligente e contextual
-                user_message = context.get("message", "")
-                new_date, new_time = self._extract_schedule_details(user_message)
+                # Parâmetros são extraídos no bypass e recebidos aqui. Não há re-análise.
+                date = params.get("date")
+                time = params.get("time")
 
-                # Se o usuário não especificar uma nova data, reutiliza a data da reunião original
-                if not new_date and new_time:
+                # Se o usuário não especificar uma nova data (apenas a hora), reutiliza a data da reunião original.
+                if not date and time:
                     original_start_str = latest_qualification.get("meeting_scheduled_at")
                     if original_start_str:
                         original_datetime = datetime.fromisoformat(original_start_str)
-                        new_date = original_datetime.strftime('%Y-%m-%d')
+                        date = original_datetime.strftime('%Y-%m-%d')
                 
-                # Se mesmo assim não tivermos data ou hora, a extração falhou
-                if not new_date or not new_time:
+                # Se, após a lógica de fallback, ainda faltar data ou hora, a solicitação é inválida.
+                if not date or not time:
                     return {
                         "success": False,
                         "message": "Não consegui entender a nova data e hora. Poderia informar o dia e o horário desejado, por favor?"
@@ -476,8 +475,8 @@ class AgenticSDRStateless:
 
                 return await self.calendar_service.reschedule_meeting(
                     meeting_id=meeting_id,
-                    date=new_date,
-                    time=new_time,
+                    date=date,
+                    time=time,
                     lead_info=lead_info
                 )
 
