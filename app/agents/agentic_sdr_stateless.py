@@ -1,4 +1,8 @@
-"\n""\nAgenticSDR Stateless - Arquitetura ZERO complexidade para produção\nCada requisição é completamente isolada e independente\nNão há estado compartilhado entre conversas\n"""
+"""
+AgenticSDR Stateless - Arquitetura ZERO complexidade para produção
+Cada requisição é completamente isolada e independente
+Não há estado compartilhado entre conversas
+"""
 
 from typing import Dict, Any
 from datetime import datetime, timedelta
@@ -297,8 +301,17 @@ class AgenticSDRStateless:
         """
         Parse e executa tool calls na resposta do agente.
         """
+        emoji_logger.system_debug(f"Raw LLM response before tool parsing: {response}")
         tool_pattern = r'\\[TOOL:\s*([^|\\]+?)\s*(?:\\|\s*([^\\]*))?\]'
-        tool_matches = re.findall(tool_pattern, response)
+        tool_matches = []
+        try:
+            tool_matches = re.findall(tool_pattern, response)
+        except re.error as e:
+            emoji_logger.system_error(
+                "Tool parsing error",
+                error=f"Erro de regex ao parsear tools: {e}. Resposta: {response[:200]}..."
+            )
+            return {} # Retorna vazio se a regex falhar
 
         if not tool_matches:
             return {}
