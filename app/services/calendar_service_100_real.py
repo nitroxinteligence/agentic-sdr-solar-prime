@@ -261,30 +261,32 @@ class CalendarServiceReal:
     async def schedule_meeting(
             self, date: str, time: str, lead_info: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Agenda reunião REAL no Google Calendar com validação de data e horário comercial."""
+        """Agenda reunião REAL no Google Calendar com validação robusta de data e horário."""
         if not self.is_initialized:
             await self.initialize()
 
         try:
-            # Etapa 1: Parse e validação da data e hora
+            # Etapa 1: Parse e validação da data
             now = datetime.now()
-            if date.lower() == 'amanhã':
+            date_str = date.lower().strip()
+            
+            if date_str == 'amanha' or date_str == 'amanhã':
                 target_date = (now + timedelta(days=1)).date()
-            elif date.lower() == 'hoje':
+            elif date_str == 'hoje':
                 target_date = now.date()
             else:
-                target_date = datetime.strptime(date, "%Y-%m-%d").date()
+                target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
 
             meeting_time = datetime.strptime(time, "%H:%M").time()
             meeting_datetime = datetime.combine(target_date, meeting_time)
 
             # Etapa 2: Validação de dia e horário comercial
             if not self.is_business_hours(meeting_datetime):
-                next_business_day_str = self.get_next_business_day(meeting_datetime).strftime('%d/%m')
+                next_business_day = self.get_next_business_day(meeting_datetime)
                 return {
                     "success": False, 
                     "error": "outside_business_hours",
-                    "message": f"O horário solicitado está fora do expediente. Por favor, escolha um horário de Segunda a Sexta, entre 8h e 18h. Que tal na próxima {next_business_day_str}?"
+                    "message": f"O horário solicitado ({target_date.strftime('%d/%m')} às {time}) está fora do nosso expediente. Por favor, escolha um horário de Segunda a Sexta, entre 8h e 18h. O próximo dia útil é {next_business_day.strftime('%A, %d/%m')}."
                 }
 
         except ValueError:
@@ -292,14 +294,40 @@ class CalendarServiceReal:
 
         lock_key = f"calendar:schedule:{target_date.strftime('%Y-%m-%d')}:{time}"
         if not await redis_client.acquire_lock(lock_key, ttl=30):
-            return {"success": False, "error": "lock_not_acquired", "message": "Este horário foi agendado. Escolha outro."}
+            return {"success": False, "error": "lock_not_acquired", "message": "Este horário acabou de ser agendado por outra pessoa. Por favor, escolha outro."}
 
         try:
             meeting_end = meeting_datetime + timedelta(hours=1)
             
             description_template = """☀️ REUNIÃO SOLARPRIME - ECONOMIA COM ENERGIA SOLAR
-            ... (conteúdo do template) ...
-            """
+
+Olá {lead_name}!
+
+É com grande satisfação que confirmamos nossa reunião para apresentar como a SolarPrime pode transformar sua conta de energia em um investimento inteligente.
+
+Somos líderes no setor de energia solar em Pernambuco, com mais de 12 anos de experiência e milhares de clientes satisfeitos. Nossa missão é democratizar o acesso à energia limpa e proporcionar economia real de até 90% na conta de luz.
+
+✅ O QUE VAMOS APRESENTAR:
+• Análise personalizada da sua conta de energia
+• Simulação de economia com nossos 4 modelos de negócio
+• Opções de financiamento que cabem no seu bolso
+• Garantias e benefícios exclusivos SolarPrime
+• Retorno do investimento em média de 3 anos
+
+✅ NOSSOS DIFERENCIAIS:
+• Instalação própria de usina - economia de até 90%
+• Aluguel de lote - sua usina em nosso terreno
+• Compra com desconto - economia imediata de 20%
+• Usina de investimento - renda passiva com energia solar
+
+Agradecemos pela confiança em escolher a SolarPrime para cuidar da sua economia energética. Leonardo Ferraz, nosso especialista, está ansioso para mostrar como podemos proteger você dos constantes aumentos da energia elétrica.
+
+✨ Desejamos uma excelente reunião e estamos confiantes de que será o início de uma parceria de sucesso!
+
+Atenciosamente,
+Equipe SolarPrime
+☀️ Transformando Sol em Economia"""
+
             event_description = description_template.format(lead_name=lead_info.get("name", "Cliente"))
 
             event = {
