@@ -29,7 +29,7 @@
   - **Ação:** Melhorar o método `_generate_intelligent_followup_message` no `followup_worker.py`.
   - **Melhoria:** O prompt enviado ao LLM será mais rico, contendo um resumo claro do último ponto da conversa e uma instrução explícita para "reengajar o lead a partir deste ponto", garantindo que o follow-up seja relevante e não uma mensagem genérica de "ainda tem interesse?".
 
-- [ ] **2.4. Validar Lembretes de Reunião:**
+- [x] **2.4. Validar Lembretes de Reunião:**
   - **Ação:** Revisar o método `_execute_post_scheduling_workflow` em `agentic_sdr_stateless.py` para garantir que, após um agendamento, os follow-ups de lembrete (24h e 2h antes) sejam criados corretamente no banco de dados pelo `followup_service`.
 
 ---

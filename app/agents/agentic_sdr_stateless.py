@@ -292,6 +292,41 @@ class AgenticSDRStateless:
             "tratativas de erro."
         )
 
+        # Agendar lembretes de reunião
+        meeting_date_time = datetime.fromisoformat(schedule_result["start_time"])
+        lead_email = lead_info.get("email")
+        lead_name = lead_info.get("name", "")
+        meet_link = schedule_result.get("meet_link", "")
+
+        # Lembrete de 24 horas
+        message_24h = (
+            f"Oi {lead_name}! Tudo bem? Passando para confirmar sua reunião de amanhã às "
+            f"{meeting_date_time.strftime('%H:%M')} com o Leonardo. Aqui está o link da reunião: "
+            f"{meet_link} Está tudo certo para você?"
+        )
+        await self.followup_service.schedule_followup(
+            phone_number=lead_info["phone_number"],
+            message=message_24h,
+            delay_hours=24,
+            lead_info=lead_info,
+            followup_type="MEETING_REMINDER"
+        )
+        emoji_logger.followup_event(f"Lembrete de 24h agendado para {lead_name}.")
+
+        # Lembrete de 2 horas
+        message_2h = (
+            f"{lead_name}, Sua reunião com o Leonardo é daqui a 2 horas! Te esperamos às "
+            f"{meeting_date_time.strftime('%H:%M')}! Link: {meet_link}"
+        )
+        await self.followup_service.schedule_followup(
+            phone_number=lead_info["phone_number"],
+            message=message_2h,
+            delay_hours=2,
+            lead_info=lead_info,
+            followup_type="MEETING_REMINDER"
+        )
+        emoji_logger.followup_event(f"Lembrete de 2h agendado para {lead_name}.")
+
     async def _parse_and_execute_tools(
             self,
             response: str,
