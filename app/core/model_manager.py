@@ -1,21 +1,21 @@
 """
 Model Manager - Gerenciamento simples de modelos AI
-ZERO complexidade, m	ilde;xima confiabilidade
+ZERO complexidade, máxima confiabilidade
 """
 
 from typing import Optional, Dict, Any
 import asyncio
 import base64
-import re
 from app.utils.logger import emoji_logger
 from app.config import settings
 
 # Import das bibliotecas REAIS de AI
 try:
     import google.generativeai as genai
+    from google.api_core.exceptions import ResourceExhausted
     GEMINI_AVAILABLE = True
 except ImportError:
-    emoji_logger.system_warning("google-generativeai n	ilde;o instalado")
+    emoji_logger.system_warning("google-generativeai não instalado")
     GEMINI_AVAILABLE = False
 
 try:
@@ -32,7 +32,7 @@ class Gemini:
         self.id = id
         self.api_key = api_key
         self.base_model_name = id
-        if id == "gemini-2.5-pro":
+        if id == "gemini-1.5-pro":
             self.base_model_name = "gemini-1.5-pro"
         elif id == "gemini-2.0-flash-thinking":
             self.base_model_name = "gemini-1.5-flash"
@@ -42,56 +42,48 @@ class Gemini:
 
     async def achat(self, messages, system_prompt: Optional[str] = None):
         """Chamada REAL para Gemini API com suporte multimodal, criando um modelo com o system_prompt a cada chamada."""
-        import google.generativeai as genai
-        import base64
-
         if not GEMINI_AVAILABLE:
             return type('Response', (), {'content': 'Gemini não disponível. Configure GOOGLE_API_KEY.'})()
 
-        try:
-            # Cria uma nova instância do modelo a cada chamada, garantindo que o system_prompt seja aplicado.
-            model = genai.GenerativeModel(
-                model_name=self.base_model_name,
-                system_instruction=system_prompt
-            )
+        # Cria uma nova instância do modelo a cada chamada, garantindo que o system_prompt seja aplicado.
+        model = genai.GenerativeModel(
+            model_name=self.base_model_name,
+            system_instruction=system_prompt
+        )
 
-            gemini_history = []
-            for msg in messages:
-                role = 'user' if msg['role'] == 'user' else 'model'
-                content = msg.get('content', '')
-                
-                parts = []
-                if isinstance(content, list):
-                    for item in content:
-                        if item.get("type") == "text":
-                            parts.append(item.get("text", ""))
-                        elif item.get("type") == "media":
-                            media_data = item.get("media_data", {})
-                            mime_type = media_data.get("mime_type")
-                            base64_content = media_data.get("content")
-                            if mime_type and base64_content:
-                                parts.append({
-                                    "inline_data": {
-                                        "mime_type": mime_type,
-                                        "data": base64.b64decode(base64_content)
-                                    }
-                                })
-                else:
-                    parts.append(str(content))
+        gemini_history = []
+        for msg in messages:
+            role = 'user' if msg['role'] == 'user' else 'model'
+            content = msg.get('content', '')
+            
+            parts = []
+            if isinstance(content, list):
+                for item in content:
+                    if item.get("type") == "text":
+                        parts.append(item.get("text", ""))
+                    elif item.get("type") == "media":
+                        media_data = item.get("media_data", {})
+                        mime_type = media_data.get("mime_type")
+                        base64_content = media_data.get("content")
+                        if mime_type and base64_content:
+                            parts.append({
+                                "inline_data": {
+                                    "mime_type": mime_type,
+                                    "data": base64.b64decode(base64_content)
+                                }
+                            })
+            else:
+                parts.append(str(content))
 
-                if parts:
-                    gemini_history.append({'role': role, 'parts': parts})
+            if parts:
+                gemini_history.append({'role': role, 'parts': parts})
 
-            response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: model.generate_content(gemini_history)
-            )
+        response = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: model.generate_content(gemini_history)
+        )
 
-            return type('Response', (), {'content': response.text})()
-
-        except Exception as e:
-            emoji_logger.system_error("Gemini", f"Erro na API: {e}")
-            return type('Response', (), {'content': f'Erro Gemini: {str(e)}'})()
+        return type('Response', (), {'content': response.text})()
 
 
 class OpenAI:
@@ -109,7 +101,7 @@ class OpenAI:
         """Chamada REAL para OpenAI API"""
         if not OPENAI_AVAILABLE or not self.client:
             return type('Response', (), {
-                'content': 'OpenAI n	ilde;o dispon	ilde;vel. Configure OPENAI_API_KEY.'
+                'content': 'OpenAI não disponível. Configure OPENAI_API_KEY.'
             })()
 
         try:
@@ -133,8 +125,8 @@ class OpenAI:
 
 class ModelManager:
     """
-    Gerenciador SIMPLES de modelos AI com fallback autom	ilde;tico
-    Mant	ilde;m 100% da funcionalidade de forma modular
+    Gerenciador SIMPLES de modelos AI com fallback automático
+    Mantém 100% da funcionalidade de forma modular
     """
 
     def __init__(self):
@@ -146,11 +138,11 @@ class ModelManager:
         self.is_initialized = False
 
     def initialize(self):
-        """Inicializa	ilde;	ilde;o SIMPLES dos modelos"""
+        """Inicialização SIMPLES dos modelos"""
         if self.is_initialized:
             return
 
-        # Modelo prim	ilde;rio - Gemini
+        # Modelo primário - Gemini
         try:
             if settings.primary_ai_model.startswith("gemini"):
                 self.primary_model = Gemini(
@@ -158,7 +150,7 @@ class ModelManager:
                     api_key=settings.google_api_key
                 )
                 emoji_logger.system_ready(
-                    "Modelo prim	ilde;rio Gemini configurado",
+                    "Modelo primário Gemini configurado",
                     model=settings.primary_ai_model
                 )
         except Exception as e:
@@ -269,8 +261,9 @@ class ModelManager:
                 messages_with_system = [{"role": "system", "content": system_prompt}] + messages
                 response = await model.achat(messages_with_system)
             elif isinstance(model, Gemini):
-                # Passa o system_prompt para o achat do Gemini, que criará um modelo com ele
-                response = await model.achat(messages, system_prompt=system_prompt)
+                async def gemini_call():
+                    return await model.achat(messages, system_prompt=system_prompt)
+                response = await self.retry_with_backoff(gemini_call)
             else:
                 # Fallback para outros modelos que possam ser adicionados
                 response = await model.achat(messages)
@@ -290,6 +283,7 @@ class ModelManager:
 
         except Exception as e:
             emoji_logger.model_error(f"Erro ao chamar modelo: {e}")
+            raise e
 
         return None
 
@@ -309,23 +303,28 @@ class ModelManager:
                 result = await func()
                 if result:
                     return result
-            except Exception as e:
+            except ResourceExhausted as e:
                 if attempt < max_attempts - 1:
                     emoji_logger.model_warning(
-                        f"Tentativa {attempt + 1} falhou, "
-                        f"aguardando {delay}s"
+                        f"Erro de quota (429). Tentativa {attempt + 1} falhou, "
+                        f"aguardando {delay}s. Detalhes: {e}"
                     )
                     await asyncio.sleep(delay)
                     delay *= 2
                 else:
                     emoji_logger.model_error(
-                        f"Todas as tentativas falharam: {e}"
+                        f"Todas as tentativas falharam após erro de quota: {e}"
                     )
-
+                    raise e
+            except Exception as e:
+                emoji_logger.model_error(
+                    f"Erro não relacionado a quota. Todas as tentativas falharam: {e}"
+                )
+                raise e
         return None
 
     def get_model_info(self) -> Dict[str, Any]:
-        """Retorna informa	ilde;	ilde;es sobre os modelos configurados"""
+        """Retorna informações sobre os modelos configurados"""
         return {
             "primary": (
                 settings.primary_ai_model if self.primary_model else None
