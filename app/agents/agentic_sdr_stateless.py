@@ -455,22 +455,29 @@ class AgenticSDRStateless:
                 if not meeting_id:
                     raise ValueError("Não foi encontrada uma reunião ativa para reagendar.")
 
-                # Parâmetros são extraídos no bypass e recebidos aqui. Não há re-análise.
+                # Parâmetros são extraídos no bypass e recebidos aqui.
                 date = params.get("date")
                 time = params.get("time")
 
-                # Se o usuário não especificar uma nova data (apenas a hora), reutiliza a data da reunião original.
+                # Lógica de fallback contextual: se o usuário só passou a hora, reutiliza a data original.
                 if not date and time:
                     original_start_str = latest_qualification.get("meeting_scheduled_at")
                     if original_start_str:
                         original_datetime = datetime.fromisoformat(original_start_str)
                         date = original_datetime.strftime('%Y-%m-%d')
                 
-                # Se, após a lógica de fallback, ainda faltar data ou hora, a solicitação é inválida.
-                if not date or not time:
+                # Se, após o fallback, a data ainda estiver faltando, faz uma pergunta de esclarecimento.
+                if not date and time:
                     return {
                         "success": False,
-                        "message": "Não consegui entender a nova data e hora. Poderia informar o dia e o horário desejado, por favor?"
+                        "message": f"Entendi que você quer reagendar para as {time}. Para qual dia seria, por favor?"
+                    }
+
+                # Se faltar a hora, também pede esclarecimento.
+                if not time:
+                    return {
+                        "success": False,
+                        "message": "Não consegui identificar o novo horário para o reagendamento. Poderia me informar?"
                     }
 
                 return await self.calendar_service.reschedule_meeting(
