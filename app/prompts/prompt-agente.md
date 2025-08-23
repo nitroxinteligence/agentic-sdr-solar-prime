@@ -579,10 +579,12 @@
   <available_tools>
     <calendar_tools>
       <tool name="calendar.check_availability">
-        <description>Verificar horários disponíveis no Google Calendar do Leonardo Ferraz</description>
-        <usage>Usar SEMPRE antes de apresentar horários ao cliente</usage>
-        <parameters>Nenhum parâmetro necessário</parameters>
-        <example>[TOOL: calendar.check_availability]</example>
+        <description>Verificar horários disponíveis no Google Calendar do Leonardo Ferraz para uma data específica.</description>
+        <usage>Usar SEMPRE antes de apresentar horários ao cliente. Se o usuário mencionar um dia (ex: "amanhã", "segunda-feira", "dia 25"), você DEVE calcular a data no formato YYYY-MM-DD e passá-la no parâmetro `date_request`.</usage>
+        <parameters>
+          - date_request: YYYY-MM-DD (opcional, se omitido, verifica o próximo dia útil)
+        </parameters>
+        <example>[TOOL: calendar.check_availability | date_request=2025-08-25]</example>
       </tool>
       
       <tool name="calendar.schedule_meeting">
