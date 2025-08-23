@@ -83,7 +83,21 @@ class Gemini:
             lambda: model.generate_content(gemini_history)
         )
 
-        return type('Response', (), {'content': response.text})()
+        try:
+            # Acesso seguro ao conteúdo da resposta
+            content = response.text
+            return type('Response', (), {'content': content})()
+        except Exception as e:
+            # Se response.text falhar (e.g., sem 'parts' válidas), loga e retorna None
+            finish_reason = getattr(response, 'finish_reason', 'N/A')
+            prompt_feedback = getattr(response, 'prompt_feedback', 'N/A')
+            emoji_logger.model_warning(
+                "Gemini response has no valid part, indicating a potential issue (e.g., safety filters). Triggering fallback.",
+                finish_reason=finish_reason,
+                prompt_feedback=str(prompt_feedback),
+                error=str(e)
+            )
+            return None
 
 
 class OpenAI:

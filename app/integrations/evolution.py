@@ -26,7 +26,7 @@ class EvolutionAPIClient:
 
     def __init__(self):
         self.base_url = settings.evolution_api_url
-        self.instance_name = quote(settings.evolution_instance_name)
+        self.instance_name = settings.evolution_instance_name
         self.api_key = settings.evolution_api_key
         self._client = None
         self._last_health_check = 0
