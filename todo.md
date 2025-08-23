@@ -1,43 +1,29 @@
-# Plano de Ação: Refatoração do Sistema de Follow-up
+# TODO - Refatoração do Fluxo de Reagendamento
 
-*Objetivo: Corrigir a lógica de contagem de follow-ups, garantir que o reengajamento funcione e validar o fluxo de lembretes de reunião, tornando o sistema confiável e fácil de manter.*
+Este documento detalha as tarefas necessárias para refatorar o sistema de agendamento, eliminando o "bypass de intenção" e centralizando a lógica no fluxo principal do LLM.
 
----
+## Tarefas
 
-### Fase 1: Diagnóstico e Análise de Código
+### Fase 1: Refatoração do `AgenticSDRStateless`
 
-- [x] **1.1. Analisar o Fluxo de Dados:**
-  - [x] Mapear o ciclo de vida de um follow-up: `followup_service` (cria no DB) -> `followup_executor_service` (lê do DB e enfileira no Redis) -> `followup_worker` (consome do Redis e executa).
-- [x] **1.2. Isolar a Lógica de Contagem:**
-  - [x] Revisar o método `enqueue_pending_followups` em `followup_executor_service.py`.
-  - [x] Revisar o método `get_recent_followup_count` em `supabase_client.py` para entender como a contagem é feita. A hipótese é que a consulta SQL está incorreta.
+-   [ ] **Remover `_handle_intent_bypass`:** Excluir completamente o método `_handle_intent_bypass` de `app/agents/agentic_sdr_stateless.py`.
+-   [ ] **Simplificar `process_message`:** Modificar o método `process_message` para que todas as mensagens, sem exceção, sejam direcionadas para `_generate_llm_response`. A verificação de intenção (`user_intent`) deve ser removida.
+-   [ ] **Remover `_extract_schedule_details`:** Excluir o método `_extract_schedule_details` de `app/agents/agentic_sdr_stateless.py`, pois a extração de data/hora será responsabilidade do LLM.
 
----
+### Fase 2: Fortalecimento do `CalendarService`
 
-### Fase 2: Correção e Refatoração
+-   [ ] **Mover Lógica de Fallback para `reschedule_meeting`:** Transferir a lógica que busca a última reunião agendada do Supabase do método `_execute_single_tool` (em `agentic_sdr_stateless.py`) para dentro do método `reschedule_meeting` em `app/services/calendar_service_100_real.py`.
+-   [ ] **Tornar `reschedule_meeting` mais inteligente:** O método deve ser capaz de lidar com parâmetros parciais (apenas data ou apenas hora), buscando os dados faltantes da reunião original. Se nenhuma reunião ativa for encontrada, deve retornar um erro claro.
 
-- [x] **2.1. Corrigir a Contagem de Follow-ups:**
-  - **Ação:** Modificar a consulta em `get_recent_followup_count` para que ela **não** inclua follow-ups com status `pending` ou `queued` na contagem de "tentativas". Apenas follow-ups `executed` ou `failed` devem contar como uma tentativa real. Isso resolverá o problema do "limite atingido" imediatamente.
+### Fase 3: Aprimoramento do Prompt
 
-- [x] **2.2. Centralizar e Simplificar a Lógica de Agendamento:**
-  - **Problema:** A lógica de quando agendar um follow-up está espalhada (o `ConversationMonitor` agenda, o `AgenticSDRStateless` também pode).
-  - **Ação:** Criar um novo serviço `FollowUpManagerService` (`app/services/followup_manager.py`).
-  - **Responsabilidade:** Este novo serviço terá um único método, como `handle_conversation_inactivity(lead_id, phone_number)`, que será chamado pelo `ConversationMonitor`. Ele conterá a lógica de verificar o limite e agendar o follow-up, centralizando a regra de negócio.
+-   [ ] **Atualizar `prompt-agente.md`:** Adicionar instruções explícitas para o LLM sobre como lidar com pedidos de agendamento, reagendamento e cancelamento. O prompt deve instruir o agente a:
+    1.  Sempre coletar **todas** as informações necessárias (data, hora, e-mail) antes de chamar a ferramenta `calendar.schedule_meeting`.
+    2.  Fazer perguntas de esclarecimento se a solicitação do usuário for ambígua (ex: "às 10h" -> "Claro, para qual dia?").
+    3.  Priorizar a chamada da ferramenta `calendar.reschedule_meeting` ou `calendar.cancel_meeting` quando a intenção for clara.
 
-- [x] **2.3. Refatorar o `FollowUpWorker` para Inteligência Contextual:**
-  - **Problema:** O worker atual gera uma mensagem de follow-up baseada em um prompt genérico.
-  - **Ação:** Melhorar o método `_generate_intelligent_followup_message` no `followup_worker.py`.
-  - **Melhoria:** O prompt enviado ao LLM será mais rico, contendo um resumo claro do último ponto da conversa e uma instrução explícita para "reengajar o lead a partir deste ponto", garantindo que o follow-up seja relevante e não uma mensagem genérica de "ainda tem interesse?".
+### Fase 4: Limpeza e Verificação
 
-- [x] **2.4. Validar Lembretes de Reunião:**
-  - **Ação:** Revisar o método `_execute_post_scheduling_workflow` em `agentic_sdr_stateless.py` para garantir que, após um agendamento, os follow-ups de lembrete (24h e 2h antes) sejam criados corretamente no banco de dados pelo `followup_service`.
-
----
-
-### Fase 3: Testes e Validação
-
-- [ ] **3.1. Criar Testes para a Nova Lógica:**
-  - [ ] Escrever um teste unitário para o novo `FollowUpManagerService` para validar a lógica de contagem e agendamento.
-  - [ ] Escrever um teste para o `FollowUpWorker` que simula uma tarefa da fila e verifica se o prompt gerado para o LLM é contextualmente rico.
-- [ ] **3.2. Validação Manual:**
-  - [ ] Após a implementação, solicitar a execução de um cenário de teste onde um lead para de responder, para observarmos nos logs se o follow-up de reengajamento é agendado e executado corretamente.
+-   [ ] **Revisar `_execute_single_tool`:** Após mover a lógica de fallback, simplificar o `case` de `reschedule_meeting` dentro de `_execute_single_tool` para apenas passar os parâmetros recebidos para o `calendar_service`.
+-   [ ] **Testar o Novo Fluxo:** Realizar testes manuais para garantir que os cenários de agendamento, reagendamento (com informações completas e parciais) e cancelamento estão funcionando de forma robusta e natural.
+-   [ ] **Revisar Logs:** Acompanhar os logs (`logs-console.md`) durante os testes para garantir que o fluxo de execução está correto e sem erros.

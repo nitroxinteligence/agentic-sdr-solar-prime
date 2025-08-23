@@ -121,12 +121,8 @@ class AgenticSDRStateless:
             # Etapa 3.5: Sincronizar dados de tags e campos com o CRM
             await self._sync_crm_data(lead_info, conversation_history)
 
-            # Etapa 4: Determinar a estratégia de resposta (Bypass ou LLM)
-            user_intent = self.context_analyzer._extract_intent(message)
-            if user_intent in ["reagendamento", "cancelamento", "agendamento"]:
-                response = await self._handle_intent_bypass(user_intent, message, lead_info)
-            else:
-                response = await self._generate_llm_response(message, lead_info, conversation_history, execution_context)
+            # Etapa 4: Gerar resposta via LLM (fluxo unificado)
+            response = await self._generate_llm_response(message, lead_info, conversation_history, execution_context)
 
             # Etapa 5: Finalizar e registrar a resposta
             await self.conversation_monitor.register_message(phone=phone, is_from_user=False, lead_info=lead_info)
@@ -226,44 +222,7 @@ class AgenticSDRStateless:
             except Exception as e:
                 emoji_logger.system_error("CRM Sync: Falha ao atualizar dados no Kommo.", error=str(e))
 
-    async def _handle_intent_bypass(self, user_intent: str, message: str, lead_info: dict) -> str:
-        """Lida com intenções que podem ser resolvidas sem o fluxo principal do LLM."""
-        emoji_logger.system_info(f"Intenção '{user_intent}' detectada. Usando fluxo de bypass.")
-        tool_name, tool_params = "", {}
-        
-        if user_intent == "reagendamento":
-            tool_name = "calendar.reschedule_meeting"
-            date, time = self._extract_schedule_details(message)
-            if date:
-                tool_params['date'] = date
-            if time:
-                tool_params['time'] = time
-        elif user_intent == "cancelamento":
-            tool_name = "calendar.cancel_meeting"
-        elif user_intent == "agendamento":
-            tool_name = "calendar.check_availability"
-            date, _ = self._extract_schedule_details(message)
-            if date:
-                tool_params['date_request'] = date
-
-        params_str = " | ".join([f"{k}={v}" for k, v in tool_params.items()])
-        tool_call_string = f"[TOOL: {tool_name}{' | ' + params_str if params_str else ''}]"
-        
-        context = {"message": message}
-        tool_results = await self._parse_and_execute_tools(tool_call_string, lead_info, context)
-
-        if not tool_results:
-            return "Não consegui processar sua solicitação no momento. Pode tentar novamente?"
-
-        result = next(iter(tool_results.values()), {})
-        if result.get("success"):
-            if "available_slots" in result:
-                slots = result['available_slots']
-                date_str = datetime.strptime(result['date'], '%Y-%m-%d').strftime('%d/%m/%Y')
-                return f"Perfeito! Para o dia {date_str}, tenho os seguintes horários disponíveis: {', '.join(slots)}. Qual prefere?" if slots else f"Poxa, não tenho horários disponíveis para o dia {date_str}. Podemos tentar outro dia?"
-            return result.get("message", "Sua solicitação foi processada com sucesso.")
-        else:
-            return f"Desculpe, tive um problema ao processar sua solicitação: {result.get('message', 'erro desconhecido')}. Podemos tentar de outra forma?"
+    
 
     async def _generate_llm_response(self, message: str, lead_info: dict, conversation_history: list, execution_context: dict) -> str:
         """Executa o fluxo normal de geração de resposta com o LLM."""
@@ -448,42 +407,9 @@ class AgenticSDRStateless:
                     )
                 return await self.calendar_service.cancel_meeting(meeting_id)
             elif method_name == "reschedule_meeting":
-                # Lógica robusta: Busca sempre a última reunião do Supabase.
-                latest_qualification = await supabase_client.get_latest_qualification(lead_info.get("id"))
-                meeting_id = latest_qualification.get("google_event_id") if latest_qualification else None
-                
-                if not meeting_id:
-                    raise ValueError("Não foi encontrada uma reunião ativa para reagendar.")
-
-                # Parâmetros são extraídos no bypass e recebidos aqui.
-                date = params.get("date")
-                time = params.get("time")
-
-                # Lógica de fallback contextual: se o usuário só passou a hora, reutiliza a data original.
-                if not date and time:
-                    original_start_str = latest_qualification.get("meeting_scheduled_at")
-                    if original_start_str:
-                        original_datetime = datetime.fromisoformat(original_start_str)
-                        date = original_datetime.strftime('%Y-%m-%d')
-                
-                # Se, após o fallback, a data ainda estiver faltando, faz uma pergunta de esclarecimento.
-                if not date and time:
-                    return {
-                        "success": False,
-                        "message": f"Entendi que você quer reagendar para as {time}. Para qual dia seria, por favor?"
-                    }
-
-                # Se faltar a hora, também pede esclarecimento.
-                if not time:
-                    return {
-                        "success": False,
-                        "message": "Não consegui identificar o novo horário para o reagendamento. Poderia me informar?"
-                    }
-
                 return await self.calendar_service.reschedule_meeting(
-                    meeting_id=meeting_id,
-                    date=date,
-                    time=time,
+                    date=params.get("date"),
+                    time=params.get("time"),
                     lead_info=lead_info
                 )
 
@@ -628,33 +554,7 @@ Com base nos resultados das ferramentas, gere a resposta final, clara e amigáve
                 changes[key] = value
         return changes
 
-    def _extract_schedule_details(self, message: str) -> (Optional[str], Optional[str]):
-        """Extrai data e hora de uma mensagem usando dateparser."""
-        import dateparser
-        from app.config import settings
-        import pytz
-
-        # Configurações para o dateparser entender português e o contexto futuro
-        parser_settings = {
-            'PREFER_DATES_FROM': 'future',
-            'TIMEZONE': settings.timezone,
-            'RETURN_AS_TIMEZONE_AWARE': True
-        }
-        
-        # A biblioteca dateparser parseia a string inteira para encontrar a data/hora
-        parsed_datetime = dateparser.parse(message, languages=['pt'], settings=parser_settings)
-
-        if parsed_datetime:
-            # Garante que o objeto datetime tenha timezone antes de formatar
-            tz = pytz.timezone(settings.timezone)
-            if parsed_datetime.tzinfo is None:
-                parsed_datetime = tz.localize(parsed_datetime)
-            
-            date_str = parsed_datetime.strftime('%Y-%m-%d')
-            time_str = parsed_datetime.strftime('%H:%M')
-            return date_str, time_str
-        
-        return None, None
+    
 
     async def _sync_lead_changes(self, changes: dict, phone: str, lead_info: dict):
         """Sincroniza as mudanças do lead com o CRM."""

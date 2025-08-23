@@ -1,89 +1,40 @@
-2025-08-23 16:03:46.328 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 📊 LeadManager inicializado pronto
-2025-08-23 16:03:46.328 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 🧠 ContextAnalyzer inicializado pronto
-2025-08-23 16:03:46.328 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 📊 ConversationMonitor inicializado pronto
-2025-08-23 16:03:46.328 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ ✅ ConversationMonitor: Loop iniciado
-2025-08-23 16:03:46.516 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 🔄 Access token renovado com sucesso
-2025-08-23 16:03:46.520 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: ✅ Serviço Google Calendar construído com OAuth
-2025-08-23 16:03:47.157 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: Google Calendar conectado via OAuth: leonardofvieira00@gmail.com
-2025-08-23 16:03:48.982 | INFO     | app.integrations.supabase_client:create_follow_up:325 | Follow-up criado: 80f8d8da-e503-44d7-96da-41dfa892805a
-2025-08-23 16:03:48.982 | INFO     | app.utils.logger:log_with_emoji:75 | 🔔 ✅ Follow-up agendado: IMMEDIATE_REENGAGEMENT para 55818298... (Tentativa 1)
-2025-08-23 16:03:48.983 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ ⏰ Status Redis atualizado: followup_30min_sent para 55818298...
-2025-08-23 16:03:49.201 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ ⚠️ Lead não encontrado para monitoramento: 55819813...
-2025-08-23 16:03:50.614 | INFO     | app.integrations.supabase_client:create_follow_up:325 | Follow-up criado: 46c242fc-47f4-4e56-a2f7-cc69c8903c65
-2025-08-23 16:03:50.614 | INFO     | app.utils.logger:log_with_emoji:75 | 🔔 ✅ Follow-up agendado: IMMEDIATE_REENGAGEMENT para 55819649... (Tentativa 1)
-2025-08-23 16:03:50.617 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ ⏰ Status Redis atualizado: followup_30min_sent para 55819649...
-2025-08-23 16:03:50.945 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: ✅ Kommo CRM conectado: leonardofvieira00
-2025-08-23 16:03:51.570 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 📊 9 campos customizados mapeados
-2025-08-23 16:03:52.100 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 📊 32 variações de estágios mapeadas
-2025-08-23 16:03:52.153 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: ✅ Evolution API conectada: 1 instâncias
-2025-08-23 16:03:52.154 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ ✅ AgenticSDR Stateless inicializado! pronto | Data: {'modules': ['ModelManager', 'MultimodalProcessor', 'LeadManager', 'ContextAnalyzer', 'CalendarService', 'CRMService', 'FollowUpService']}
-2025-08-23 16:03:52.154 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ FollowUp Worker pronto
-2025-08-23 16:03:52.154 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ FollowUp Services (Scheduler & Worker) pronto
-2025-08-23 16:03:52.154 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ 🔥 Pré-aquecendo AgenticSDR (Stateless)...
-2025-08-23 16:03:52.162 | INFO     | app.services.knowledge_service:__init__:24 | ✅ KnowledgeService inicializado (versão simplificada)
-2025-08-23 16:03:52.163 | INFO     | app.utils.logger:log_with_emoji:75 | 🚀 Iniciando AgenticSDR Stateless
-2025-08-23 16:03:52.163 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo primário Gemini configurado pronto | Data: {'model': 'gemini-2.5-pro'}
-2025-08-23 16:03:52.170 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo fallback OpenAI configurado pronto | Data: {'model': 'o3-mini'}
-2025-08-23 16:03:52.171 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo reasoning configurado pronto | Data: {'model': 'gemini-2.0-flash-thinking'}
-2025-08-23 16:03:52.171 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Sistema de modelos configurado pronto | Data: {'primary_model': 'gemini-2.5-pro', 'fallback_available': True, 'reasoning_enabled': True}
-2025-08-23 16:03:52.171 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 🎨 MultimodalProcessor habilitado pronto | Data: {'dependencies': {'ocr': True, 'audio': True, 'pdf': True}}
-2025-08-23 16:03:52.171 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 📊 LeadManager inicializado pronto
-2025-08-23 16:03:52.172 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 🧠 ContextAnalyzer inicializado pronto
-2025-08-23 16:03:52.172 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 📊 ConversationMonitor inicializado pronto
-2025-08-23 16:03:52.172 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ ✅ ConversationMonitor: Loop iniciado
-2025-08-23 16:03:52.176 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: ✅ Serviço Google Calendar construído com OAuth
-2025-08-23 16:03:52.803 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: Google Calendar conectado via OAuth: leonardofvieira00@gmail.com
-2025-08-23 16:03:53.019 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ ⚠️ Lead não encontrado para monitoramento: 55819813...
-2025-08-23 16:03:53.639 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: ✅ Kommo CRM conectado: leonardofvieira00
-2025-08-23 16:03:54.204 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 📊 9 campos customizados mapeados
-⚠️ Rate Limiter: Usando burst para kommo
-2025-08-23 16:03:54.746 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 📊 32 variações de estágios mapeadas
-2025-08-23 16:03:54.768 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: ✅ Evolution API conectada: 1 instâncias
-2025-08-23 16:03:54.768 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ ✅ AgenticSDR Stateless inicializado! pronto | Data: {'modules': ['ModelManager', 'MultimodalProcessor', 'LeadManager', 'ContextAnalyzer', 'CalendarService', 'CRMService', 'FollowUpService']}
-INFO:     Application startup complete.
-2025-08-23 16:03:54.769 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ AgenticSDR (Stateless) pronto | Data: {'status': 'sistema pronto'}
-2025-08-23 16:03:54.769 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ SDR IA Solar Prime pronto | Data: {'startup_ms': 3000.0}
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     127.0.0.1:43988 - "GET /health HTTP/1.1" 200 OK
-2025-08-23 16:04:02.763 | INFO     | app.services.followup_executor_service:enqueue_pending_followups:58 | 📋 2 follow-ups pendentes encontrados.
-2025-08-23 16:04:03.946 | INFO     | app.utils.logger:log_with_emoji:75 | 🔔 ✅ Follow-up 80f8d8da-e503-44d7-96da-41dfa892805a enfileirado.
-2025-08-23 16:04:04.548 | INFO     | app.utils.logger:log_with_emoji:75 | 🔔 🚀 Processando tarefa de follow-up: 80f8d8da-e503-44d7-96da-41dfa892805a
-2025-08-23 16:04:06.953 | INFO     | app.utils.logger:log_with_emoji:75 | 🔔 ✅ Follow-up 46c242fc-47f4-4e56-a2f7-cc69c8903c65 enfileirado.
-2025-08-23 16:04:10.377 | ERROR    | app.utils.logger:log_with_emoji:75 | 💥 Erro em Tool parsing error: Erro de regex ao parsear tools: unbalanced parenthesis at position 20. Resposta: 
-
-<RESPOSTA_FINAL>Claro! Sem problemas. Eu tinha perguntado qual destes quatro modelos de soluções energéticas seria do seu interesse: 1. Instalação de usina própria 2. Aluguel de lote para instalação... | Data: {'component': 'Tool parsing error'}
-2025-08-23 16:04:22.595 | INFO     | app.utils.logger:log_with_emoji:75 | 📤 Enviando typing para 558182986181 | Data: {'duration_seconds': 8.89, 'message_length': 258, 'recipient': '558182986181', 'type': 'typing'}
-INFO:     127.0.0.1:45430 - "GET /health HTTP/1.1" 200 OK
-2025-08-23 16:04:33.666 | INFO     | app.utils.logger:log_with_emoji:75 | 📤 Enviando text para 558182986181 | Data: {'message_length': 258, 'delay_used': 2.44, 'recipient': '558182986181', 'type': 'text'}
-2025-08-23 16:04:34.301 | ERROR    | app.integrations.supabase_client:update_follow_up_status:375 | Erro ao atualizar follow-up: Erro ao atualizar follow-up
-2025-08-23 16:04:34.302 | ERROR    | app.utils.logger:log_with_emoji:75 | 💥 Erro em FollowUp Worker: Erro ao processar tarefa 80f8d8da-e503-44d7-96da-41dfa892805a: Erro ao atualizar follow-up | Data: {'component': 'FollowUp Worker'}
-2025-08-23 16:04:34.885 | ERROR    | app.integrations.supabase_client:update_follow_up_status:375 | Erro ao atualizar follow-up: Erro ao atualizar follow-up
-2025-08-23 16:04:34.887 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/send-message de evolution-api | Data: {'event': 'SEND_MESSAGE', 'endpoint': '/whatsapp/send-message', 'source': 'evolution-api'}
-2025-08-23 16:04:34.887 | WARNING  | app.api.webhooks:whatsapp_dynamic_webhook:355 | Evento não reconhecido: SEND_MESSAGE
-INFO:     10.11.0.4:46506 - "POST /webhook/evolution/send-message HTTP/1.1" 200 OK
-2025-08-23 16:04:34.888 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/messages-update de evolution-api | Data: {'event': 'MESSAGES_UPDATE', 'endpoint': '/whatsapp/messages-update', 'source': 'evolution-api'}
-INFO:     10.11.0.4:46508 - "POST /webhook/evolution/messages-update HTTP/1.1" 200 OK
-2025-08-23 16:04:34.889 | ERROR    | app.utils.logger:log_with_emoji:75 | 💥 Erro em FollowUp Worker: Erro no loop de consumo: Erro ao atualizar follow-up | Data: {'component': 'FollowUp Worker'}
-2025-08-23 16:04:39.890 | INFO     | app.utils.logger:log_with_emoji:75 | 🔔 🚀 Processando tarefa de follow-up: 46c242fc-47f4-4e56-a2f7-cc69c8903c65
-2025-08-23 16:04:40.125 | ERROR    | app.utils.logger:log_with_emoji:75 | ❌ Model: Erro não relacionado a quota. Todas as tentativas falharam: contents must not be empty
-2025-08-23 16:04:40.125 | ERROR    | app.utils.logger:log_with_emoji:75 | ❌ Model: Erro ao chamar modelo: contents must not be empty
-2025-08-23 16:04:40.126 | ERROR    | app.utils.logger:log_with_emoji:75 | ❌ Model: Erro no modelo primário: contents must not be empty
-2025-08-23 16:04:40.126 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ Model: Modelo primário falhou. Acionando fallback para o3-mini.
-2025-08-23 16:04:48.980 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ Model: Usando modelo fallback: o3-mini
-2025-08-23 16:04:48.980 | ERROR    | app.utils.logger:log_with_emoji:75 | 💥 Erro em Tool parsing error: Erro de regex ao parsear tools: unbalanced parenthesis at position 20. Resposta: <RESPOSTA_FINAL>Olá! Aqui é a Helen Vieira da Solarprime. Em que posso te ajudar hoje com a sua conta de luz e economia de energia?</RESPOSTA_FINAL>... | Data: {'component': 'Tool parsing error'}
-2025-08-23 16:04:51.246 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ ⚠️ Lead não encontrado para monitoramento: 55818298...
-2025-08-23 16:04:51.861 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ ⚠️ Lead não encontrado para monitoramento: 55819813...
-2025-08-23 16:04:52.459 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ ⚠️ Lead não encontrado para monitoramento: 55819649...
-2025-08-23 16:04:54.039 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ ⚠️ Lead não encontrado para monitoramento: 55818298...
-2025-08-23 16:04:54.645 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ ⚠️ Lead não encontrado para monitoramento: 55819813...
-2025-08-23 16:04:55.252 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ ⚠️ Lead não encontrado para monitoramento: 55819649...
-2025-08-23 16:04:57.685 | INFO     | app.utils.logger:log_with_emoji:75 | 📤 Enviando typing para 558196491408 | Data: {'duration_seconds': 3.41, 'message_length': 115, 'recipient': '558196491408', 'type': 'typing'}
-INFO:     127.0.0.1:47370 - "GET /health HTTP/1.1" 200 OK
-2025-08-23 16:05:03.265 | INFO     | app.utils.logger:log_with_emoji:75 | 📤 Enviando text para 558196491408 | Data: {'message_length': 115, 'delay_used': 5.0, 'recipient': '558196491408', 'type': 'text'}
-2025-08-23 16:05:03.925 | ERROR    | app.integrations.supabase_client:update_follow_up_status:375 | Erro ao atualizar follow-up: Erro ao atualizar follow-up
-2025-08-23 16:05:03.925 | ERROR    | app.utils.logger:log_with_emoji:75 | 💥 Erro em FollowUp Worker: Erro ao processar tarefa 46c242fc-47f4-4e56-a2f7-cc69c8903c65: Erro ao atualizar follow-up | Data: {'component': 'FollowUp Worker'}
-2025-08-23 16:05:04.527 | ERROR    | app.integrations.supabase_client:update_follow_up_status:375 | Erro ao atualizar follow-up: Erro ao atualizar follow-up
-2025-08-23 16:05:04.528 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/send-message de evolution-api | Data: {'event': 'SEND_MESSAGE', 'endpoint': '/whatsapp/send-message', 'source': 'evolution-api'}
-2025-08-23 16:05:04.528 | WARNING  | app.api.webhooks:whatsapp_dynamic_webhook:355 | Evento não reconhecido: SEND_MESSAGE
-INFO:     10.11.0.4:51100 - "POST /webhook/evolution/send-message HTTP/1.1" 200 OK
-2025-08-23 16:05:04.529 | ERROR    | app.utils.logger:log_with_emoji:75 | 💥 Erro em FollowUp Worker: Erro no loop de consumo: Erro ao atualizar follow-up | Data: {'component': 'FollowUp Worker'}
+'/whatsapp/contacts-update', 'source': 'evolution-api'}
+2025-08-23 21:38:44.154 | INFO     | app.api.webhooks:whatsapp_dynamic_webhook:353 | CONTACTS_UPDATE update recebido: {'event': 'contacts.update', 'instance': 'SDR IA SolarPrime', 'data': {'remoteJid': '558182986181@s.whatsapp.net', 'pushName': 'Mateus M', 'profilePicUrl': 'https://pps.whatsapp.net/v/t61.24694-24/521428372_23966156116410343_3058739794538851299_n.jpg?ccb=11-4&oh=01_Q5Aa2QGOpEH2PMLfFF-b19nbtmwlnvMuJ6Btm0ykHiPtrYEHAw&oe=68B72F0D&_nc_sid=5e03e0&_nc_cat=104', 'instanceId': '02f1c146-f8b8-4f19-9e8a-d3517ee84269'}, 'destination': 'https://sdr-api-evolution-api.fzvgou.easypanel.host/webhook/evolution', 'date_time': '2025-08-23T18:38:44.131Z', 'sender': '558195554978@s.whatsapp.net', 'server_url': 'https://evoapi-evolution-api.fzvgou.easypanel.host', 'apikey': '3ECB607589F3-4D35-949F-BA5D2D5892E9'}
+INFO:     10.11.0.4:49996 - "POST /webhook/evolution/contacts-update HTTP/1.1" 200 OK
+2025-08-23 21:38:45.122 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/messages-update de evolution-api | Data: {'event': 'MESSAGES_UPDATE', 'endpoint': '/whatsapp/messages-update', 'source': 'evolution-api'}
+INFO:     10.11.0.4:49996 - "POST /webhook/evolution/messages-update HTTP/1.1" 200 OK
+2025-08-23 21:38:45.129 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/chats-upsert de evolution-api | Data: {'event': 'CHATS_UPSERT', 'endpoint': '/whatsapp/chats-upsert', 'source': 'evolution-api'}
+2025-08-23 21:38:45.129 | WARNING  | app.api.webhooks:whatsapp_dynamic_webhook:355 | Evento não reconhecido: CHATS_UPSERT
+INFO:     10.11.0.4:49996 - "POST /webhook/evolution/chats-upsert HTTP/1.1" 200 OK
+2025-08-23 21:38:58.807 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Processando 1 mensagens combinadas | Data: {'phone': '558182986181', 'total_chars': 41}
+2025-08-23 21:38:59.478 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Conversa validada - ID: a23b5821-09ad-4e0d-9ffb-eee99a45e6d9, Phone: 558182986181
+2025-08-23 21:39:00.191 | INFO     | app.utils.logger:log_with_emoji:75 | ⚙️ Criando AGENTIC SDR Stateless...
+2025-08-23 21:39:00.191 | INFO     | app.utils.logger:log_with_emoji:75 | ⚙️ 🏭 Criando agente stateless com contexto...
+2025-08-23 21:39:01.035 | INFO     | app.services.knowledge_service:__init__:24 | ✅ KnowledgeService inicializado (versão simplificada)
+2025-08-23 21:39:01.035 | INFO     | app.utils.logger:log_with_emoji:75 | 🚀 Iniciando AgenticSDR Stateless
+2025-08-23 21:39:01.036 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo primário Gemini configurado pronto | Data: {'model': 'gemini-2.5-pro'}
+2025-08-23 21:39:01.045 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo fallback OpenAI configurado pronto | Data: {'model': 'o3-mini'}
+2025-08-23 21:39:01.046 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo reasoning configurado pronto | Data: {'model': 'gemini-2.0-flash-thinking'}
+2025-08-23 21:39:01.046 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Sistema de modelos configurado pronto | Data: {'primary_model': 'gemini-2.5-pro', 'fallback_available': True, 'reasoning_enabled': True}
+2025-08-23 21:39:01.046 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 🎨 MultimodalProcessor habilitado pronto | Data: {'dependencies': {'ocr': True, 'audio': True, 'pdf': True}}
+2025-08-23 21:39:01.047 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 📊 LeadManager inicializado pronto
+2025-08-23 21:39:01.047 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 🧠 ContextAnalyzer inicializado pronto
+2025-08-23 21:39:01.047 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 📊 ConversationMonitor inicializado pronto
+2025-08-23 21:39:01.048 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ ✅ ConversationMonitor: Loop iniciado
+2025-08-23 21:39:01.050 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: ✅ Serviço Google Calendar construído com OAuth
+2025-08-23 21:39:01.313 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: Google Calendar conectado via OAuth: leonardofvieira00@gmail.com
+2025-08-23 21:39:01.864 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: ✅ Kommo CRM conectado: leonardofvieira00
+2025-08-23 21:39:02.594 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 📊 9 campos customizados mapeados
+2025-08-23 21:39:03.181 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 📊 32 variações de estágios mapeadas
+2025-08-23 21:39:03.226 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: ✅ Evolution API conectada: 1 instâncias
+2025-08-23 21:39:03.227 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ ✅ AgenticSDR Stateless inicializado! pronto | Data: {'modules': ['ModelManager', 'MultimodalProcessor', 'LeadManager', 'ContextAnalyzer', 'CalendarService', 'CRMService', 'FollowUpService']}
+2025-08-23 21:39:03.227 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ ✅ Agente stateless criado com contexto pronto | Data: {'history_count': 23, 'lead_name': None}
+2025-08-23 21:39:03.228 | INFO     | app.utils.logger:log_with_emoji:75 | ⚙️ AGENTIC SDR Stateless pronto para uso
+2025-08-23 21:39:03.228 | INFO     | app.utils.logger:log_with_emoji:75 | 🤖 AGENTIC SDR: Processando (stateless): oi, quero reagendar para as 10h por favor...
+2025-08-23 21:39:03.462 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Estado do lead sincronizado com o banco de dados. | Data: {'changes': {'processed_message_count': 24, 'updated_at': '2025-08-23T21:39:03.233504'}}
+2025-08-23 21:39:03.462 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Intenção 'reagendamento' detectada. Usando fluxo de bypass.
+2025-08-23 21:39:03.911 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ ✅ Tool executado: calendar.reschedule_meeting
+2025-08-23 21:39:04.159 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Resposta gerada: Desculpe, tive um problema ao processar sua solicitação: Não consegui entender a nova data e hora. P...
+2025-08-23 21:39:04.159 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ 🔧 Tags ausentes - adicionando automaticamente
+2025-08-23 21:39:04.160 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ ✅ Resposta formatada com tags: 219 chars
+INFO:     127.0.0.1:48084 - "GET /health HTTP/1.1" 200 OK

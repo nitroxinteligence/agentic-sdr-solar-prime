@@ -630,5 +630,29 @@ class SupabaseClient:
             )
             raise
 
+    async def update_lead_qualification(
+        self, qualification_id: str, update_data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Atualiza um registro de qualificação de lead existente."""
+        try:
+            update_data['updated_at'] = datetime.now().isoformat()
+
+            result = self.client.table('leads_qualifications').update(
+                update_data
+            ).eq('id', qualification_id).execute()
+
+            if result.data:
+                return result.data[0]
+            
+            logger.warning(f"Nenhuma qualificação encontrada com o ID {qualification_id} para atualizar.")
+            return None
+
+        except Exception as e:
+            emoji_logger.supabase_error(
+                f"Erro ao atualizar qualificação do lead: {str(e)}",
+                table="leads_qualifications"
+            )
+            raise
+
 
 supabase_client = SupabaseClient()

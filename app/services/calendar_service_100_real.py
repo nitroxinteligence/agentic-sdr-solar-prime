@@ -398,30 +398,48 @@ Equipe SolarPrime
 
     @async_handle_errors(retry_policy='google_calendar')
     async def reschedule_meeting(
-        self, meeting_id: str, date: Optional[str], time: Optional[str], lead_info: Dict[str, Any]
+        self, date: Optional[str], time: Optional[str], lead_info: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Reagenda uma reunião de forma segura, verificando a disponibilidade primeiro."""
+        """Reagenda a última reunião de um lead, buscando-a no Supabase."""
         if not self.is_initialized:
             await self.initialize()
+
+        from app.integrations.supabase_client import supabase_client
         
-        emoji_logger.calendar_event(f"Iniciando reagendamento seguro para a reunião: {meeting_id}")
+        lead_id = lead_info.get("id")
+        if not lead_id:
+            return {"success": False, "message": "ID do lead não encontrado para reagendamento."}
+
+        emoji_logger.calendar_event(f"Iniciando reagendamento para o lead: {lead_id}")
 
         try:
-            # Passo 1: Obter detalhes do evento original
+            # Passo 1: Buscar a última qualificação (reunião) do lead no Supabase
+            latest_qualification = await supabase_client.get_latest_qualification(lead_id)
+            if not latest_qualification or not latest_qualification.get("google_event_id"):
+                return {"success": False, "message": "Nenhuma reunião ativa encontrada para reagendar."}
+            
+            meeting_id = latest_qualification["google_event_id"]
+            emoji_logger.calendar_event(f"Reunião encontrada para reagendamento: {meeting_id}")
+
+            # Passo 2: Obter detalhes do evento original do Google Calendar
             original_event = await self.get_event(meeting_id)
             if not original_event:
-                return {"success": False, "message": f"Reunião original com ID {meeting_id} não encontrada."}
+                return {"success": False, "message": f"Reunião com ID {meeting_id} não encontrada no Google Calendar."}
             
             original_start_str = original_event.get("start", {}).get("dateTime")
             original_datetime = datetime.fromisoformat(original_start_str)
             
-            # Define a nova data/hora, usando os dados originais como fallback
+            # Passo 3: Definir a nova data/hora, usando os dados originais como fallback
             new_date = date or original_datetime.strftime("%Y-%m-%d")
             new_time = time or original_datetime.strftime("%H:%M")
+
+            if not date and not time:
+                 return {"success": False, "message": "É necessário fornecer uma nova data ou um novo horário para o reagendamento."}
+
             new_datetime = datetime.strptime(f"{new_date} {new_time}", "%Y-%m-%d %H:%M")
             new_datetime_end = new_datetime + timedelta(hours=1)
 
-            # Passo 2: Verificar se o novo horário está disponível
+            # Passo 4: Verificar disponibilidade do novo horário
             emoji_logger.calendar_event(f"Verificando disponibilidade para {new_date} às {new_time}...")
             time_min = new_datetime.isoformat() + 'Z'
             time_max = new_datetime_end.isoformat() + 'Z'
@@ -434,47 +452,47 @@ Equipe SolarPrime
             )
             conflicting_events = [
                 event for event in events_result.get('items', []) 
-                if event.get('id') != meeting_id # Ignora o próprio evento que estamos reagendando
+                if event.get('id') != meeting_id
             ]
 
             if conflicting_events:
-                emoji_logger.service_warning(f"Conflito detectado. O horário {new_time} de {new_date} não está disponível.")
-                suggested_times = await self.check_availability("")
+                emoji_logger.service_warning(f"Conflito detectado para {new_date} às {new_time}.")
+                suggested_times = await self.check_availability(new_date)
                 return {
-                    "success": False,
-                    "error": "conflict",
+                    "success": False, "error": "conflict",
                     "message": f"O horário {new_time} de {new_date} já está ocupado. Que tal um destes?",
                     "available_slots": suggested_times.get("available_slots", []),
                     "date": suggested_times.get("date")
                 }
 
-            # Passo 3: Se disponível, atualizar o evento existente usando events().update()
+            # Passo 5: Atualizar o evento no Google Calendar
             emoji_logger.calendar_event(f"Horário disponível. Atualizando evento {meeting_id}...")
             original_event['start']['dateTime'] = new_datetime.isoformat()
             original_event['end']['dateTime'] = new_datetime_end.isoformat()
 
             updated_event = await asyncio.to_thread(
                 self.service.events().update(
-                    calendarId=self.calendar_id,
-                    eventId=meeting_id,
-                    body=original_event,
-                    sendUpdates='all'
+                    calendarId=self.calendar_id, eventId=meeting_id,
+                    body=original_event, sendUpdates='all'
                 ).execute
             )
             
-            emoji_logger.system_success(f"Reunião {meeting_id} reagendada com sucesso para {new_date} às {new_time}.")
-            emoji_logger.system_debug(f"Resposta da API (update): {updated_event}")
-
+            emoji_logger.system_success(f"Reunião {meeting_id} reagendada para {new_date} às {new_time}.")
             meet_link = updated_event.get('hangoutLink')
+
+            # Passo 6: Atualizar o registro de qualificação no Supabase
+            await supabase_client.update_lead_qualification(
+                latest_qualification['id'],
+                {"meeting_scheduled_at": new_datetime.isoformat()}
+            )
+            emoji_logger.system_info(f"Qualificação {latest_qualification['id']} atualizada no Supabase.")
+
             return {
-                "success": True,
-                "meeting_id": updated_event.get('id'),
+                "success": True, "meeting_id": updated_event.get('id'),
                 "google_event_id": updated_event.get('id'),
                 "start_time": updated_event.get('start', {}).get('dateTime'),
-                "date": new_date,
-                "time": new_time,
-                "link": updated_event.get('htmlLink'),
-                "meet_link": meet_link,
+                "date": new_date, "time": new_time,
+                "link": updated_event.get('htmlLink'), "meet_link": meet_link,
                 "message": f"✅ Reunião reagendada com sucesso para {new_date} às {new_time}."
             }
 
