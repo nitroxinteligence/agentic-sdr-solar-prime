@@ -451,19 +451,15 @@ class AgenticSDRStateless:
 
                 # Extrai a nova data/hora da mensagem do usuário se não estiver nos parâmetros
                 user_message = context.get("message", "")
-                date = params.get("date")
-                time = params.get("time")
+                date, time = self._extract_schedule_details(user_message)
 
-                # TODO: Implementar uma função de extração de data/hora mais robusta
-                if not date and not time and user_message:
-                    time_match = re.search(r'(\d{1,2}h\d{0,2}|\d{1,2}:\d{2})', user_message)
-                    if time_match:
-                        time = time_match.group(1).replace('h', ':')
-                        if time.endswith(':'):
-                            time += '00'
-                        elif ':' not in time:
-                            time += ':00'
-
+                # Se a extração falhar, não podemos prosseguir
+                if not date or not time:
+                    return {
+                        "success": False,
+                        "message": "Não consegui entender a nova data e hora. Poderia dizer novamente, por favor?"
+                    }
+                
                 return await self.calendar_service.reschedule_meeting(
                     meeting_id=meeting_id,
                     date=date,
@@ -612,51 +608,33 @@ Com base nos resultados das ferramentas, gere a resposta final, clara e amigáve
                 changes[key] = value
         return changes
 
-    def _extract_schedule_details(self, message: str) -> (str, str):
-        """Extrai data e hora de uma mensagem de agendamento."""
-        from datetime import datetime, timedelta
-        import re
+    def _extract_schedule_details(self, message: str) -> (Optional[str], Optional[str]):
+        """Extrai data e hora de uma mensagem usando dateparser."""
+        import dateparser
+        from app.config import settings
+        import pytz
 
-        time_str = None
-        time_match = re.search(r'(\d{1,2})\s*h(?:(\d{1,2}))?', message, re.IGNORECASE)
-        if time_match:
-            hour = int(time_match.group(1))
-            minute = int(time_match.group(2) or 0)
-            time_str = f"{hour:02d}:{minute:02d}"
-        else:
-            time_match = re.search(r'(\d{1,2}):(\d{1,2})', message, re.IGNORECASE)
-            if time_match:
-                hour = int(time_match.group(1))
-                minute = int(time_match.group(2))
-                time_str = f"{hour:02d}:{minute:02d}"
-
-        date_str = None
-        message_lower = message.lower()
-        today = datetime.now()
-
-        if 'hoje' in message_lower:
-            date_str = today.strftime('%Y-%m-%d')
-        elif 'amanhã' in message_lower:
-            date_str = (today + timedelta(days=1)).strftime('%Y-%m-%d')
-        else:
-            weekdays = {
-                'segunda': 0, 'terça': 1, 'quarta': 2,
-                'quinta': 3, 'sexta': 4, 'sábado': 5, 'domingo': 6
-            }
-            for day_name, day_index in weekdays.items():
-                if day_name in message_lower:
-                    days_ahead = day_index - today.weekday()
-                    if days_ahead <= 0:
-                        days_ahead += 7
-                    target_date = today + timedelta(days=days_ahead)
-                    date_str = target_date.strftime('%Y-%m-%d')
-                    break
+        # Configurações para o dateparser entender português e o contexto futuro
+        parser_settings = {
+            'PREFER_DATES_FROM': 'future',
+            'TIMEZONE': settings.timezone,
+            'RETURN_AS_TIMEZONE_AWARE': True
+        }
         
-        # Fallback se nenhuma data for encontrada
-        if not date_str:
-            date_str = (today + timedelta(days=1)).strftime('%Y-%m-%d')
+        # A biblioteca dateparser parseia a string inteira para encontrar a data/hora
+        parsed_datetime = dateparser.parse(message, languages=['pt'], settings=parser_settings)
 
-        return date_str, time_str
+        if parsed_datetime:
+            # Garante que o objeto datetime tenha timezone antes de formatar
+            tz = pytz.timezone(settings.timezone)
+            if parsed_datetime.tzinfo is None:
+                parsed_datetime = tz.localize(parsed_datetime)
+            
+            date_str = parsed_datetime.strftime('%Y-%m-%d')
+            time_str = parsed_datetime.strftime('%H:%M')
+            return date_str, time_str
+        
+        return None, None
 
     async def _sync_lead_changes(self, changes: dict, phone: str, lead_info: dict):
         """Sincroniza as mudanças do lead com o CRM."""

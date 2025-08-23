@@ -62,6 +62,7 @@ asyncio==3.4.3
 pytz==2024.1
 python-multipart==0.0.12
 python-dateutil==2.9.0
+dateparser==1.2.0
 croniter==3.0.3
 regex==2024.11.6  # Para suporte a grapheme clusters (emojis)
 
