@@ -308,8 +308,7 @@ class AgenticSDRStateless:
             phone_number=lead_info["phone_number"],
             message=message_24h,
             delay_hours=24,
-            lead_info=lead_info,
-            followup_type="MEETING_REMINDER"
+            lead_info=lead_info
         )
         emoji_logger.followup_event(f"Lembrete de 24h agendado para {lead_name}.")
 
@@ -322,8 +321,7 @@ class AgenticSDRStateless:
             phone_number=lead_info["phone_number"],
             message=message_2h,
             delay_hours=2,
-            lead_info=lead_info,
-            followup_type="MEETING_REMINDER"
+            lead_info=lead_info
         )
         emoji_logger.followup_event(f"Lembrete de 2h agendado para {lead_name}.")
 
