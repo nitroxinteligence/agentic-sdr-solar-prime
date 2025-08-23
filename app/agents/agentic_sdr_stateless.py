@@ -520,12 +520,23 @@ class AgenticSDRStateless:
         """Gera a resposta do agente usando o ModelManager com injeção de contexto robusta."""
         import json
 
-        # 1. Carrega o prompt do sistema (persona).
+        # 1. Carrega o prompt do sistema (persona) e injeta o contexto de data/hora.
+        system_prompt = "Você é um assistente de vendas." # Fallback inicial
         try:
             with open("app/prompts/prompt-agente.md", "r", encoding="utf-8") as f:
                 system_prompt = f.read()
         except FileNotFoundError:
-            system_prompt = "Você é um assistente de vendas."
+            emoji_logger.system_warning("Arquivo de prompt principal não encontrado. Usando fallback.")
+
+        # Injeção de Contexto Temporal
+        tz = pytz.timezone(settings.timezone)
+        now = datetime.now(tz)
+        current_date_str = now.strftime('%Y-%m-%d %H:%M')
+        days_map = {0: "Segunda-feira", 1: "Terça-feira", 2: "Quarta-feira", 3: "Quinta-feira", 4: "Sexta-feira", 5: "Sábado", 6: "Domingo"}
+        day_of_week_pt = days_map[now.weekday()]
+        
+        date_context = f"<contexto_temporal>\nA data e hora atuais são: {current_date_str} ({day_of_week_pt}).\n</contexto_temporal>\n\n"
+        system_prompt_with_context = date_context + system_prompt
 
         # 2. Prepara as mensagens para o modelo.
         if is_followup:
@@ -537,7 +548,7 @@ class AgenticSDRStateless:
         # Limita o histórico para as últimas 200 mensagens para evitar sobrecarga de contexto
         if len(messages_for_model) > 200:
             emoji_logger.system_warning(
-                "Histórico longo detectado, truncando para as últimas 30 mensagens.",
+                "Histórico longo detectado, truncando para as últimas 200 mensagens.",
                 original_size=len(messages_for_model)
             )
             messages_for_model = messages_for_model[-30:]
@@ -554,7 +565,7 @@ class AgenticSDRStateless:
         # 3. Primeira chamada ao modelo para obter a resposta inicial (que pode conter tools).
         response_text = await self.model_manager.get_response(
             messages=messages_for_model,
-            system_prompt=system_prompt
+            system_prompt=system_prompt_with_context
         )
 
         if response_text:
@@ -586,7 +597,7 @@ Com base nos resultados das ferramentas, gere a resposta final, clara e amigáve
 
                 response_text = await self.model_manager.get_response(
                     messages=messages_for_final_response,
-                    system_prompt=system_prompt # Reutiliza o mesmo system_prompt com contexto
+                    system_prompt=system_prompt_with_context # Reutiliza o mesmo system_prompt com contexto
                 )
 
         return response_text or "Não consegui gerar uma resposta no momento."
