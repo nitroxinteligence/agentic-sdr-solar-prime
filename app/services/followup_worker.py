@@ -116,19 +116,18 @@ class FollowUpWorker:
         """
         lead_id = task_payload.get("lead_id")
         followup_type = task_payload.get("followup_type", "CUSTOM")
+        scheduled_message = task_payload.get("message", "")
 
         if not lead_id:
             emoji_logger.system_error(
                 "FollowUp Worker",
-                f"Task {task_payload.get('followup_id')} não contém 'lead_id'."
+                f"Task {task_payload.get('followup_id')}" + " não contém 'lead_id'."
             )
-            return "Não foi possível gerar a mensagem de follow-up."
+            return "Não foi possível gerar a mensagem de follow-up." # Fallback seguro
 
         lead_info = await self.db.get_lead_by_id(lead_id)
         conversation_id = None
         if lead_info:
-            # Tentativa de obter o conversation_id do lead_info
-            # Assumindo que a lógica de associação existe
             conv = await self.db.get_conversation_by_phone(lead_info.get("phone_number"))
             if conv:
                 conversation_id = conv.get("id")
@@ -137,6 +136,54 @@ class FollowUpWorker:
             conversation_id
         ) if conversation_id else []
 
+        # Constrói um resumo do histórico para o LLM
+        history_summary = ""
+        if conversation_history:
+            # Pega as últimas 5 mensagens para um resumo conciso
+            last_messages = conversation_history[-5:]
+            for msg in last_messages:
+                role = "Você" if msg.get("role") == "assistant" else "O Lead"
+                content = msg.get("content")
+                # Se o conteúdo for uma lista (multimodal), pega apenas o texto
+                if isinstance(content, list):
+                    text_parts = [p.get("text") for p in content if p.get("type") == "text"]
+                    content = " ".join(text_parts) if text_parts else "[Mídia]"
+                history_summary += f"{role}: {content}\n"
+
+        # Informações do lead para o prompt
+        lead_name = lead_info.get("name", "o lead")
+        bill_value = lead_info.get("bill_value", "não informado")
+        chosen_flow = lead_info.get("chosen_flow", "não definido")
+
+        # Prompt para o LLM
+        prompt_to_llm = f"""
+        Você é a Helen Vieira, Coordenadora de Qualificação Sênior da SolarPrime. Sua tarefa é gerar uma mensagem de follow-up para um lead. O tipo de follow-up é '{followup_type}'.
+
+        Informações do Lead:
+        - Nome: {lead_name}
+        - Valor da Conta de Energia: R${bill_value}
+        - Fluxo Escolhido: {chosen_flow}
+
+        Histórico Recente da Conversa (últimas 5 mensagens):
+        {history_summary}
+
+        Instruções para a Mensagem:
+        - O objetivo é reengajar {lead_name} ou enviar um lembrete de reunião, dependendo do 'followup_type'.
+        - Seja acolhedora, técnica e consultiva, com um toque nordestino.
+        - Use o contexto do histórico para tornar a mensagem relevante e personalizada.
+        - Se 'followup_type' for 'IMMEDIATE_REENGAGEMENT' ou 'DAILY_NURTURING', o objetivo é reabrir a conversa de forma natural, referenciando o último ponto.
+        - Se 'followup_type' for 'MEETING_REMINDER', use a 'scheduled_message' fornecida (que deve conter o link da reunião) e adapte o tom.
+        - Mantenha a mensagem concisa e direta.
+        - NUNCA use emojis na mensagem.
+        - NUNCA use markdown como negrito (*texto*) ou itálico (_texto_).
+        - Apenas a mensagem final, sem tags de raciocínio ou ferramentas.
+        """
+        
+        # Se houver uma mensagem pré-definida (para lembretes de reunião, por exemplo), use-a
+        if scheduled_message and followup_type == 'MEETING_REMINDER':
+            emoji_logger.system_info(f"Usando mensagem pré-definida para MEETING_REMINDER: {scheduled_message}")
+            return scheduled_message
+
         execution_context = {
             "conversation_history": conversation_history,
             "lead_info": lead_info or {},
@@ -144,13 +191,8 @@ class FollowUpWorker:
             "conversation_id": conversation_id,
         }
 
-        prompt = (
-            f"Gere uma mensagem de follow-up do tipo '{followup_type}' para "
-            f"este lead, com base no nosso histórico de conversa."
-        )
-
         response_text = await self.agent._generate_response(
-            message=prompt,
+            message=prompt_to_llm,
             context={},
             lead_info=lead_info or {},
             conversation_history=conversation_history,

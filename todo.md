@@ -24,7 +24,7 @@
   - **Ação:** Criar um novo serviço `FollowUpManagerService` (`app/services/followup_manager.py`).
   - **Responsabilidade:** Este novo serviço terá um único método, como `handle_conversation_inactivity(lead_id, phone_number)`, que será chamado pelo `ConversationMonitor`. Ele conterá a lógica de verificar o limite e agendar o follow-up, centralizando a regra de negócio.
 
-- [ ] **2.3. Refatorar o `FollowUpWorker` para Inteligência Contextual:**
+- [x] **2.3. Refatorar o `FollowUpWorker` para Inteligência Contextual:**
   - **Problema:** O worker atual gera uma mensagem de follow-up baseada em um prompt genérico.
   - **Ação:** Melhorar o método `_generate_intelligent_followup_message` no `followup_worker.py`.
   - **Melhoria:** O prompt enviado ao LLM será mais rico, contendo um resumo claro do último ponto da conversa e uma instrução explícita para "reengajar o lead a partir deste ponto", garantindo que o follow-up seja relevante e não uma mensagem genérica de "ainda tem interesse?".
