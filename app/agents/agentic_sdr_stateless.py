@@ -450,20 +450,28 @@ class AgenticSDRStateless:
                     raise ValueError("Não foi encontrada uma reunião ativa para reagendar.")
 
                 # Extrai a nova data/hora da mensagem do usuário se não estiver nos parâmetros
+                # Lógica de reagendamento mais inteligente e contextual
                 user_message = context.get("message", "")
-                date, time = self._extract_schedule_details(user_message)
+                new_date, new_time = self._extract_schedule_details(user_message)
 
-                # Se a extração falhar, não podemos prosseguir
-                if not date or not time:
+                # Se o usuário não especificar uma nova data, reutiliza a data da reunião original
+                if not new_date:
+                    original_start_str = latest_qualification.get("meeting_scheduled_at")
+                    if original_start_str:
+                        original_datetime = datetime.fromisoformat(original_start_str)
+                        new_date = original_datetime.strftime('%Y-%m-%d')
+                
+                # Se mesmo assim não tivermos data ou hora, a extração falhou
+                if not new_date or not new_time:
                     return {
                         "success": False,
-                        "message": "Não consegui entender a nova data e hora. Poderia dizer novamente, por favor?"
+                        "message": "Não consegui entender a nova data e hora. Poderia informar o dia e o horário desejado, por favor?"
                     }
-                
+
                 return await self.calendar_service.reschedule_meeting(
                     meeting_id=meeting_id,
-                    date=date,
-                    time=time,
+                    date=new_date,
+                    time=new_time,
                     lead_info=lead_info
                 )
 
