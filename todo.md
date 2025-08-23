@@ -1,38 +1,47 @@
-# TODO: Estabilização do Agente e Correção de Erros
+# TODO: Otimização do Funil e Correção do Estágio Pós-Agendamento
 
-**Objetivo:** Garantir a estabilidade do agente, corrigindo o erro `AttributeError` no fluxo de agendamento e validando a solução.
+**Objetivo:** Simplificar o funil do Kommo CRM, garantindo que leads com reunião agendada sejam movidos diretamente para o estágio "Reunião Agendada" e eliminando o uso do estágio intermediário "Qualificado".
 
 ---
 
-### Fase 1: Correção do `AttributeError`
+### Fase 1: Diagnóstico e Planejamento
 
--   [x] **Tarefa 1.1: Diagnosticar a Causa Raiz**
+-   [x] **Tarefa 1.1: Analisar o Fluxo de Agendamento e CRM**
     -   **Status:** Concluído.
-    -   **Análise:** O erro `AttributeError: 'ConversationMonitor' object has no attribute 'get_history'` foi causado por uma chamada incorreta ao `ConversationMonitor` para obter o histórico da conversa, que na verdade é uma variável local transitória na arquitetura stateless.
+    -   **Análise:** O fluxo de ponta a ponta, desde a qualificação até o agendamento e a atualização do CRM, foi mapeado através da análise dos arquivos em `app/**`.
 
--   [x] **Tarefa 1.2: Implementar a Correção**
+-   [x] **Tarefa 1.2: Identificar a Causa Raiz**
     -   **Status:** Concluído.
-    -   **Arquivo:** `app/agents/agentic_sdr_stateless.py`
-    -   **Ação:** A variável `conversation_history` foi passada explicitamente através da cadeia de chamadas (`_generate_response` -> `_parse_and_execute_tools` -> `_execute_single_tool`) para fornecer o contexto necessário sem violar o padrão stateless.
+    -   **Análise:** A causa foi identificada como uma instrução explícita, porém indesejada, no prompt do agente (`app/prompts/prompt-agente.md`), que o instruía a mover o lead para o estágio "Qualificado" *antes* de agendar a reunião.
 
--   [x] **Tarefa 1.3: Documentar a Análise da Solução**
+-   [x] **Tarefa 1.3: Documentar o Diagnóstico e a Solução**
     -   **Status:** Concluído.
-    -   **Arquivo:** `ANALISE_CORRECAO_ATTRIBUTE_ERROR.md`
-    -   **Ação:** Um relatório detalhado foi criado para justificar por que a solução implementada é a mais correta e inteligente para a arquitetura do projeto.
+    -   **Arquivo:** `DIAGNOSTICO_FLUXO_AGENDAMENTO.md`
+    -   **Ação:** Um relatório detalhado foi criado para documentar a análise e justificar a solução de refatorar o prompt.
 
-### Fase 2: Validação e Próximos Passos
+### Fase 2: Implementação da Correção
 
--   [ ] **Tarefa 2.1: Validação Manual do Fluxo de Agendamento**
+-   [x] **Tarefa 2.1: Refatorar o Prompt do Agente**
+    -   **Status:** Concluído.
+    -   **Arquivo:** `app/prompts/prompt-agente.md`
+    -   **Ação:**
+        -   Localizar a seção `<rule id="flow_enforcement_qualification">`.
+        -   Dentro da sub-seção `AÇÃO AUTOMÁTICA PÓS-QUALIFICAÇÃO`, remover a linha: `→ [TOOL: crm.update_stage | stage=qualificado]`.
+        -   Garantir que a instrução para mover para `reuniao_agendada` após o sucesso do agendamento permaneça intacta.
+
+### Fase 3: Validação
+
+-   [ ] **Tarefa 3.1: Validação Manual do Novo Fluxo**
     -   **Status:** Pendente.
-    -   **Ação:** Executar um fluxo de conversação completo que resulte no agendamento de uma reunião.
-    -   **Verificação:**
-        -   Confirmar que o erro `AttributeError` não ocorre mais.
-        -   Verificar se o nome do lead aparece corretamente no evento do Google Calendar.
-        -   Garantir que o workflow pós-agendamento (lembretes de follow-up) é acionado com sucesso.
+    -   **Ação:**
+        -   Iniciar uma conversa com um novo lead (ou um lead de teste em um estágio inicial).
+        -   Conduzir a conversa até o ponto de agendar uma reunião com sucesso.
+        -   **Verificar no Kommo CRM:**
+            -   O lead **não** deve passar pelo estágio "Qualificado".
+            -   O lead deve ser movido **diretamente** para o estágio "Reunião Agendada" após a confirmação do agendamento.
 
--   [ ] **Tarefa 2.2 (Opcional): Criar Teste Automatizado**
+-   [x] **Tarefa 3.2: Atualizar o `todo.md`**
     -   **Status:** Pendente.
-    -   **Ação:** Adicionar um teste de integração em `tests/` que simule o fluxo de agendamento e valide que a chamada da ferramenta `calendar.schedule_meeting` é executada sem `AttributeError`.
-    -   **Justificativa:** Prevenir regressões futuras nesta funcionalidade crítica.
+    -   **Ação:** Marcar as tarefas de implementação como concluídas neste documento após a validação bem-sucedida.
 
 ---

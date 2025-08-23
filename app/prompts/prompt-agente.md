@@ -68,7 +68,6 @@
   3. AÇÃO AUTOMÁTICA PÓS-QUALIFICAÇÃO:
      
      SE QUALIFICADO (todos critérios ✓):
-     → [TOOL: crm.update_stage | stage=qualificado]
      → INICIAR IMEDIATAMENTE processo de agendamento
      → CHAMAR [TOOL: calendar.check_availability] SEM PERGUNTAR
      → Apresentar horários disponíveis no Google Calendar do Leonardo
