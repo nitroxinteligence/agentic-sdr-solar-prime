@@ -4,7 +4,7 @@ Funcionalidades habilitadas: Google Meet + Participantes + Convites
 """
 
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import asyncio
 import uuid
 import random
