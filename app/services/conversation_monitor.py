@@ -106,8 +106,15 @@ class ConversationMonitor:
 
                 lead = await self.db.get_lead_by_phone(phone)
                 if not lead:
-                    emoji_logger.system_warning(f"⚠️ Lead não encontrado para monitoramento: {phone[:8]}...")
-                    continue
+                    emoji_logger.system_warning(f"⚠️ Lead não encontrado para monitoramento: {phone[:8]}... Criando lead básico.")
+                    lead = await self.db.create_lead({
+                        "phone_number": phone,
+                        "current_stage": "INITIAL_CONTACT",
+                        "qualification_status": "PENDING",
+                        "created_at": datetime.now().isoformat(),
+                        "updated_at": datetime.now().isoformat()
+                    })
+                    emoji_logger.supabase_insert("leads", 1, phone=phone)
 
                 # Delega a lógica de agendamento para o FollowUpManagerService
                 await followup_manager_service.handle_conversation_inactivity(

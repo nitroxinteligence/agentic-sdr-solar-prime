@@ -353,6 +353,7 @@ class SupabaseClient:
         executed_at: Optional[datetime] = None
     ) -> Dict[str, Any]:
         """Atualiza status do follow-up"""
+        logger.debug(f"Attempting to update follow-up {follow_up_id} to status '{status}' with data: {executed_at}")
         try:
             update_data = {
                 'status': status,
@@ -372,7 +373,7 @@ class SupabaseClient:
             raise Exception("Erro ao atualizar follow-up")
 
         except Exception as e:
-            logger.error(f"Erro ao atualizar follow-up: {str(e)}")
+            logger.error(f"Erro ao atualizar follow-up {follow_up_id} with data {update_data}: {str(e)}")
             raise
 
     # ============= KNOWLEDGE BASE =============
