@@ -189,36 +189,38 @@ class CalendarServiceReal:
 
     @async_handle_errors(retry_policy='google_calendar')
     async def check_availability(self, date_request: str) -> Dict[str, Any]:
-        """Verifica disponibilidade REAL no Google Calendar"""
+        """Verifica disponibilidade REAL no Google Calendar, respeitando o horário comercial."""
         if not self.is_initialized:
             await self.initialize()
+        
         lock_key = "calendar:availability_check"
         if not await redis_client.acquire_lock(lock_key, ttl=10):
-            return {
-                "success": False, "error": "lock_not_acquired",
-                "message": "Sistema ocupado, tente novamente."
-            }
+            return {"success": False, "error": "lock_not_acquired", "message": "Sistema ocupado, tente novamente."}
+        
         try:
             target_day = None
             if date_request:
                 try:
-                    # Tenta parsear a data no formato YYYY-MM-DD
-                    target_day = datetime.strptime(date_request, "%Y-%m-%d")
+                    target_day = datetime.strptime(date_request, "%Y-%m-%d").date()
                 except ValueError:
-                    emoji_logger.service_warning(f"Formato de data inválido: {date_request}. Usando fallback para o próximo dia útil.")
-                    target_day = None
+                    emoji_logger.service_warning(f"Formato de data inválido: {date_request}. Usando fallback.")
+                    target_day = (datetime.now() + timedelta(days=1)).date()
+            else:
+                target_day = (datetime.now() + timedelta(days=1)).date()
 
-            if target_day is None:
-                target_day = self.get_next_business_day(
-                    datetime.now() + timedelta(days=1)
-                )
+            # Validação de dia útil
+            if target_day.weekday() not in self.business_hours["weekdays"]:
+                next_business_day = self.get_next_business_day(datetime.combine(target_day, datetime.min.time()))
+                return {
+                    "success": True,
+                    "available_slots": [],
+                    "date": target_day.strftime("%Y-%m-%d"),
+                    "message": f"Não há horários disponíveis em {target_day.strftime('%d/%m')}, pois é fim de semana. Que tal na {next_business_day.strftime('%A, %d/%m')}?"
+                }
 
-            time_min = target_day.replace(
-                hour=0, minute=0, second=0
-            ).isoformat() + 'Z'
-            time_max = target_day.replace(
-                hour=23, minute=59, second=59
-            ).isoformat() + 'Z'
+            time_min = datetime.combine(target_day, datetime.min.time()).isoformat() + 'Z'
+            time_max = datetime.combine(target_day, datetime.max.time()).isoformat() + 'Z'
+            
             events_result = await asyncio.to_thread(
                 self.service.events().list(
                     calendarId=self.calendar_id, timeMin=time_min,
@@ -226,57 +228,32 @@ class CalendarServiceReal:
                 ).execute
             )
             events = events_result.get('items', [])
+            
             all_slots = []
-            for hour in range(
-                    self.business_hours["start_hour"],
-                    self.business_hours["end_hour"]
-            ):
-                slot_start = target_day.replace(hour=hour, minute=0, second=0)
+            for hour in range(self.business_hours["start_hour"], self.business_hours["end_hour"]):
+                slot_start = datetime.combine(target_day, time(hour=hour))
+                if not self.is_business_hours(slot_start):
+                    continue
+
                 slot_end = slot_start + timedelta(hours=1)
                 is_free = all(
-                    slot_end <= datetime.fromisoformat(
-                        event['start']['dateTime'].replace('Z', '+00:00')
-                    ).replace(tzinfo=None) or
-                    slot_start >= datetime.fromisoformat(
-                        event['end']['dateTime'].replace('Z', '+00:00')
-                    ).replace(tzinfo=None)
+                    slot_end <= datetime.fromisoformat(event['start']['dateTime'].replace('Z', '+00:00')).replace(tzinfo=None) or
+                    slot_start >= datetime.fromisoformat(event['end']['dateTime'].replace('Z', '+00:00')).replace(tzinfo=None)
                     for event in events if 'dateTime' in event.get('start', {})
                 )
                 if is_free:
                     all_slots.append(f"{hour:02d}:00")
-            morning_slots = [s for s in all_slots if "08:00" <= s < "12:00"]
-            afternoon_slots = [s for s in all_slots if "13:00" <= s < "18:00"]
-
-            selected_slots = []
-            if morning_slots:
-                selected_slots.append(random.choice(morning_slots))
-            if afternoon_slots:
-                selected_slots.append(random.choice(afternoon_slots))
-            
-            # Adiciona mais um horário se ainda houver espaço e slots disponíveis
-            remaining_slots = [s for s in all_slots if s not in selected_slots]
-            if len(selected_slots) < 3 and remaining_slots:
-                selected_slots.append(random.choice(remaining_slots))
-
-            selected_slots.sort()
 
             return {
-                "success": True, "date": target_day.strftime("%Y-%m-%d"),
-                "available_slots": selected_slots,
-                "message": (
-                    f"Leonardo tem {len(selected_slots)} horários para "
-                    f"{target_day.strftime('%d/%m')}"
-                ),
+                "success": True,
+                "date": target_day.strftime("%Y-%m-%d"),
+                "available_slots": all_slots,
+                "message": f"Horários disponíveis para {target_day.strftime('%d/%m')}: {', '.join(all_slots) if all_slots else 'Nenhum'}",
                 "real": True
             }
         except Exception as e:
-            emoji_logger.service_error(
-                f"Erro ao verificar disponibilidade: {e}"
-            )
-            return {
-                "success": False,
-                "message": f"Erro ao verificar disponibilidade: {e}"
-            }
+            emoji_logger.service_error(f"Erro ao verificar disponibilidade: {e}")
+            return {"success": False, "message": f"Erro ao verificar disponibilidade: {e}"}
         finally:
             await redis_client.release_lock(lock_key)
 

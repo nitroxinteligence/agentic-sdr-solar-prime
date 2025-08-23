@@ -66,13 +66,6 @@ class MessageSplitter:
         if not text:
             return []
 
-        # Lógica de detecção e formatação da mensagem especial
-        if self._is_four_solutions_message(text):
-            emoji_logger.system_info("Mensagem das 4 soluções detectada. Formatando e enviando como bloco único.")
-            formatted_text = self._format_four_solutions_message(text)
-            # Retorna a mensagem formatada como um único item na lista, ignorando o max_length
-            return [formatted_text]
-
         # Lógica padrão de divisão para todas as outras mensagens
         if len(text) <= self.max_length:
             return [text.strip()]
@@ -205,36 +198,7 @@ class MessageSplitter:
             result.append(indicator + chunk)
         return result
 
-    def _is_four_solutions_message(self, text: str) -> bool:
-        """Detecta se é a mensagem especial das 4 soluções de forma mais robusta."""
-        text_lower = text.lower()
-        # Critérios mais flexíveis
-        has_intro = "hoje na solarprime" in text_lower or "quatro modelos de soluções" in text_lower
-        has_option1 = "instalação de usina própria" in text_lower or "1." in text or "1)" in text
-        has_option2 = "aluguel de lote" in text_lower or "2." in text or "2)" in text
-        has_option3 = "compra de energia com desconto" in text_lower or "3." in text or "3)" in text
-        has_option4 = "usina de investimento" in text_lower or "4." in text or "4)" in text
-        has_closing_question = "qual desses modelos" in text_lower or "qual te interessa" in text_lower
-
-        # Precisa ter a introdução, a pergunta final e pelo menos 3 das 4 opções
-        return has_intro and has_closing_question and (has_option1 + has_option2 + has_option3 + has_option4 >= 3)
-
-    def _format_four_solutions_message(self, text: str) -> str:
-        """Formata a mensagem das 4 soluções com quebras de linha, usando o exemplo do usuário como base."""
-        # Extrai o nome do lead da primeira linha, se houver, de forma robusta
-        name_match = regex.search(r"(?:Perfeito|Ótimo|Excelente|Maravilha|Certo|Entendi|Show|Legal),\s*([A-Za-zÀ-ÿ]+)", text, regex.IGNORECASE)
-        name = name_match.group(1) if name_match else "Cliente"
-
-        # Monta a mensagem no formato desejado
-        formatted_message = (
-            f"{name}, fico feliz em saber do seu interesse na SolarPrime! Hoje, nós oferecemos quatro soluções em energia solar:\n\n"
-            "1. Instalação de usina própria: Você adquire seu próprio sistema de energia solar e garante economia a longo prazo.\n"
-            "2. Aluguel de lote para usina: Ideal para quem não tem espaço próprio ou quer investir em um sistema maior.\n"
-            "3. Compra de energia com desconto: Receba energia solar com desconto na sua conta de luz, sem precisar instalar painéis.\n"
-            "4. Usina de investimento: Invista em energia solar e receba retornos financeiros com a geração de energia.\n\n"
-            "Qual dessas opções te interessa mais?"
-        )
-        return formatted_message
+    
 
 
 message_splitter: Optional[MessageSplitter] = None
