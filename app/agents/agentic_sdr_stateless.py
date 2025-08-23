@@ -4,7 +4,7 @@ Cada requisição é completamente isolada e independente
 Não há estado compartilhado entre conversas
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 import pytz
 import re
