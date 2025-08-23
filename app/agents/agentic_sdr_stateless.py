@@ -367,12 +367,20 @@ class AgenticSDRStateless:
                     date_req
                 )
             elif method_name == "schedule_meeting":
+                # Garante que o nome do lead está atualizado antes de agendar
+                updated_lead_info = self.lead_manager.extract_lead_info(
+                    self.conversation_monitor.get_history(lead_info.get("phone_number")),
+                    existing_lead_info=lead_info
+                )
+                lead_info.update(updated_lead_info)
+
                 result = await self.calendar_service.schedule_meeting(
                     date=params.get("date"),
                     time=params.get("time"),
                     lead_info={
                         **lead_info,
                         "email": params.get("email", lead_info.get("email")),
+                        "name": lead_info.get("name", "Cliente") # Fallback explícito
                     }
                 )
                 if result and result.get("success"):

@@ -180,6 +180,39 @@ class CalendarServiceReal:
                     raise e
         raise Exception("Número máximo de tentativas excedido")
 
+    async def _is_slot_available(self, start_time: datetime, end_time: datetime, event_id_to_ignore: Optional[str] = None) -> bool:
+        """Verifica internamente se um slot de horário está livre."""
+        emoji_logger.calendar_event(f"Verificando disponibilidade interna para {start_time.strftime('%Y-%m-%d %H:%M')}...")
+        
+        time_min = start_time.isoformat()
+        time_max = end_time.isoformat()
+
+        try:
+            events_result = await asyncio.to_thread(
+                self.service.events().list(
+                    calendarId=self.calendar_id,
+                    timeMin=time_min,
+                    timeMax=time_max,
+                    singleEvents=True
+                ).execute
+            )
+            
+            conflicting_events = [
+                event for event in events_result.get('items', [])
+                if event.get('id') != event_id_to_ignore
+            ]
+
+            if conflicting_events:
+                emoji_logger.service_warning(f"Conflito de agendamento detectado para o horário {start_time.strftime('%H:%M')}.")
+                return False
+            
+            emoji_logger.system_success(f"Horário {start_time.strftime('%H:%M')} está livre.")
+            return True
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao verificar disponibilidade interna: {e}")
+            # Em caso de erro na verificação, é mais seguro assumir que não está disponível para evitar double booking.
+            return False
+
     @async_handle_errors(retry_policy='google_calendar')
     async def check_availability(self, date_request: str) -> Dict[str, Any]:
         """Verifica disponibilidade REAL no Google Calendar, respeitando o horário comercial."""
@@ -272,6 +305,7 @@ class CalendarServiceReal:
 
             meeting_time = datetime.strptime(time, "%H:%M").time()
             meeting_datetime = datetime.combine(target_date, meeting_time)
+            meeting_end = meeting_datetime + timedelta(hours=1)
 
             # Etapa 2: Validação de dia e horário comercial
             if not self.is_business_hours(meeting_datetime):
@@ -285,13 +319,26 @@ class CalendarServiceReal:
         except ValueError:
             return {"success": False, "message": f"Formato de data ou hora inválido. Use 'YYYY-MM-DD' para data e 'HH:MM' para hora."}
 
+        # Etapa 3: Verificação proativa de disponibilidade
+        import pytz
+        sao_paulo_tz = pytz.timezone('America/Sao_Paulo')
+        aware_meeting_datetime = sao_paulo_tz.localize(meeting_datetime)
+        aware_meeting_end = sao_paulo_tz.localize(meeting_end)
+
+        if not await self._is_slot_available(aware_meeting_datetime, aware_meeting_end):
+            availability_result = await self.check_availability(target_date.strftime('%Y-%m-%d'))
+            return {
+                "success": False, "error": "conflict",
+                "message": f"O horário {time} no dia {target_date.strftime('%d/%m')} já está ocupado.",
+                "available_slots": availability_result.get("available_slots", []),
+                "date": availability_result.get("date")
+            }
+
         lock_key = f"calendar:schedule:{target_date.strftime('%Y-%m-%d')}:{time}"
         if not await redis_client.acquire_lock(lock_key, ttl=30):
             return {"success": False, "error": "lock_not_acquired", "message": "Este horário acabou de ser agendado por outra pessoa. Por favor, escolha outro."}
 
         try:
-            meeting_end = meeting_datetime + timedelta(hours=1)
-            
             description_template = """☀️ REUNIÃO SOLARPRIME - ECONOMIA COM ENERGIA SOLAR
 
 Olá {lead_name}!
@@ -326,8 +373,8 @@ Equipe SolarPrime
             event = {
                 'summary': f'☀️ Reunião SolarPrime com {lead_info.get("name", "Cliente")}',
                 'description': event_description,
-                'start': {'dateTime': meeting_datetime.isoformat(), 'timeZone': 'America/Sao_Paulo'},
-                'end': {'dateTime': meeting_end.isoformat(), 'timeZone': 'America/Sao_Paulo'},
+                'start': {'dateTime': aware_meeting_datetime.isoformat(), 'timeZone': 'America/Sao_Paulo'},
+                'end': {'dateTime': aware_meeting_end.isoformat(), 'timeZone': 'America/Sao_Paulo'},
                 'conferenceData': {'createRequest': {'requestId': f'meet-{uuid.uuid4()}', 'conferenceSolutionKey': {'type': 'hangoutsMeet'}}},
                 'attendees': [{'email': email} for email in set([lead_info.get("email")] + lead_info.get("attendees", [])) if email],
                 'reminders': {'useDefault': False, 'overrides': [{'method': 'email', 'minutes': 60}, {'method': 'popup', 'minutes': 15}]}
@@ -345,17 +392,6 @@ Equipe SolarPrime
                 "attendees": [att['email'] for att in event['attendees']],
                 "message": f"✅ Reunião confirmada para {target_date.strftime('%d/%m')} às {time}.", "real": True
             }
-        except HttpError as e:
-            if e.resp.status == 409:
-                availability_result = await self.check_availability("")
-                return {
-                    "success": False, "error": "conflict",
-                    "message": f"O horário {time} no dia {target_date.strftime('%d/%m')} já está ocupado.",
-                    "available_slots": availability_result.get("available_slots", []),
-                    "date": availability_result.get("date")
-                }
-            else:
-                return {"success": False, "message": f"Erro ao agendar: {e}"}
         except Exception as e:
             return {"success": False, "message": f"Erro ao agendar: {e}"}
         finally:
@@ -436,25 +472,7 @@ Equipe SolarPrime
             new_datetime_end = new_datetime + timedelta(hours=1)
 
             # Passo 4: Verificar disponibilidade do novo horário
-            emoji_logger.calendar_event(f"Verificando disponibilidade para {new_date} às {new_time}...")
-            
-            # Usar o datetime com timezone para a verificação
-            time_min = new_datetime.isoformat()
-            time_max = new_datetime_end.isoformat()
-            
-            events_result = await asyncio.to_thread(
-                self.service.events().list(
-                    calendarId=self.calendar_id, timeMin=time_min,
-                    timeMax=time_max, singleEvents=True
-                ).execute
-            )
-            conflicting_events = [
-                event for event in events_result.get('items', []) 
-                if event.get('id') != meeting_id
-            ]
-
-            if conflicting_events:
-                emoji_logger.service_warning(f"Conflito detectado para {new_date} às {new_time}.")
+            if not await self._is_slot_available(new_datetime, new_datetime_end, event_id_to_ignore=meeting_id):
                 suggested_times = await self.check_availability(new_date)
                 return {
                     "success": False, "error": "conflict",

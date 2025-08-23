@@ -1,41 +1,36 @@
-# TODO v2 - Correção e Resiliência do Agendamento no Google Calendar
+# TODO: Correção do Agendamento Sobreposto (Double Booking)
 
-Este documento detalha as tarefas para corrigir a falha de configuração do Google Calendar, restaurando a funcionalidade de fallback e adicionando validações para tornar o sistema mais resiliente.
+**Objetivo:** Garantir que o sistema nunca agende ou reagende uma reunião em um horário que já esteja ocupado no Google Calendar.
 
-## Tarefas
+---
 
-### Fase 1: Refatoração do `CalendarService` para Resiliência
+### Fase 1: Robustecer o `CalendarService`
 
--   [ ] **Modificar `app/services/calendar_service_100_real.py`:**
-    -   **Reintroduzir a Lógica de Fallback:** No método `initialize`, restaurar a lógica que busca o calendário principal (`'primary': true`) da conta Google autenticada.
-    -   **Implementar Validação de `GOOGLE_CALENDAR_ID`:**
-        -   Antes de usar o `settings.google_calendar_id`, verificar se o valor **não é** uma URL (não deve começar com `http` ou `https`).
-        -   Se o ID fornecido for inválido (é uma URL), registrar um `emoji_logger.system_warning` informando: "O GOOGLE_CALENDAR_ID fornecido é uma URL inválida. Ignorando o valor e utilizando o calendário principal da conta."
-        -   Se o ID for válido, usá-lo. Se for inválido ou não for fornecido, prosseguir com a lógica de fallback para o calendário principal.
-    -   **Garantir Logging Explícito:** Independentemente do método usado (ID explícito ou fallback), o log final da inicialização deve informar claramente qual calendário foi selecionado, mostrando seu `summary` (nome) e `id`. Ex: `emoji_logger.service_ready("Google Calendar conectado ao calendário: '{summary}'", calendar_id=self.calendar_id)`.
-    -   **Remover o `ValueError`:** A verificação que lança um `ValueError` se o ID não estiver presente deve ser removida para permitir o funcionamento do fallback.
+-   [x] **Tarefa 1.1: Criar Verificador de Disponibilidade Interno**
+    -   **Status:** Concluído.
+    -   **Arquivo:** `app/services/calendar_service_100_real.py`
+    -   **Ação:** Foi criado o método privado `_is_slot_available` para centralizar a lógica de verificação de conflitos.
 
-### Fase 2: Aprimoramento da Documentação
+-   [x] **Tarefa 1.2: Refatorar `schedule_meeting` para Verificação Proativa**
+    -   **Status:** Concluído.
+    -   **Arquivo:** `app/services/calendar_service_100_real.py`
+    -   **Ação:** A função `schedule_meeting` agora chama `_is_slot_available` antes de qualquer tentativa de agendamento, retornando um erro de conflito se o horário estiver ocupado.
 
--   [ ] **Atualizar `docs/CONFIGURACAO_CALENDARIO.md`:**
-    -   Adicionar uma seção de "Exemplos de IDs Válidos e Inválidos".
-    -   **Válido:** `seunome@gmail.com`
-    -   **Válido:** `c_1234567890abcdefg12345678@group.calendar.google.com`
-    -   **INVÁLIDO:** `https://calendar.google.com/calendar/embed?src=...`
-    -   Adicionar uma nota explicando que, se o ID não for fornecido ou for inválido, o sistema usará o calendário principal da conta Google conectada.
+-   [x] **Tarefa 1.3: Refatorar `reschedule_meeting` para Usar o Verificador Central**
+    -   **Status:** Concluído.
+    -   **Arquivo:** `app/services/calendar_service_100_real.py`
+    -   **Ação:** A função `reschedule_meeting` foi atualizada para usar o novo método `_is_slot_available`, garantindo uma verificação consistente e robusta.
 
-### Fase 3: Teste e Verificação
+### Fase 2: Aprimoramento do Prompt e Testes
 
--   [ ] **Testar Cenário 1 (ID Inválido):**
-    -   Manter a URL inválida no `.env` para `GOOGLE_CALENDAR_ID`.
-    -   Reiniciar a aplicação e verificar nos logs se o aviso de ID inválido aparece.
-    -   Verificar se o serviço continua e seleciona o calendário principal.
-    -   Realizar um agendamento e confirmar se ele aparece no calendário principal da conta.
--   [ ] **Testar Cenário 2 (Sem ID):**
-    -   Comentar ou remover a linha `GOOGLE_CALENDAR_ID` do `.env`.
-    -   Reiniciar a aplicação e verificar se o serviço inicializa usando o calendário principal.
-    -   Realizar um agendamento e confirmar o resultado.
--   [ ] **Testar Cenário 3 (ID Válido):**
-    -   Configurar um `GOOGLE_CALENDAR_ID` **válido** no `.env`.
-    -   Reiniciar a aplicação e verificar nos logs se o calendário correto foi selecionado.
-    -   Realizar um agendamento e confirmar que o evento foi criado no calendário especificado.
+-   [x] **Tarefa 2.1: Atualizar o Prompt do Agente**
+    -   **Status:** Concluído.
+    -   **Arquivo:** `app/prompts/prompt-agente.md`
+    -   **Ação:** O prompt foi atualizado para instruir o agente sobre como lidar com erros de conflito de agendamento, tornando a interação com o usuário mais inteligente e resiliente.
+
+-   [ ] **Tarefa 2.2: Criar Testes de Validação**
+    -   **Status:** Pendente.
+    -   **Ação:** Criar um novo arquivo de teste, `tests/test_calendar_conflict.py`.
+    -   **Nota:** A criação de testes foi adiada conforme solicitado.
+
+---
