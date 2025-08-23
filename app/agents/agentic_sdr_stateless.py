@@ -230,8 +230,14 @@ class AgenticSDRStateless:
         """Lida com intenções que podem ser resolvidas sem o fluxo principal do LLM."""
         emoji_logger.system_info(f"Intenção '{user_intent}' detectada. Usando fluxo de bypass.")
         tool_name, tool_params = "", {}
+        
         if user_intent == "reagendamento":
             tool_name = "calendar.reschedule_meeting"
+            date, time = self._extract_schedule_details(message)
+            if date:
+                tool_params['date'] = date
+            if time:
+                tool_params['time'] = time
         elif user_intent == "cancelamento":
             tool_name = "calendar.cancel_meeting"
         elif user_intent == "agendamento":
@@ -455,7 +461,7 @@ class AgenticSDRStateless:
                 new_date, new_time = self._extract_schedule_details(user_message)
 
                 # Se o usuário não especificar uma nova data, reutiliza a data da reunião original
-                if not new_date:
+                if not new_date and new_time:
                     original_start_str = latest_qualification.get("meeting_scheduled_at")
                     if original_start_str:
                         original_datetime = datetime.fromisoformat(original_start_str)
