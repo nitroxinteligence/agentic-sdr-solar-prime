@@ -116,23 +116,56 @@ class OpenAI:
             )
 
     async def achat(self, messages):
-        """Chamada REAL para OpenAI API"""
+        """Chamada REAL para OpenAI API com suporte para nosso formato multimodal interno."""
         if not self.client:
             emoji_logger.model_error("Tentativa de usar o fallback OpenAI, mas o cliente não está configurado.")
-            return None  # Retorna None para que a lógica de fallback possa continuar (ou falhar)
+            return None
+
+        # Transforma o histórico de mensagens para o formato da OpenAI
+        openai_messages = []
+        for msg in messages:
+            role = msg.get("role")
+            content = msg.get("content")
+            
+            if isinstance(content, list):
+                # Mensagem multimodal
+                new_content_parts = []
+                for part in content:
+                    part_type = part.get("type")
+                    if part_type == "text":
+                        new_content_parts.append(part)
+                    elif part_type == "media":
+                        # Converte nosso tipo 'media' para 'image_url' da OpenAI
+                        media_data = part.get("media_data", {})
+                        mime_type = media_data.get("mime_type")
+                        base64_content = media_data.get("content")
+                        if mime_type and base64_content and "image" in mime_type:
+                            new_content_parts.append({
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{mime_type};base64,{base64_content}"
+                                }
+                            })
+                        else:
+                            # Ignora mídias não suportadas por enquanto para evitar erros
+                            emoji_logger.model_warning(f"Mídia do tipo '{mime_type}' não suportada pelo wrapper OpenAI. Ignorando.")
+                
+                if new_content_parts:
+                    openai_messages.append({"role": role, "content": new_content_parts})
+
+            else:
+                # Mensagem de texto simples
+                openai_messages.append({"role": role, "content": content})
 
         try:
-            # Parâmetros da requisição
             params = {
                 "model": self.id,
-                "messages": messages,
+                "messages": openai_messages,
             }
 
-            # Adicionar temperatura condicionalmente
             if 'o3-mini' not in self.id:
                 params["temperature"] = 0.7
 
-            # Fazer chamada REAL para OpenAI
             response = await self.client.chat.completions.create(**params)
 
             return type('Response', (), {
@@ -141,7 +174,7 @@ class OpenAI:
 
         except Exception as e:
             emoji_logger.model_error(f"Erro na API OpenAI: {e}")
-            return None # Retorna None em caso de erro na API
+            return None
 
 
 class ModelManager:

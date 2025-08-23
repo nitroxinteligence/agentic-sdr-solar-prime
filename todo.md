@@ -1,42 +1,43 @@
-# Plano de Ação: Sincronização Inteligente de Tags e Campos
+# Plano de Ação: Refatoração do Sistema de Follow-up
 
-*Objetivo: Implementar uma lógica robusta e em tempo real para que o agente atualize tags e campos customizados no Kommo CRM com base no contexto da conversa, garantindo 100% de precisão.*
-
----
-
-### Fase 1: Análise e Mapeamento
-
-- [x] **1.1. Mapear Campos e Tags:**
-  - [x] Analisar o `crm_service_100_real.py` para confirmar como os campos customizados (`WHATSAPP`, `VALOR CONTA DE ENERGIA`, `SOLUÇAO SOLAR`) e as tags são atualmente manipulados.
-  - [x] Validar que os nomes dos campos e os valores do select `SOLUÇAO SOLAR` correspondem exatamente ao que a API do Kommo espera. Vou garantir que acentos e variações sejam tratados corretamente.
-
-- [x] **1.2. Identificar Pontos de Extração de Dados:**
-  - [x] Revisar `lead_manager.py` e `multimodal_processor.py` para entender como o "VALOR CONTA DE ENERGIA" é extraído de texto e de mídias (PDF/imagem).
-  - [x] Revisar `context_analyzer.py` para ver como a intenção "SOLUÇAO SOLAR" é identificada.
+*Objetivo: Corrigir a lógica de contagem de follow-ups, garantir que o reengajamento funcione e validar o fluxo de lembretes de reunião, tornando o sistema confiável e fácil de manter.*
 
 ---
 
-### Fase 2: Implementação do Sincronizador
+### Fase 1: Diagnóstico e Análise de Código
 
-- [x] **2.1. Criar um "Módulo de Sincronização" (`CRMDataSync`):**
-  - [x] Proponho criar uma nova classe, talvez em `app/services/crm_sync_service.py`, para centralizar toda a lógica de decisão sobre quais campos e tags atualizar. Isso evita espalhar a lógica por vários arquivos.
-  - [x] Este módulo receberá o `lead_info` e o histórico da conversa e retornará um payload de atualização para o Kommo.
-
-- [x] **2.2. Implementar a Lógica de Decisão:**
-  - [x] **`SOLUÇAO SOLAR` e Tags Associadas:** Implementar a lógica que, baseada na escolha inicial do usuário (Opção 1, 2, 3 ou 4), define o campo `SOLUÇAO SOLAR` e adiciona a tag correspondente (ex: `Usina Investimento`).
-  - [x] **`VALOR CONTA DE ENERGIA`:** Garantir que, sempre que este valor for extraído (de texto ou mídia), ele seja preparado para atualização.
-  - [x] **`sem-resposta`:** Implementar a regra que aplica esta tag e move o lead para o estágio "NÃO INTERESSADO" quando o contexto indicar.
-  - [x] **Atualização Contínua:** A lógica permitirá que, se o usuário mudar de ideia, os campos e tags sejam sobrescritos com a informação mais recente, garantindo que o CRM esteja sempre atualizado.
-
-- [x] **2.3. Integrar o Sincronizador ao Fluxo Principal:**
-  - [x] Em `agentic_sdr_stateless.py`, no final do método `process_message`, vou adicionar uma chamada ao novo `CRMDataSync`.
-  - [x] Após cada interação do usuário, o agente analisará o estado da conversa e, se houver mudanças, chamará o `crm_service` para aplicar as atualizações de campos e tags imediatamente. Esta abordagem em tempo real é mais simples e confiável que um worker de 30 minutos.
+- [ ] **1.1. Analisar o Fluxo de Dados:**
+  - [x] Mapear o ciclo de vida de um follow-up: `followup_service` (cria no DB) -> `followup_executor_service` (lê do DB e enfileira no Redis) -> `followup_worker` (consome do Redis e executa).
+- [ ] **1.2. Isolar a Lógica de Contagem:**
+  - [x] Revisar o método `enqueue_pending_followups` em `followup_executor_service.py`.
+  - [x] Revisar o método `get_recent_followup_count` em `supabase_client.py` para entender como a contagem é feita. A hipótese é que a consulta SQL está incorreta.
 
 ---
 
-### Fase 3: Validação e Testes
+### Fase 2: Correção e Refatoração
 
-- [x] **3.1. Criar Testes de Unidade:**
-  - [x] Escrever testes para o `CRMDataSync` que simulem diferentes cenários de conversa e verifiquem se o payload de atualização correto é gerado.
-- [ ] **3.2. Adicionar Logs para Validação:**
-  - [ ] Adicionar logs detalhados que mostrem: "Decidido atualizar campo X com valor Y" e "Decidido adicionar tag Z". Isso permitirá a validação em tempo real.
+- [ ] **2.1. Corrigir a Contagem de Follow-ups:**
+  - **Ação:** Modificar a consulta em `get_recent_followup_count` para que ela **não** inclua follow-ups com status `pending` ou `queued` na contagem de "tentativas". Apenas follow-ups `executed` ou `failed` devem contar como uma tentativa real. Isso resolverá o problema do "limite atingido" imediatamente.
+
+- [ ] **2.2. Centralizar e Simplificar a Lógica de Agendamento:**
+  - **Problema:** A lógica de quando agendar um follow-up está espalhada (o `ConversationMonitor` agenda, o `AgenticSDRStateless` também pode).
+  - **Ação:** Criar um novo serviço `FollowUpManagerService` (`app/services/followup_manager.py`).
+  - **Responsabilidade:** Este novo serviço terá um único método, como `handle_conversation_inactivity(lead_id, phone_number)`, que será chamado pelo `ConversationMonitor`. Ele conterá a lógica de verificar o limite e agendar o follow-up, centralizando a regra de negócio.
+
+- [ ] **2.3. Refatorar o `FollowUpWorker` para Inteligência Contextual:**
+  - **Problema:** O worker atual gera uma mensagem de follow-up baseada em um prompt genérico.
+  - **Ação:** Melhorar o método `_generate_intelligent_followup_message` no `followup_worker.py`.
+  - **Melhoria:** O prompt enviado ao LLM será mais rico, contendo um resumo claro do último ponto da conversa e uma instrução explícita para "reengajar o lead a partir deste ponto", garantindo que o follow-up seja relevante e não uma mensagem genérica de "ainda tem interesse?".
+
+- [ ] **2.4. Validar Lembretes de Reunião:**
+  - **Ação:** Revisar o método `_execute_post_scheduling_workflow` em `agentic_sdr_stateless.py` para garantir que, após um agendamento, os follow-ups de lembrete (24h e 2h antes) sejam criados corretamente no banco de dados pelo `followup_service`.
+
+---
+
+### Fase 3: Testes e Validação
+
+- [ ] **3.1. Criar Testes para a Nova Lógica:**
+  - [ ] Escrever um teste unitário para o novo `FollowUpManagerService` para validar a lógica de contagem e agendamento.
+  - [ ] Escrever um teste para o `FollowUpWorker` que simula uma tarefa da fila e verifica se o prompt gerado para o LLM é contextualmente rico.
+- [ ] **3.2. Validação Manual:**
+  - [ ] Após a implementação, solicitar a execução de um cenário de teste onde um lead para de responder, para observarmos nos logs se o follow-up de reengajamento é agendado e executado corretamente.

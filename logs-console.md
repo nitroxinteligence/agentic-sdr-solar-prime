@@ -1,91 +1,20 @@
-2025-08-23 14:28:52.918 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ Model: Erro de quota (429). Tentativa 1 falhou, aguardando 1.0s. Detalhes: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. [violations {
-  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
-  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
-  quota_dimensions {
-    key: "model"
-    value: "gemini-2.5-pro"
-  }
-  quota_dimensions {
-    key: "location"
-    value: "global"
-  }
-  quota_value: 50
-}
-, links {
-  description: "Learn more about Gemini API quotas"
-  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
-}
-, retry_delay {
-  seconds: 7
-}
-]
-2025-08-23 14:28:59.158 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ Model: Gemini response has no valid part, indicating a potential issue (e.g., safety filters). Triggering fallback. | Data: {'finish_reason': 'N/A', 'prompt_feedback': '', 'error': "Invalid operation: The `response.text` quick accessor requires the response to contain a valid `Part`, but none were returned. The candidate's [finish_reason](https://ai.google.dev/api/generate-content#finishreason) is 1."}
-2025-08-23 14:28:59.634 | ERROR    | app.utils.logger:log_with_emoji:75 | ❌ Model: Todas as tentativas falharam após erro de quota: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. [violations {
-  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
-  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
-  quota_dimensions {
-    key: "model"
-    value: "gemini-2.5-pro"
-  }
-  quota_dimensions {
-    key: "location"
-    value: "global"
-  }
-  quota_value: 50
-}
-, links {
-  description: "Learn more about Gemini API quotas"
-  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
-}
-, retry_delay {
-}
-]
-2025-08-23 14:28:59.635 | ERROR    | app.utils.logger:log_with_emoji:75 | ❌ Model: Erro ao chamar modelo: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. [violations {
-  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
-  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
-  quota_dimensions {
-    key: "model"
-    value: "gemini-2.5-pro"
-  }
-  quota_dimensions {
-    key: "location"
-    value: "global"
-  }
-  quota_value: 50
-}
-, links {
-  description: "Learn more about Gemini API quotas"
-  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
-}
-, retry_delay {
-}
-]
-2025-08-23 14:28:59.635 | ERROR    | app.utils.logger:log_with_emoji:75 | ❌ Model: Erro no modelo primário: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. [violations {
-  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
-  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
-  quota_dimensions {
-    key: "model"
-    value: "gemini-2.5-pro"
-  }
-  quota_dimensions {
-    key: "location"
-    value: "global"
-  }
-  quota_value: 50
-}
-, links {
-  description: "Learn more about Gemini API quotas"
-  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
-}
-, retry_delay {
-}
-]
-2025-08-23 14:28:59.635 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ Model: Modelo primário falhou. Acionando fallback para o3-mini.
-INFO:     127.0.0.1:48898 - "GET /health HTTP/1.1" 200 OK
-2025-08-23 14:29:00.782 | ERROR    | app.utils.logger:log_with_emoji:75 | ❌ Model: Erro na API OpenAI: Error code: 400 - {'error': {'message': "Unsupported parameter: 'temperature' is not supported with this model.", 'type': 'invalid_request_error', 'param': 'temperature', 'code': 'unsupported_parameter'}}
-2025-08-23 14:29:00.783 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ Resposta do LLM vazia | Data: {'model': 'o3-mini'}
-2025-08-23 14:29:00.783 | ERROR    | app.utils.logger:log_with_emoji:75 | ❌ Service: Todos os modelos falharam
-2025-08-23 14:29:00.784 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Resposta gerada: Não consegui gerar uma resposta no momento....
-2025-08-23 14:29:00.784 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ 🔧 Tags ausentes - adicionando automaticamente
-2025-08-23 14:29:00.785 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ ✅ Resposta formatada com tags: 76 chars
-2025-08-23 14:29:06.259 | INFO     | app.utils.logger:log_with_emoji:75 | 📤 Enviando typing para 558182986181 | Data: {'duration_seconds': 1.9, 'message_length': 43, 'recipient': '558182986181', 'type': 'typing'}
+2025-08-23 14:58:00.279 | INFO     | app.integrations.supabase_client:create_follow_up:325 | Follow-up criado: 9418a34e-e892-431b-bcb3-be226a6b9d2d
+2025-08-23 14:58:00.280 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ ✅ Follow-up agendado: IMMEDIATE_REENGAGEMENT para 55819813...
+2025-08-23 14:58:00.284 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ ⏰ Follow-up 30min agendado: 55819813...
+INFO:     127.0.0.1:43058 - "GET /health HTTP/1.1" 200 OK
+2025-08-23 14:58:14.629 | INFO     | app.services.followup_executor_service:enqueue_pending_followups:58 | 📋 1 follow-ups pendentes encontrados.
+2025-08-23 14:58:14.833 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ 🚫 Limite de follow-ups atingido para o lead 2bcd4f94-1eaf-4e4f-8b84-f6a37e8882cf.
+INFO:     127.0.0.1:49720 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59508 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50730 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56432 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39038 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45114 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48664 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51202 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46750 - "GET /health HTTP/1.1" 200 OK
+2025-08-23 15:03:01.524 | INFO     | app.integrations.supabase_client:create_follow_up:325 | Follow-up criado: ed53de36-ee2f-48e7-9a9b-d45624142742
+2025-08-23 15:03:01.525 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ ✅ Follow-up agendado: IMMEDIATE_REENGAGEMENT para 55818298...
+2025-08-23 15:03:01.526 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ ⏰ Follow-up 30min agendado: 55818298...
+2025-08-23 15:03:06.517 | INFO     | app.services.followup_executor_service:enqueue_pending_followups:58 | 📋 1 follow-ups pendentes encontrados.
+2025-08-23 15:03:06.737 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ 🚫 Limite de follow-ups atingido para o lead 05e92184-f751-4504-a585-959d867ce69c.
