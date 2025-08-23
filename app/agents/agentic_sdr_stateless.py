@@ -301,7 +301,7 @@ class AgenticSDRStateless:
         Parse e executa tool calls na resposta do agente.
         """
         emoji_logger.system_debug(f"Raw LLM response before tool parsing: {response}")
-        tool_pattern = r'[[TOOL:\s*([^\]]+?)\s*(?:|\s*([^]]*))?]'
+        tool_pattern = r'\[TOOL:\s*([^|\]]+?)\s*\|\s*([^\]]*)\]'
         tool_matches = []
         try:
             tool_matches = re.findall(tool_pattern, response)
