@@ -122,12 +122,18 @@ class OpenAI:
             return None  # Retorna None para que a lógica de fallback possa continuar (ou falhar)
 
         try:
+            # Parâmetros da requisição
+            params = {
+                "model": self.id,
+                "messages": messages,
+            }
+
+            # Adicionar temperatura condicionalmente
+            if 'o3-mini' not in self.id:
+                params["temperature"] = 0.7
+
             # Fazer chamada REAL para OpenAI
-            response = await self.client.chat.completions.create(
-                model=self.id,
-                messages=messages,
-                temperature=0.7
-            )
+            response = await self.client.chat.completions.create(**params)
 
             return type('Response', (), {
                 'content': response.choices[0].message.content
