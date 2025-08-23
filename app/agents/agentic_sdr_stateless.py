@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import pytz
 import re
 
+from app.integrations.supabase_client import supabase_client
 from app.core.model_manager import ModelManager
 from app.core.multimodal_processor import MultimodalProcessor
 from app.core.lead_manager import LeadManager
@@ -352,7 +353,7 @@ class AgenticSDRStateless:
                             "meeting_scheduled_at": result.get("start_time"),
                             "notes": "Reunião agendada pelo agente de IA."
                         }
-                        await self.db.create_lead_qualification(qualification_data)
+                        await supabase_client.create_lead_qualification(qualification_data)
                         emoji_logger.system_info(f"Registro de qualificação criado para o evento: {event_id}")
 
                     await self._execute_post_scheduling_workflow(
@@ -364,7 +365,7 @@ class AgenticSDRStateless:
             elif method_name == "suggest_times":
                 return await self.calendar_service.suggest_times(lead_info)
             elif method_name == "cancel_meeting":
-                latest_qualification = await self.db.get_latest_qualification(lead_info["id"])
+                latest_qualification = await supabase_client.get_latest_qualification(lead_info["id"])
                 meeting_id = params.get("meeting_id") or (latest_qualification and latest_qualification.get("google_event_id"))
                 
                 if not meeting_id:
@@ -374,7 +375,7 @@ class AgenticSDRStateless:
                 return await self.calendar_service.cancel_meeting(meeting_id)
             elif method_name == "reschedule_meeting":
                 # Lógica robusta: Ignora o meeting_id do LLM e busca sempre do Supabase.
-                latest_qualification = await self.db.get_latest_qualification(lead_info.get("id"))
+                latest_qualification = await supabase_client.get_latest_qualification(lead_info.get("id"))
                 meeting_id = latest_qualification.get("google_event_id") if latest_qualification else None
                 
                 if not meeting_id:
