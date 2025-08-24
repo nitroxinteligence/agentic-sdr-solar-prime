@@ -495,6 +495,15 @@ async def process_message_with_agent(
 ):
     """Processa mensagem com o agente AGENTIC SDR"""
     from app.integrations.supabase_client import supabase_client
+
+    # Validação Defensiva: Garante que a mensagem original é um dicionário válido
+    if not original_message or not isinstance(original_message, dict):
+        emoji_logger.system_error(
+            "process_message_with_agent",
+            f"Mensagem original inválida ou None recebida para o telefone {phone}. Abortando.",
+            received_message=original_message
+        )
+        return
     
     if media_data and media_data.get("error"):
         await evolution_client.send_text_message(phone, media_data["error"])
