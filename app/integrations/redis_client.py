@@ -335,18 +335,15 @@ class RedisClient:
             logger.error(f"Erro ao inscrever em canais: {e}")
             return None
 
-    async def set_human_handoff_pause(
-            self, phone: str, hours: int = 24
-    ) -> bool:
-        """Define pausa para intervenção humana"""
+    async def set_human_handoff_pause(self, phone: str) -> bool:
+        """Define uma pausa permanente para intervenção humana."""
         if not self.redis_client:
             return False
         try:
             key = f"lead:pause:{phone}"
-            ttl = hours * 3600
-            await self.redis_client.setex(key, ttl, "1")
+            await self.redis_client.set(key, "1")
             logger.info(
-                f"🤝 Handoff humano ativado para {phone} por {hours} horas"
+                f"🤝 Handoff humano ativado para {phone}."
             )
             return True
         except Exception as e:
