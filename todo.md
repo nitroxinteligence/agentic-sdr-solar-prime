@@ -1,28 +1,27 @@
 # TODO - Plano de Ação do Projeto
 
-## Tarefa Atual: Corrigir Pausa de Handoff para ser Baseada em Estado
+## Tarefa Atual: Corrigir Inconsistência de Esquema do Banco de Dados
 
 -   [x] **Análise e Diagnóstico:**
-    -   [x] Identificar que a pausa de handoff é baseada em tempo (24h) em vez de estado.
-    -   [x] Localizar a causa raiz no uso do comando `setex` do Redis em `app/integrations/redis_client.py`.
-    -   [x] Criar o relatório `DIAGNOSTICO_HANDOFF_TTL_ERROR.md`.
+    -   [x] Analisar o erro `PGRST204 - Could not find column 'current_stage_id'`.
+    -   [x] Identificar a causa como uma migração de banco de dados ausente.
+    -   [x] Criar o relatório `DIAGNOSTICO_DB_SCHEMA_ERROR.md`.
 
 -   [x] **Implementação da Correção:**
-    -   [x] **Ação:** Modificar a função `set_human_handoff_pause` em `app/integrations/redis_client.py`.
-    -   [x] **Lógica:**
-        -   [x] Remover o parâmetro `hours`.
-        -   [x] Substituir `setex` por `set` para criar uma chave persistente.
-        -   [x] Atualizar a mensagem de log para remover a menção de tempo.
+    -   [x] **Ação:** Criar um novo arquivo de migração SQL.
+    -   [x] **Arquivo:** `migrations/20250824_add_stage_id_to_leads.sql`
+    -   [x] **Conteúdo:** Adicionar o comando `ALTER TABLE leads ADD COLUMN current_stage_id BIGINT;` ao arquivo.
 
 -   [x] **Verificação e Validação:**
-    -   [x] Revisar a alteração para garantir que a chave Redis agora é criada sem TTL.
+    -   [x] Informar ao usuário sobre a necessidade de aplicar a nova migração no Supabase.
 
 -   [ ] **Finalização:**
-    -   [ ] Realizar o commit da correção definitiva.
+    -   [ ] Realizar o commit da migração.
 
 ---
 
 ## Tarefas Anteriores
+-   [x] **Corrigir Pausa de Handoff para ser Baseada em Estado:** Concluído.
 -   [x] **Implementar Sincronização Ativa de Handoff:** Concluído.
 -   [x] **Correção Webhook Kommo:** Concluído.
 -   [x] **Correção Crítica do Protocolo de Silêncio:** Concluído.
