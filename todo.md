@@ -1,18 +1,27 @@
-# Plano de Ação para Correção de Tag de Transbordo
+# Plano de Ação para Correção de Confusão com Mensagens Fragmentadas
 
-**Diagnóstico:** O agente está movendo corretamente os leads interessados em "Usina de Investimento" para o estágio de "Atendimento Humano", mas está aplicando a tag errada ("Instalação Usina Própria") no Kommo CRM. A causa raiz foi identificada na lógica de extração de `chosen_flow` no `LeadManager`, que não priorizava corretamente a detecção do fluxo de investimento.
+**Diagnóstico:** O agente perde o contexto e reinicia o fluxo de conversa quando recebe múltiplas mensagens curtas e rápidas do usuário. A causa é o `MessageBuffer` que combina essas mensagens em um texto incoerente, confundindo o LLM, que então descarta o histórico e volta ao início do prompt.
 
-## Fase 1: Correção da Lógica de Extração
+## Fase 1: Aprimoramento da Resiliência do Agente (Prompt Engineering)
 
-- [x] **Tarefa 1.1: Refatorar a Extração de Fluxo no `LeadManager`**
-    - **Arquivo:** `app/core/lead_manager.py`
-    - **Ação:** O método `_extract_chosen_flow` foi completamente reescrito. A lógica anterior, baseada em um dicionário simples e ordenação por comprimento de chave, foi substituída por uma busca priorizada e explícita.
-    - **Melhoria:** A nova implementação verifica palavras-chave específicas para cada fluxo em uma ordem de prioridade (começando por "Usina Investimento"), garantindo que o fluxo correto seja identificado mesmo que o usuário mencione múltiplos termos. Isso resolve a ambiguidade e garante que a tag correta seja aplicada pelo `crm_sync_service`.
+- [ ] **Tarefa 1.1: Criar uma "Regra de Interpretação de Buffer" no Prompt**
+    - **Arquivo:** `app/prompts/prompt-agente.md`
+    - **Ação:** Adicionar uma nova regra de alta prioridade na seção `<anti_hallucination_system>`. Esta regra irá explicar ao LLM que uma mensagem de usuário com múltiplas linhas (`\n`) é resultado de um buffer e que cada linha deve ser considerada. A instrução principal será para focar na última linha que contém a informação mais relevante para o estágio atual da conversa, enquanto ignora as linhas anteriores se elas forem contextualmente irrelevantes (como saudações repetidas).
 
-## Fase 2: Validação
+- [ ] **Tarefa 1.2: Eliminar Enumerações nos Templates do Prompt**
+    - **Arquivo:** `app/prompts/prompt-agente.md`
+    - **Ação:** Revisar todos os `<template>` nos fluxos de conversa e reescrever aqueles que usam listas numeradas (`1.`, `2.`) para um formato de parágrafo único e conversacional. Isso garante que as respostas do agente sejam coesas e não sejam divididas pelo `MessageSplitter`.
 
-- [ ] **Tarefa 2.1: Teste de Cenário de Transbordo**
-    - **Ação:** Realizar um teste de conversação onde o usuário expressa interesse em "Usina de Investimento".
-    - **Verificação:** Confirmar no Kommo CRM que o lead foi movido para "Atendimento Humano" E que a tag aplicada é exatamente "Usina Investimento".
+## Fase 2: Melhoria da Experiência do Usuário
 
-**Conclusão Esperada:** A refatoração da lógica de extração de fluxo garantirá que o `lead_info` contenha o `chosen_flow` correto, o que, por sua vez, fará com que o `crm_sync_service` aplique a tag correta durante o processo de transbordo.
+- [ ] **Tarefa 2.1: Ajustar o Timeout do `MessageBuffer`**
+    - **Arquivo:** `app/config.py`
+    - **Ação:** Reduzir o `message_buffer_timeout` para um valor menor (ex: 3.0 segundos). Isso diminuirá a janela de tempo para agrupar mensagens, tornando menos provável que pensamentos distintos do usuário sejam combinados em uma única mensagem.
+
+## Fase 3: Validação
+
+- [ ] **Tarefa 3.1: Teste de Cenário de Mensagens Picotadas**
+    - **Ação:** Simular o envio de múltiplas mensagens curtas e rápidas, incluindo informações relevantes misturadas com saudações ou texto irrelevante.
+    - **Verificação:** Confirmar que o agente agora consegue extrair a informação relevante da última mensagem, ignora o ruído das mensagens anteriores e responde de forma contextual, sem reiniciar o fluxo da conversa.
+
+**Conclusão Esperada:** Ao educar o LLM sobre como lidar com entradas fragmentadas e ao ajustar o comportamento do buffer, o agente se tornará mais resiliente a padrões de digitação variados, eliminando a perda de contexto e as respostas alucinadas.
