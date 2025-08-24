@@ -536,7 +536,7 @@ async def process_message_with_agent(
 
     if not conversation:
         conversation = await supabase_client.create_conversation(
-            phone, lead["id"]
+            phone, lead["id"] if lead else None
         )
 
     if not conversation or not isinstance(
