@@ -143,13 +143,16 @@ class AgenticSDRStateless:
             )
 
     async def _update_context(self, message: str, conversation_history: list, lead_info: dict, media_data: dict) -> tuple[list, dict]:
-        """Prepara a mensagem do usuário, atualiza o histórico e enriquece as informações do lead."""
-        # 1. PROCESSAR MÍDIA (SE EXISTIR)
+        """
+        Prepara a mensagem do usuário, atualiza o histórico, enriquece as informações
+        do lead e persiste as mudanças no banco de dados de forma atômica.
+        """
+        # 1. Adicionar nova mensagem do usuário ao histórico
         user_message_content = [{"type": "text", "text": message}]
         if media_data:
+            # (O restante do código de processamento de mídia permanece o mesmo)
             if media_data.get("type") == "error":
                 raise ValueError(media_data.get("content", "Erro ao processar mídia."))
-
             media_content = media_data.get("content") or media_data.get("data", "")
             mime_type = media_data.get("mimetype", "application/octet-stream")
             if "base64," in media_content:
@@ -159,7 +162,6 @@ class AgenticSDRStateless:
                 "media_data": {"mime_type": mime_type, "content": media_content}
             })
             emoji_logger.multimodal_event(f"📎 Mídia do tipo {mime_type} adicionada.")
-
             media_result = await self.multimodal.process_media(media_data)
             if media_result.get("success"):
                 extracted_bill_value = media_result.get("analysis", {}).get("bill_value")
@@ -169,22 +171,32 @@ class AgenticSDRStateless:
             else:
                 emoji_logger.system_warning(f"Falha na extração de texto da mídia: {media_result.get('message')}")
 
-        # 2. ATUALIZAR HISTÓRICO
         user_message = {"role": "user", "content": user_message_content, "timestamp": datetime.now().isoformat()}
         conversation_history.append(user_message)
 
-        # 3. EXECUTAR ANÁLISES DE LEAD
-        new_lead_info = self.lead_manager.extract_lead_info(conversation_history, existing_lead_info=lead_info)
-        lead_changes = self._detect_lead_changes(lead_info, new_lead_info)
+        # 2. Re-processar o histórico COMPLETO para obter o estado mais atual do lead
+        # Esta é a mudança crucial: sempre reavalia o histórico todo.
+        updated_lead_info = self.lead_manager.extract_lead_info(
+            conversation_history,
+            existing_lead_info=lead_info
+        )
+
+        # 3. Detectar e persistir mudanças no banco de dados
+        lead_changes = self._detect_lead_changes(lead_info, updated_lead_info)
+        
         if lead_changes:
-            from app.integrations.supabase_client import supabase_client
             lead_id_to_update = lead_info.get("id")
             if lead_id_to_update:
-                await supabase_client.update_lead(lead_id_to_update, lead_changes)
-                emoji_logger.system_info("Estado do lead sincronizado com o banco de dados.", changes=lead_changes)
-        lead_info.update(new_lead_info)
-
-        return conversation_history, lead_info
+                try:
+                    emoji_logger.system_info(f"Detectadas mudanças no lead {lead_id_to_update}. Sincronizando com o DB.", changes=lead_changes)
+                    await supabase_client.update_lead(lead_id_to_update, lead_changes)
+                    emoji_logger.system_success(f"Lead {lead_id_to_update} atualizado no Supabase.")
+                except Exception as e:
+                    emoji_logger.system_error(f"Falha ao sincronizar mudanças do lead {lead_id_to_update} com o DB.", error=str(e))
+                    # Continuar mesmo se a atualização falhar, para não interromper o fluxo.
+        
+        # 4. Retornar o histórico e o lead_info final e atualizado
+        return conversation_history, updated_lead_info
 
     async def _sync_external_services(self, lead_info: dict, phone: str) -> dict:
         """

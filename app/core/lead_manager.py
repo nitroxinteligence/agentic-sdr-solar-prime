@@ -33,25 +33,24 @@ class LeadManager:
             existing_lead_info: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Extrai informações do lead de forma SIMPLES e ROBUSTA,
+        Extrai e consolida informações do lead de forma robusta,
         processando todo o histórico para garantir a captura de dados essenciais.
         """
-        lead_info = existing_lead_info.copy() if existing_lead_info else {
-            "name": None, "phone_number": None, "email": None,
-            "bill_value": None, "qualification_score": 0,
-            "current_stage": "INITIAL_CONTACT", "chosen_flow": None,
-            "preferences": {"interests": [], "objections": []}
-        }
+        # Começa com uma cópia segura do lead existente ou um novo dicionário.
+        lead_info = existing_lead_info.copy() if existing_lead_info else {}
 
-        # Garante estrutura mínima
-        if "preferences" not in lead_info or not isinstance(lead_info.get("preferences"), dict):
-            lead_info["preferences"] = {"interests": [], "objections": []}
-        if "interests" not in lead_info["preferences"]:
-            lead_info["preferences"]["interests"] = []
-        if "objections" not in lead_info["preferences"]:
-            lead_info["preferences"]["objections"] = []
+        # Garante que a estrutura de dados mínima sempre exista.
+        lead_info.setdefault("name", None)
+        lead_info.setdefault("phone_number", None)
+        lead_info.setdefault("email", None)
+        lead_info.setdefault("bill_value", None)
+        lead_info.setdefault("qualification_score", 0)
+        lead_info.setdefault("current_stage", "INITIAL_CONTACT")
+        lead_info.setdefault("chosen_flow", None)
+        lead_info.setdefault("preferences", {}).setdefault("interests", [])
+        lead_info.setdefault("preferences", {}).setdefault("objections", [])
 
-        # Itera sobre todas as mensagens para garantir que nenhuma informação seja perdida
+        # Itera sobre TODAS as mensagens para preencher informações que ainda estão faltando.
         for msg in messages:
             content_data = msg.get("content", "")
             text_content = ""
@@ -64,36 +63,33 @@ class LeadManager:
                 text_content = content_data
 
             content_lower = text_content.lower()
-            role = msg.get("role", "")
-
-            if role == "user":
-                # Prioridade 1: Extrair o nome se ainda não tivermos
+            
+            if msg.get("role") == "user":
+                # Tenta extrair cada informação apenas se ela ainda não existir no lead_info.
                 if not lead_info.get("name"):
                     name = self._extract_name(content_lower)
                     if name:
                         lead_info["name"] = name
-                        emoji_logger.system_debug(f"Nome extraído: '{name}'")
+                        emoji_logger.system_debug(f"Nome extraído do histórico: '{name}'")
 
-                # Extrair outras informações
                 if not lead_info.get("email"):
                     email = self._extract_email(content_lower)
-                    if email: lead_info["email"] = email
+                    if email:
+                        lead_info["email"] = email
+                        emoji_logger.system_debug(f"Email extraído do histórico: '{email}'")
 
                 if not lead_info.get("bill_value"):
                     value = self._extract_bill_value(content_lower)
-                    if value: lead_info["bill_value"] = value
+                    if value:
+                        lead_info["bill_value"] = value
+                        emoji_logger.system_debug(f"Valor da conta extraído do histórico: '{value}'")
 
-            # Extrair informações de fluxo e preferências de todas as mensagens
             if not lead_info.get("chosen_flow"):
                 chosen_flow = self._extract_chosen_flow(content_lower)
                 if chosen_flow:
                     lead_info["chosen_flow"] = chosen_flow
-                    emoji_logger.system_debug(f"Fluxo escolhido detectado: '{chosen_flow}'")
+                    emoji_logger.system_debug(f"Fluxo escolhido detectado no histórico: '{chosen_flow}'")
 
-        # Log final para depuração
-        if not lead_info.get("name"):
-            emoji_logger.system_warning("Não foi possível extrair o nome do lead do histórico da conversa.")
-        
         if self.scoring_enabled:
             lead_info["qualification_score"] = self.calculate_qualification_score(lead_info)
             lead_info["current_stage"] = self.determine_stage(lead_info)

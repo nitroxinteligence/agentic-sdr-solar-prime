@@ -206,9 +206,10 @@ def extract_final_response(full_response: str) -> str:
             return "Estou finalizando sua solicitação. Um momento."
         final_response = temp_response.strip()
 
-    # Se a resposta final estiver vazia ou for "none", retorna um cumprimento padrão.
+    # Se a resposta final estiver vazia ou for "none", retorna uma resposta de esclarecimento.
     if not final_response or final_response.lower() == "none":
-        return "Oi! Como posso te ajudar com energia solar? ☀️"
+        emoji_logger.system_warning("A resposta final do LLM estava vazia ou 'none'. Usando fallback de esclarecimento.")
+        return "Pode repetir, por favor? Não entendi bem o que você quis dizer."
 
     return final_response
 

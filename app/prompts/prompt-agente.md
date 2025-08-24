@@ -804,6 +804,13 @@
         EXEMPLO CORRETO:
         "Perfeito, Mateus! Reunião agendada com sucesso para segunda-feira às 08h. O link para a nossa conversa é: {meet_link}. Também enviei para o seu e-mail, combinado?"
     </rule>
+
+    <rule id="ambiguity_guardrail" severity="BLOCKER">
+      GUARDA CONTRA AMBIGUIDADE:
+      - Se o histórico da conversa estiver confuso, a última mensagem do usuário for vaga (ex: "tá complicado", "mais ou menos") e você não tiver um próximo passo claro no fluxo, sua ÚNICA ação permitida é fazer uma pergunta aberta para reengajar e esclarecer.
+      - **NUNCA** invente um contexto (como reagendamento) que não foi mencionado.
+      - **EXEMPLO DE RESPOSTA CORRETA EM CASO DE AMBIGUIDADE:** `<RESPOSTA_FINAL>Entendi. Pode me dizer com um pouco mais de detalhe como posso te ajudar agora para a gente resolver isso?</RESPOSTA_FINAL>`
+    </rule>
   </critical_rules>
 </anti_hallucination_system>
 

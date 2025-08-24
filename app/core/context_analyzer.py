@@ -60,37 +60,32 @@ class ContextAnalyzer:
         return context
 
     def _determine_stage(self, messages: List[Dict[str, Any]], lead_info: Dict[str, Any]) -> str:
+        """
+        Determina o estágio da conversa com base nos dados consolidados do lead_info,
+        tornando a lógica mais robusta e menos dependente de análise de texto.
+        """
+        # A fonte da verdade agora são os dados do lead, não o texto da conversa.
         has_name = bool(lead_info.get("name"))
-        has_solutions_presented = False
-        has_choice = False
+        has_bill_value = bool(lead_info.get("bill_value"))
+        has_chosen_flow = bool(lead_info.get("chosen_flow"))
 
-        for i, msg in enumerate(messages):
-            content = self._get_text_from_message(msg).lower()
-            role = msg.get("role", "")
+        # Lógica de fluxo baseada em dados, muito mais confiável.
+        if not has_name:
+            return "estagio_0_coleta_nome"
+        
+        if not has_bill_value:
+            return "estagio_1_qualificacao_por_valor"
 
-            if not has_name and role == "user":
-                if any(re.search(r'\b' + p + r'\b', content) for p in ["meu nome é", "me chamo", "sou o", "sou a"]):
-                    has_name = True
-                elif i > 0:
-                    prev_msg = messages[i-1]
-                    prev_content = self._get_text_from_message(prev_msg).lower()
-                    if prev_msg.get("role") == "assistant" and any(q in prev_content for q in ["como posso te chamar", "qual seu nome"]):
-                        if 1 <= len(content.split()) <= 3:
-                            has_name = True
-            
-            if role == "assistant" and all(sol in content for sol in ["instalação", "aluguel", "compra", "investimento"]):
-                has_solutions_presented = True
+        if not has_chosen_flow:
+            return "estagio_2_roteamento_e_apresentacao"
 
-            if role == "user" and any(word in content for word in ["opção", "instalação", "aluguel", "compra", "investimento"]):
-                has_choice = True
+        # Se todas as informações principais foram coletadas, estamos na fase de qualificação detalhada.
+        # Uma verificação final de intenção de agendamento pode ser útil.
+        last_message_text = self._get_text_from_message(messages[-1]) if messages else ""
+        if any(keyword in last_message_text for keyword in ["agendar", "marcar", "reunião", "horário"]):
+            return "agendamento"
 
-        if messages and self._get_text_from_message(messages[-1]).lower() in ["agendar", "marcar", "reunião"]:
-             return "agendamento"
-
-        if not has_name: return "estágio_0_coleta_nome"
-        if not has_solutions_presented: return "estágio_1_apresentar_soluções"
-        if not has_choice: return "estágio_2_aguardando_escolha"
-        return "qualificação"
+        return "qualificacao_detalhada"
 
     def _extract_intent(self, message: str) -> str:
         message_lower = message.lower()
