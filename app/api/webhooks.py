@@ -609,6 +609,13 @@ async def process_message_with_agent(
 
     final_response = extract_final_response(response_text)
 
+    # Protocolo de Silêncio: Se a tag <SILENCE> for detectada, o agente não responde.
+    if "<SILENCE>" in final_response or "<SILENCIO>" in final_response:
+        emoji_logger.system_info(
+            f"Protocolo de silêncio ativado para {phone}. Nenhuma mensagem será enviada."
+        )
+        return
+
     # Salva a resposta do assistente no banco de dados
     if final_response:
         assistant_message_data = {
