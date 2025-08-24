@@ -111,8 +111,8 @@ class MessageBuffer:
             f"Processando {len(valid_messages)} mensagens combinadas",
             phone=phone, total_chars=len(combined_content)
         )
-        emoji_logger.system_debug(f"Conteúdo combinado para {phone}: \"{combined_content.replace('\
-', ' \\n ')}\"")
+        # Correção: Usar repr() para exibir o conteúdo de forma segura, incluindo escapes.
+        emoji_logger.system_debug(f"Conteúdo combinado para {phone}: {repr(combined_content)}")
         
         last_message_obj = valid_messages[-1]
         last_message_data = last_message_obj.get("data")
