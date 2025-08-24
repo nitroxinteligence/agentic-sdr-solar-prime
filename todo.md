@@ -1,39 +1,18 @@
-# Plano de Ação para Correção de Alucinação e Falha de Contexto
+# Plano de Ação para Correção de Tag de Transbordo
 
-**Diagnóstico:** O agente estava perdendo o contexto da conversa, resultando em respostas alucinadas e desconexas. A causa raiz era uma falha sistêmica no gerenciamento de estado, onde o `lead_info` não era consistentemente atualizado com informações de mensagens anteriores, especialmente quando o `MessageBuffer` combina várias entradas do usuário.
+**Diagnóstico:** O agente está movendo corretamente os leads interessados em "Usina de Investimento" para o estágio de "Atendimento Humano", mas está aplicando a tag errada ("Instalação Usina Própria") no Kommo CRM. A causa raiz foi identificada na lógica de extração de `chosen_flow` no `LeadManager`, que não priorizava corretamente a detecção do fluxo de investimento.
 
-## Fase 1: Refatoração do Gerenciamento de Estado e Contexto
+## Fase 1: Correção da Lógica de Extração
 
-- [x] **Tarefa 1.1: Modificar `LeadManager` para Processamento Completo do Histórico**
+- [x] **Tarefa 1.1: Refatorar a Extração de Fluxo no `LeadManager`**
     - **Arquivo:** `app/core/lead_manager.py`
-    - **Ação:** Alterado drasticamente o método `extract_lead_info`. Ele agora processa o histórico completo da conversa a cada chamada, garantindo que o estado do lead seja sempre reconstruído com todas as informações disponíveis, eliminando a perda de contexto.
+    - **Ação:** O método `_extract_chosen_flow` foi completamente reescrito. A lógica anterior, baseada em um dicionário simples e ordenação por comprimento de chave, foi substituída por uma busca priorizada e explícita.
+    - **Melhoria:** A nova implementação verifica palavras-chave específicas para cada fluxo em uma ordem de prioridade (começando por "Usina Investimento"), garantindo que o fluxo correto seja identificado mesmo que o usuário mencione múltiplos termos. Isso resolve a ambiguidade e garante que a tag correta seja aplicada pelo `crm_sync_service`.
 
-- [x] **Tarefa 1.2: Centralizar e Persistir o Estado no `AgenticSDRStateless`**
-    - **Arquivo:** `app/agents/agentic_sdr_stateless.py`
-    - **Ação:** Refatorado o método `_update_context` para detectar e persistir imediatamente quaisquer alterações no `lead_info` no Supabase. Isso garante que a fonte da verdade (o banco de dados) esteja sempre sincronizada antes da geração da resposta.
+## Fase 2: Validação
 
-- [x] **Tarefa 1.3: Simplificar a Determinação de Estágio no `ContextAnalyzer`**
-    - **Arquivo:** `app/core/context_analyzer.py`
-    - **Ação:** Refatorado o método `_determine_stage` para se basear em dados concretos do `lead_info` (nome, valor da conta, etc.) em vez de depender de palavras-chave frágeis, tornando a lógica de fluxo muito mais robusta.
+- [ ] **Tarefa 2.1: Teste de Cenário de Transbordo**
+    - **Ação:** Realizar um teste de conversação onde o usuário expressa interesse em "Usina de Investimento".
+    - **Verificação:** Confirmar no Kommo CRM que o lead foi movido para "Atendimento Humano" E que a tag aplicada é exatamente "Usina Investimento".
 
-## Fase 2: Aprimoramento do Prompt e Fluxos de Conversa
-
-- [x] **Tarefa 2.1: Revisar e Fortalecer o Prompt do Agente**
-    - **Arquivo:** `app/prompts/prompt-agente.md`
-    - **Ação:** Adicionada uma nova `ambiguity_guardrail` ao sistema anti-alucinação, instruindo o modelo a fazer perguntas de esclarecimento quando o contexto for vago, em vez de inventar cenários.
-
-- [x] **Tarefa 2.2: Adicionar Fallback para Respostas Vazias**
-    - **Arquivo:** `app/api/webhooks.py`
-    - **Ação:** Melhorado o fallback na função `extract_final_response`. Agora, em vez de uma saudação genérica, o agente pedirá ao usuário para repetir a mensagem, mantendo a conversação fluida.
-
-## Fase 3: Validação e Testes
-
-- [x] **Tarefa 3.1: Teste de Cenário de Múltiplas Mensagens**
-    - **Ação:** Realizado teste de cenário com múltiplas mensagens curtas e vagas.
-    - **Verificação:** O agente respondeu de forma coerente, utilizando o contexto acumulado e solicitando esclarecimentos quando necessário, sem apresentar comportamento de alucinação.
-
-- [x] **Tarefa 3.2: Revisão dos Logs**
-    - **Ação:** Analisados os logs durante o teste.
-    - **Verificação:** Os logs confirmaram que o `LeadManager` processou o histórico completo, as atualizações de estado foram salvas no banco de dados e o `ContextAnalyzer` determinou o estágio correto com base nos dados persistidos.
-
-**Conclusão:** Todas as tarefas foram concluídas e o problema de alucinação foi resolvido. O sistema está estável e com um gerenciamento de estado significativamente mais robusto.
+**Conclusão Esperada:** A refatoração da lógica de extração de fluxo garantirá que o `lead_info` contenha o `chosen_flow` correto, o que, por sua vez, fará com que o `crm_sync_service` aplique a tag correta durante o processo de transbordo.

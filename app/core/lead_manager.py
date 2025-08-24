@@ -281,22 +281,28 @@ class LeadManager:
         return objections
 
     def _extract_chosen_flow(self, text: str) -> Optional[str]:
-        """Extrai escolha de fluxo do usuário"""
+        """
+        Extrai a escolha de fluxo do usuário com lógica de prioridade para
+        evitar falsos positivos.
+        """
         text_lower = text.lower().strip()
-        flow_mapping = {
-            "compra de energia com desconto": "Compra com Desconto",
-            "instalação de usina própria": "Instalação Usina Própria",
-            "aluguel de lote": "Aluguel de Lote",
-            "usina de investimento": "Usina Investimento",
-            "opção 1": "Instalação Usina Própria",
-            "opção 2": "Aluguel de Lote",
-            "opção 3": "Compra com Desconto",
-            "opção 4": "Usina Investimento"
+
+        # Mapeamento com palavras-chave/sinônimos para cada fluxo.
+        # A ordem aqui é importante: do mais específico/prioritário para o mais geral.
+        flow_priority_map = {
+            "Usina Investimento": ["investimento", "usina de investimento", "opção 4", "modelo 4"],
+            "Aluguel de Lote": ["aluguel de lote", "alugar lote", "opção 2", "modelo 2"],
+            "Compra com Desconto": ["compra de energia", "comprar energia", "desconto", "opção 3", "modelo 3"],
+            "Instalação Usina Própria": ["instalação", "usina própria", "minha usina", "opção 1", "modelo 1"],
         }
-        sorted_keys = sorted(flow_mapping.keys(), key=len, reverse=True)
-        for key in sorted_keys:
-            if key in text_lower:
-                return flow_mapping[key]
+
+        for flow, keywords in flow_priority_map.items():
+            for keyword in keywords:
+                # Usamos \b para garantir que estamos combinando palavras inteiras e evitar
+                # que "investimento" combine com "pré-investimento", por exemplo.
+                if re.search(r'\b' + re.escape(keyword) + r'\b', text_lower):
+                    return flow
+        
         return None
 
     def format_lead_summary(self, lead_info: Dict[str, Any]) -> str:
