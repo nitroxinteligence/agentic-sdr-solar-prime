@@ -2,6 +2,7 @@
 Cliente Supabase para o SDR IA SolarPrime
 Gerencia todas as operações com o banco de dados
 """
+import asyncio
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from uuid import uuid4
@@ -607,7 +608,7 @@ class SupabaseClient:
             logger.error(
                 f"Erro ao contar follow-ups recentes para o lead {lead_id}: {e}"
             )
-            return 99 # Retorna um número alto para prevenir loops em caso de erro
+            raise e
 
     async def update_conversation(
             self, conversation_id: str, update_data: Dict[str, Any]
