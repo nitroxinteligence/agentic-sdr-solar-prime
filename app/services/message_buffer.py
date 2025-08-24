@@ -42,43 +42,48 @@ class MessageBuffer:
                 f"Mensagem adicionada ao buffer para {phone}"
             )
         except asyncio.QueueFull:
-            emoji_logger.system_info("Buffer cheio, forçando processamento")
-            await self.queues[phone].put(None)
-            await self.queues[phone].put(message)
+            emoji_logger.system_warning(f"Buffer para {phone} cheio. O processamento ocorrerá em breve.")
 
     async def _process_queue(self, phone: str) -> None:
         """
-        Processa queue - SIMPLIFICADO e FUNCIONAL
+        Processa a fila de forma simplificada e robusta.
         """
         if phone not in self.processing_locks:
             self.processing_locks[phone] = asyncio.Lock()
-        queue = self.queues[phone]
+        
+        queue = self.queues.get(phone)
+        if not queue:
+            return
+
         try:
-            messages = []
-            try:
-                first_msg = await asyncio.wait_for(queue.get(), timeout=30.0)
-                if first_msg:
-                    messages.append(first_msg)
-            except asyncio.TimeoutError:
-                return
-            start_time = asyncio.get_event_loop().time()
-            while (asyncio.get_event_loop().time() - start_time) < self.timeout:
+            async with self.processing_locks[phone]:
+                messages = []
                 try:
-                    msg = await asyncio.wait_for(queue.get(), timeout=0.5)
-                    if msg is None:
-                        break
-                    if msg:
-                        messages.append(msg)
+                    # Aguarda a primeira mensagem
+                    first_msg = await asyncio.wait_for(queue.get(), timeout=self.timeout)
+                    messages.append(first_msg)
+                    
+                    # Tenta coletar mais mensagens que chegaram em um curto espaço de tempo
+                    while not queue.empty():
+                        try:
+                            msg = queue.get_nowait()
+                            messages.append(msg)
+                        except asyncio.QueueEmpty:
+                            break
+                
                 except asyncio.TimeoutError:
-                    continue
-            if messages:
-                async with self.processing_locks[phone]:
+                    # Se não houver mensagens após o timeout inicial, encerra a task.
+                    return
+
+                if messages:
                     await self._process_messages(phone, messages)
+
         except Exception as e:
-            logger.error(f"Erro ao processar queue: {e}")
+            logger.error(f"Erro ao processar queue para {phone}: {e}")
         finally:
-            self.queues.pop(phone, None)
+            # Limpa a task e a fila para este telefone
             self.tasks.pop(phone, None)
+            self.queues.pop(phone, None)
             self.processing_locks.pop(phone, None)
 
     async def _process_messages(
