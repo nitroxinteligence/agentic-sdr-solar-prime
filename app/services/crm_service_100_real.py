@@ -510,7 +510,7 @@ class CRMServiceReal:
 
     @handle_kommo_errors()
     async def update_lead_stage(
-            self, lead_id: str, stage_name: str, notes: str = ""
+            self, lead_id: str, stage_name: str, notes: str = "", phone_number: Optional[str] = None
     ) -> Dict[str, Any]:
         """Atualiza o estágio de um lead no Kommo"""
         if not self.is_initialized:
@@ -523,6 +523,12 @@ class CRMServiceReal:
                 if not stage_id:
                     raise ValueError(f"Estágio '{stage_name}' não encontrado no mapa: {list(self.stage_map.keys())}")
             
+            # PASSO 2 DA CORREÇÃO: Ativar pausa no Redis se for estágio de handoff
+            human_handoff_stage_id = settings.kommo_human_handoff_stage_id
+            if stage_id == human_handoff_stage_id and phone_number:
+                await redis_client.set_human_handoff_pause(phone_number)
+                emoji_logger.system_info(f"Pausa de handoff ativada para {phone_number} via CRM Service.")
+
             payload = [{
                 "id": int(lead_id),
                 "status_id": stage_id,

@@ -1,28 +1,27 @@
 # TODO - Plano de Ação do Projeto
 
-## Tarefa Atual: Correção Crítica do Protocolo de Silêncio
+## Tarefa Atual: Implementar Mecanismo de Pausa de Handoff com Redis
 
 -   [x] **Análise e Diagnóstico:**
-    -   [x] Analisar o log de erro para identificar a quebra do protocolo `<SILENCE>`.
-    -   [x] Inspecionar o fluxo de resposta desde `agentic_sdr_stateless.py` até `response_formatter.py` e `webhooks.py`.
-    -   [x] Criar o relatório `DIAGNOSTICO_SILENCE_ERROR.md` detalhando a causa raiz (falha no `ResponseFormatter`) e a solução inteligente (tratar o silêncio na camada do agente).
+    -   [x] Analisar logs que mostram o agente respondendo a leads em atendimento humano.
+    -   [x] Identificar a causa raiz como uma falha arquitetural (fonte da verdade incorreta, dependência de dados locais do Supabase em vez do status em tempo real do Kommo).
+    -   [x] Criar o relatório `DIAGNOSTICO_HANDOFF_REDIS.md` detalhando a falha e propondo a solução robusta baseada em Redis.
 
 -   [x] **Implementação da Correção:**
-    -   [x] **Ação:** Modificar o método `process_message` em `app/agents/agentic_sdr_stateless.py`.
-    -   [x] **Lógica:** Adicionar uma verificação imediata após a geração da resposta do LLM. Se a resposta contiver `<SILENCE>`, retornar a tag diretamente, bypassando o `ResponseFormatter`. Caso contrário, prosseguir com a formatação normal.
+    -   [x] **Passo 1 (Guard Rail no Webhook):** Modificar `app/api/webhooks.py`. No início da função `process_new_message`, adicionar uma verificação `await redis_client.is_human_handoff_active(phone)`. Se for `True`, interromper a execução imediatamente.
+    -   [x] **Passo 2 (Ativação da Pausa via Agente):** Modificar `app/services/crm_service_100_real.py`. Na função `update_lead_stage`, verificar se o `stage_name` corresponde ao estágio de handoff humano. Se corresponder, chamar `await redis_client.set_human_handoff_pause(phone)`.
+    -   [x] **Passo 3 (Ativação/Desativação da Pausa via Webhook Kommo):** Aprimorar `app/api/kommo_webhook.py`. Implementar a lógica para processar eventos de mudança de estágio. Se o novo estágio for de handoff, chamar `set_human_handoff_pause`. Se o lead sair do estágio de handoff, chamar `clear_human_handoff_pause`.
 
 -   [x] **Verificação e Validação:**
-    -   [x] Revisar a alteração para garantir que a lógica condicional foi implementada corretamente.
-    -   [x] (Sugerido) Realizar um teste local para confirmar que o agente agora permanece em silêncio para leads no estágio correto.
+    -   [x] Revisar todas as alterações para garantir a correta implementação da lógica de pausa.
+    -   [x] (Sugerido) Testar o fluxo completo: mover um lead para handoff (manual ou via agente) e verificar se o agente para de responder. Em seguida, mover o lead para fora do handoff e verificar se o agente volta a responder.
 
 -   [ ] **Finalização:**
-    -   [ ] Realizar o commit da correção com uma mensagem clara.
+    -   [ ] Realizar o commit das alterações com uma mensagem clara sobre a nova arquitetura de handoff.
 
 ---
 
 ## Tarefas Anteriores
 
--   [x] **Correção Crítica do Sistema de Follow-up:**
-    -   [x] **Análise e Diagnóstico:** Concluído.
-    -   [x] **Implementação da Correção:** Concluído (`import asyncio` e `raise e` em `supabase_client.py`).
-    -   [x] **Verificação e Validação:** Concluído.
+-   [x] **Correção Crítica do Protocolo de Silêncio:** Concluído.
+-   [x] **Correção Crítica do Sistema de Follow-up:** Concluído.

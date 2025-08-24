@@ -430,6 +430,13 @@ async def process_new_message(data: Any):
 
             phone = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
 
+            # PASSO 1 DA CORREÇÃO: Adicionar verificação de pausa de handoff
+            if await redis_client.is_human_handoff_active(phone):
+                emoji_logger.system_info(
+                    f"Agente pausado para {phone} (atendimento humano). Mensagem ignorada."
+                )
+                continue
+
             if "@g.us" in remote_jid:
                 emoji_logger.webhook_process(
                     f"Mensagem de grupo ignorada: {remote_jid}"
