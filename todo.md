@@ -1,27 +1,29 @@
-# TODO - Plano de Correção Definitiva do Erro 'NoneType'
+# TODO - Plano de Correção Definitiva do Erro 'NoneType' e 'RuntimeWarning'
 
 ## 1. Diagnóstico e Análise (Concluído)
 
-- [x] Revisar todo o codebase do diretório `@app/**` para reavaliar o fluxo de dados.
-- [x] Analisar o erro persistente e o histórico de correções para entender por que as soluções anteriores falharam.
-- [x] Identificar a causa raiz refinada: Falha na validação do objeto `original_message` antes de ser passado para `process_message_with_agent`, permitindo que um valor `None` cause um `TypeError`.
+- [x] Analisar o novo log de erro para identificar a `RuntimeWarning` como a causa raiz.
+- [x] Revisar o histórico de conversas para entender a evolução do problema.
+- [x] Identificar a falha arquitetural: uso de uma biblioteca síncrona (`supabase-py`) dentro de funções `async` sem o tratamento adequado, causando condições de corrida.
 
-## 2. Implementação da Correção (Cirúrgica e Defensiva)
+## 2. Implementação da Correção (Arquitetural e Defensiva)
 
-- [x] **Adicionar Validação Robusta em `app/api/webhooks.py`:**
-    -   Na função `process_message_with_agent`, antes de qualquer outra lógica, implementar uma verificação explícita para garantir que `original_message` não é `None` e é um dicionário. Se a validação falhar, a função deve registrar um erro claro e retornar imediatamente, prevenindo a propagação do erro.
+- [x] **Corrigir o `TypeError` em `app/api/webhooks.py`:**
+    -   Na função `process_message_with_agent`, modificar a chamada para `redis_client.cache_conversation` para lidar com o caso em que `lead` é `None`, usando `lead["id"] if lead else None`.
 
-- [x] **Adicionar Validação em `app/services/message_buffer.py`:**
-    -   Na função `_process_messages`, adicionar uma verificação para garantir que `last_message_data` é um dicionário antes de passá-lo para `process_message_with_agent`. Isso cria uma segunda camada de defesa.
+- [x] **Refatorar `app/integrations/supabase_client.py` para ser verdadeiramente assíncrono:**
+    -   Importar `asyncio`.
+    -   Envolver as chamadas síncronas `.execute()` dentro de `asyncio.to_thread()` em todas as funções `async def` relevantes (`get_lead_by_phone`, `create_conversation`, `save_message`, etc.).
+    -   Converter `_increment_message_count` para uma função síncrona, pois ela é chamada de dentro do wrapper `to_thread`.
 
 ## 3. Verificação e Testes
 
-- [ ] Revisar as alterações para garantir que o código está limpo, eficiente e segue as melhores práticas de programação defensiva.
-- [ ] Realizar um "teste mental" do fluxo completo, desde o webhook até o agente, para confirmar que a nova validação cobre todas as possíveis falhas.
-- [ ] Monitorar os logs após o deploy para garantir que o erro foi permanentemente eliminado.
+- [ ] Revisar as alterações para garantir que o padrão `asyncio.to_thread` foi aplicado corretamente e que o `TypeError` foi corrigido.
+- [ ] Realizar um "teste mental" do fluxo de um novo lead para confirmar que a condição de corrida foi eliminada.
+- [ ] Monitorar os logs após o deploy para garantir que tanto o `TypeError` quanto a `RuntimeWarning` desapareceram.
 
-## 4. Publicação (Com Confiança)
+## 4. Publicação (Com Confiança Máxima)
 
-- [ ] Apenas após a verificação completa e a certeza de que a solução é robusta, criar um commit único e claro.
-- [ ] A mensagem do commit será: `fix(core): Adiciona validação defensiva para prevenir TypeError em webhooks e message_buffer`.
+- [ ] Após a verificação completa, criar um commit único e claro.
+- [ ] A mensagem do commit será: `fix(core): Corrige TypeError e RuntimeWarning no processamento de mensagens`.
 - [ ] Publicar as alterações no repositório do GitHub.

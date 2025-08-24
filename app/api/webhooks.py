@@ -568,7 +568,7 @@ async def process_message_with_agent(
         redis_client.cache_conversation(
             phone,
             {
-                "lead_id": lead["id"],
+                "lead_id": lead["id"] if lead else None,
                 "conversation_id": conversation["id"],
                 "last_message": message_content,
                 "timestamp": datetime.now().isoformat()
