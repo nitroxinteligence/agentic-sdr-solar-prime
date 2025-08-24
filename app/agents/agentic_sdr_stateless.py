@@ -127,6 +127,12 @@ class AgenticSDRStateless:
             # Etapa 5: Finalizar e registrar a resposta
             await self.conversation_monitor.register_message(phone=phone, is_from_user=False, lead_info=lead_info)
             emoji_logger.system_success(f"Resposta gerada: {response[:100]}...")
+
+            # Correção: Adicionar verificação do protocolo de silêncio ANTES de formatar
+            if "<SILENCE>" in response or "<SILENCIO>" in response:
+                emoji_logger.system_info(f"Protocolo de silêncio ativado para {phone}. Nenhuma mensagem será enviada.")
+                return "<SILENCE>", lead_info
+
             return response_formatter.ensure_response_tags(response), lead_info
 
         except Exception as e:
