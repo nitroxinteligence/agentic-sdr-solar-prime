@@ -68,7 +68,30 @@ async def kommo_webhook(request: Request, background_tasks: BackgroundTasks):
     Recebe eventos do Kommo CRM e os processa em background.
     """
     try:
-        data = await request.json()
+        content_type = request.headers.get("content-type", "")
+        data = None
+
+        if "application/json" in content_type:
+            try:
+                data = await request.json()
+            except Exception:
+                # Corpo pode estar vazio mesmo com header JSON
+                body = await request.body()
+                if not body:
+                    data = {"event": "ping_json_empty_body"}
+                else:
+                    logger.warning("Webhook Kommo: Falha ao decodificar JSON, corpo não vazio.")
+                    data = {"raw_data": body.decode('utf-8', errors='ignore')}
+        elif "application/x-www-form-urlencoded" in content_type:
+            form_data = await request.form()
+            data = dict(form_data)
+        else:
+            body = await request.body()
+            if not body:
+                data = {"event": "ping_empty_body"}
+            else:
+                data = {"raw_data": body.decode('utf-8', errors='ignore')}
+
         logger.debug(f"📥 Evento Kommo recebido: {data}")
 
         # O Kommo pode enviar eventos aninhados. Ex: {'update': [{'lead': ...}]}
