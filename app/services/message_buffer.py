@@ -85,21 +85,40 @@ class MessageBuffer:
             self, phone: str, messages: List[Dict]
     ) -> None:
         """
-        Processa mensagens acumuladas
+        Processa mensagens acumuladas de forma robusta.
         """
         from app.api.webhooks import process_message_with_agent
-        combined_content = "\n".join([msg["content"] for msg in messages])
+
+        # Filtro de segurança para remover quaisquer Nones que possam ter entrado na lista
+        valid_messages = [m for m in messages if m is not None]
+        if not valid_messages:
+            emoji_logger.system_warning("Buffer processou um lote de mensagens vazio após a filtragem.", original_count=len(messages))
+            return
+
+        combined_content = "\n".join([msg["content"] for msg in valid_messages])
         emoji_logger.system_info(
-            f"Processando {len(messages)} mensagens combinadas",
+            f"Processando {len(valid_messages)} mensagens combinadas",
             phone=phone, total_chars=len(combined_content)
         )
-        last_message = messages[-1]["data"]
-        media_data = messages[-1]["media_data"]
-        message_id = last_message.get("key", {}).get("id", "")
+        
+        last_message_obj = valid_messages[-1]
+        last_message_data = last_message_obj.get("data")
+        media_data = last_message_obj.get("media_data")
+
+        # Verificação de segurança para garantir que a carga útil da última mensagem exista
+        if last_message_data is None:
+            emoji_logger.system_error(
+                "O campo 'data' da última mensagem no buffer é None. Abortando processamento.",
+                last_message_obj=last_message_obj
+            )
+            return
+
+        message_id = last_message_data.get("key", {}).get("id", "")
+        
         await process_message_with_agent(
             phone=phone,
             message_content=combined_content,
-            original_message=last_message,
+            original_message=last_message_data,
             message_id=message_id,
             media_data=media_data
         )
