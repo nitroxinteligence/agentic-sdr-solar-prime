@@ -517,17 +517,6 @@ async def process_message_with_agent(
     else:
         lead = lead_result
 
-    if not lead:
-        lead = await supabase_client.create_lead({
-            "phone_number": phone,
-            "current_stage": "INITIAL_CONTACT",
-            "qualification_status": "PENDING",
-            "interested": True,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
-        })
-        emoji_logger.supabase_insert("leads", 1, phone=phone)
-
     message_data = {
         "content": message_content,
         "role": "user",
