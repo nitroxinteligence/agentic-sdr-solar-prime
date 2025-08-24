@@ -46,6 +46,9 @@ ENV PATH=/root/.local/bin:$PATH \
 # Set working directory
 WORKDIR /app
 
+# Add a cache buster argument
+ARG CACHE_BUSTER=1
+
 # Copy application code
 COPY . .
 
