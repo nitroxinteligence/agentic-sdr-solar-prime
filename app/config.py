@@ -206,7 +206,7 @@ class Settings(BaseSettings):
         default=0.3, env="RESPONSE_TIME_VARIATION"
     )
     enable_message_buffer: bool = Field(
-        default=True, env="ENABLE_MESSAGE_BUFFER"
+        default=true, env="ENABLE_MESSAGE_BUFFER"
     )
     message_buffer_timeout: float = Field(
         default=5.0, env="MESSAGE_BUFFER_TIMEOUT"
