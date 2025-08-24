@@ -1,29 +1,38 @@
-# TODO - Plano de Correção Definitiva do Erro 'NoneType' e 'RuntimeWarning'
+# Plano de Ação para Correção da Criação de Leads e Estabilização do Agente
 
-## 1. Diagnóstico e Análise (Concluído)
+**Diagnóstico:** O sistema estava falhando em criar novos leads no Supabase, mesmo quando o usuário fornecia seu nome. A causa raiz era uma falha na extração de informações do lead a partir de mensagens combinadas pelo `MessageBuffer`, o que impedia a lógica de criação de ser acionada.
 
-- [x] Analisar o novo log de erro para identificar a `RuntimeWarning` como a causa raiz.
-- [x] Revisar o histórico de conversas para entender a evolução do problema.
-- [x] Identificar a falha arquitetural: uso de uma biblioteca síncrona (`supabase-py`) dentro de funções `async` sem o tratamento adequado, causando condições de corrida.
+## Fase 1: Correção Imediata e Estabilização
 
-## 2. Implementação da Correção (Arquitetural e Defensiva)
+- [x] **Tarefa 1.1: Robustecer a Extração de Nome no `LeadManager`**
+    - **Arquivo:** `app/core/lead_manager.py`
+    - **Ação:** Modificar o método `extract_lead_info` para garantir que a extração de nome (especialmente com a regex `me chamo...`) seja priorizada e funcione de forma confiável, mesmo com strings multi-linha. Adicionar logging explícito para confirmar se o nome foi ou não extraído em cada passagem.
 
-- [x] **Corrigir o `TypeError` em `app/api/webhooks.py`:**
-    -   Na função `process_message_with_agent`, modificar a chamada para `redis_client.cache_conversation` para lidar com o caso em que `lead` é `None`, usando `lead["id"] if lead else None`.
+- [x] **Tarefa 1.2: Simplificar e Tornar a Criação de Leads Atômica**
+    - **Arquivo:** `app/agents/agentic_sdr_stateless.py`
+    - **Ação:** Refatorar o método `_sync_external_services`. A lógica de *criação* deve ser separada da lógica de *atualização*. O objetivo é garantir que, uma vez que um nome seja detectado, a tentativa de criação no Supabase seja inequívoca.
+    - **Ação:** Adicionar logging detalhado em cada etapa dentro deste método: antes de chamar `supabase_client.create_lead`, após a chamada, e no bloco de exceção. Isso é vital para diagnosticar falhas futuras.
 
-- [x] **Refatorar `app/integrations/supabase_client.py` para ser verdadeiramente assíncrono:**
-    -   Importar `asyncio`.
-    -   Envolver as chamadas síncronas `.execute()` dentro de `asyncio.to_thread()` em todas as funções `async def` relevantes (`get_lead_by_phone`, `create_conversation`, `save_message`, etc.).
-    -   Converter `_increment_message_count` para uma função síncrona, pois ela é chamada de dentro do wrapper `to_thread`.
+- [x] **Tarefa 1.3: Corrigir a Lógica de Sincronização com o CRM**
+    - **Arquivo:** `app/agents/agentic_sdr_stateless.py`
+    - **Ação:** Garantir que a sincronização de tags e campos customizados (`_sync_crm_data`) seja chamada apenas quando o `kommo_lead_id` existir, prevenindo chamadas desnecessárias à API do Kommo.
 
-## 3. Verificação e Testes
+## Fase 2: Melhorias de Monitoramento e Prevenção
 
-- [ ] Revisar as alterações para garantir que o padrão `asyncio.to_thread` foi aplicado corretamente e que o `TypeError` foi corrigido.
-- [ ] Realizar um "teste mental" do fluxo de um novo lead para confirmar que a condição de corrida foi eliminada.
-- [ ] Monitorar os logs após o deploy para garantir que tanto o `TypeError` quanto a `RuntimeWarning` desapareceram.
+- [x] **Tarefa 2.1: Aprimorar Logging do `ConversationMonitor`**
+    - **Arquivo:** `app/services/conversation_monitor.py`
+    - **Ação:** Converter o warning "Lead não encontrado" para um log de nível `DEBUG`. É um estado esperado que uma conversa exista no Redis antes do lead ser criado no Supabase. A mensagem foi tornada mais clara.
 
-## 4. Publicação (Com Confiança Máxima)
+- [x] **Tarefa 2.2: Adicionar Transparência ao `MessageBuffer`**
+    - **Arquivo:** `app/services/message_buffer.py`
+    - **Ação:** Adicionar um log de `DEBUG` no método `_process_messages` que mostra o conteúdo combinado que está sendo enviado ao agente. Ex: `Buffer enviando conteúdo combinado para {phone}: "{conteúdo}"`.
 
-- [ ] Após a verificação completa, criar um commit único e claro.
-- [ ] A mensagem do commit será: `fix(core): Corrige TypeError e RuntimeWarning no processamento de mensagens`.
-- [ ] Publicar as alterações no repositório do GitHub.
+## Fase 3: Validação
+
+- [x] **Tarefa 3.1: Teste de Integração Manual**
+    - **Ação:** Realizado teste ponta-a-ponta que confirmou:
+        1. O lead é criado corretamente no Supabase após o nome ser fornecido.
+        2. O agente avança no fluxo da conversa sem repetir a saudação.
+        3. Os logs refletem o fluxo correto de criação e sincronização.
+
+**Conclusão:** Todas as tarefas foram concluídas e o problema foi resolvido. O sistema está estável.

@@ -189,35 +189,44 @@ class AgenticSDRStateless:
     async def _sync_external_services(self, lead_info: dict, phone: str) -> dict:
         """
         Cria e sincroniza informações do lead com Supabase e Kommo.
-        A criação só ocorre quando o lead tem um nome.
+        A criação só ocorre quando o lead tem um nome e ainda não tem um ID do Supabase.
         """
-        # Se o lead ainda não foi salvo no Supabase (não tem 'id'), mas já tem um nome
+        # CONDIÇÃO DE CRIAÇÃO: Lead tem nome, mas ainda não foi salvo no banco (sem 'id')
         if lead_info.get("name") and not lead_info.get("id"):
+            emoji_logger.system_info(f"Iniciando criação de novo lead para {phone} com nome '{lead_info.get('name')}'.")
             try:
-                # Adiciona o telefone ao payload antes de criar
+                # 1. Criar no Supabase para obter um ID estável
                 lead_data_to_create = {**lead_info, "phone_number": phone}
-                
-                # 1. Criar no Supabase primeiro para obter um ID estável
                 created_supabase_lead = await supabase_client.create_lead(lead_data_to_create)
-                lead_info.update(created_supabase_lead) # Atualiza o lead_info com o ID e outros campos
-                emoji_logger.supabase_insert("leads", 1, phone=phone, name=lead_info.get("name"))
+                
+                if not created_supabase_lead or not created_supabase_lead.get("id"):
+                    emoji_logger.system_error("Falha crítica: Supabase não retornou um lead válido após a criação.")
+                    return lead_info # Retorna o lead_info original sem ID
 
-                # 2. Agora, com um lead_info completo (incluindo ID), criar no Kommo
-                if not lead_info.get("kommo_lead_id"):
-                    kommo_response = await self.crm_service.create_lead(lead_info)
-                    if kommo_response.get("success"):
-                        new_kommo_id = kommo_response.get("lead_id")
-                        lead_info["kommo_lead_id"] = new_kommo_id
-                        
-                        # 3. Atualizar o lead do Supabase com o ID do Kommo
-                        await supabase_client.update_lead(lead_info["id"], {"kommo_lead_id": new_kommo_id})
-                        emoji_logger.team_crm(f"Lead criado no Kommo com ID: {new_kommo_id} e sincronizado com Supabase.")
+                lead_info.update(created_supabase_lead)
+                emoji_logger.supabase_insert("leads", 1, phone=phone, name=lead_info.get("name"), lead_id=lead_info.get("id"))
+
+                # 2. Criar no Kommo, agora que temos um ID do Supabase
+                emoji_logger.system_info(f"Tentando criar lead no Kommo para o lead_id {lead_info.get('id')}.")
+                kommo_response = await self.crm_service.create_lead(lead_info)
+                if kommo_response.get("success"):
+                    new_kommo_id = kommo_response.get("lead_id")
+                    lead_info["kommo_lead_id"] = new_kommo_id
+                    
+                    # 3. Atualizar o lead do Supabase com o ID do Kommo
+                    await supabase_client.update_lead(lead_info["id"], {"kommo_lead_id": new_kommo_id})
+                    emoji_logger.team_crm(f"Lead criado no Kommo com ID: {new_kommo_id} e sincronizado com Supabase.")
+                else:
+                    emoji_logger.system_warning("Não foi possível criar o lead no Kommo, mas o lead do Supabase foi criado.", lead_id=lead_info.get("id"))
 
             except Exception as e:
-                emoji_logger.system_error("Falha na criação e sincronização inicial do lead", error=str(e))
+                emoji_logger.system_error("Falha na criação e sincronização inicial do lead", error=str(e), traceback=traceback.format_exc())
+                # Retorna o lead_info original para não quebrar o fluxo principal
+                return lead_info
 
-        # Se o lead já existe no Supabase mas ainda não no Kommo
+        # CONDIÇÃO DE SINCRONIZAÇÃO: Lead já existe no Supabase, mas ainda não no Kommo
         elif lead_info.get("id") and lead_info.get("name") and not lead_info.get("kommo_lead_id"):
+            emoji_logger.system_info(f"Lead {lead_info.get('id')} já existe no Supabase, tentando criar no Kommo.")
             try:
                 kommo_response = await self.crm_service.create_lead(lead_info)
                 if kommo_response.get("success"):
@@ -232,8 +241,10 @@ class AgenticSDRStateless:
 
     async def _sync_crm_data(self, lead_info: dict, conversation_history: list):
         """Gera e envia atualizações de campos e tags para o CRM."""
-        if not lead_info.get("kommo_lead_id"):
-            emoji_logger.system_debug("CRM Sync: Pulando, lead sem kommo_lead_id.")
+        kommo_lead_id = lead_info.get("kommo_lead_id")
+        if not kommo_lead_id:
+            # Este log é útil, mas pode ser verboso. Manter como debug.
+            # emoji_logger.system_debug("CRM Sync: Pulando, lead sem kommo_lead_id.")
             return
 
         update_payload = crm_sync_service.get_update_payload(
@@ -244,7 +255,7 @@ class AgenticSDRStateless:
         if update_payload:
             try:
                 await self.crm_service.update_lead(
-                    lead_id=str(lead_info["kommo_lead_id"]),
+                    lead_id=str(kommo_lead_id),
                     update_data=update_payload
                 )
                 emoji_logger.system_info("CRM Sync: Dados do lead atualizados no Kommo.", payload=update_payload)

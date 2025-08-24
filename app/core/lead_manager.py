@@ -33,40 +33,27 @@ class LeadManager:
             existing_lead_info: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Extrai informações do lead de forma SIMPLES
+        Extrai informações do lead de forma SIMPLES e ROBUSTA,
+        processando todo o histórico para garantir a captura de dados essenciais.
         """
-        if existing_lead_info:
-            import copy
-            lead_info = copy.deepcopy(existing_lead_info)
-        else:
-            lead_info = {
-                "name": None,
-                "phone_number": None,
-                "email": None,
-                "bill_value": None,
-                "qualification_score": 0,
-                "current_stage": "INITIAL_CONTACT",
-                "chosen_flow": None,
-                "preferences": {}
-            }
+        lead_info = existing_lead_info.copy() if existing_lead_info else {
+            "name": None, "phone_number": None, "email": None,
+            "bill_value": None, "qualification_score": 0,
+            "current_stage": "INITIAL_CONTACT", "chosen_flow": None,
+            "preferences": {"interests": [], "objections": []}
+        }
 
-        # Garante que a estrutura de 'preferences' e suas chaves existam
+        # Garante estrutura mínima
         if "preferences" not in lead_info or not isinstance(lead_info.get("preferences"), dict):
-            lead_info["preferences"] = {}
+            lead_info["preferences"] = {"interests": [], "objections": []}
         if "interests" not in lead_info["preferences"]:
             lead_info["preferences"]["interests"] = []
         if "objections" not in lead_info["preferences"]:
             lead_info["preferences"]["objections"] = []
 
-        processed_message_count = lead_info.get("processed_message_count", 0)
-        new_messages = messages[processed_message_count:]
-
-        if not new_messages:
-            return lead_info
-
-        for msg in new_messages:
+        # Itera sobre todas as mensagens para garantir que nenhuma informação seja perdida
+        for msg in messages:
             content_data = msg.get("content", "")
-            
             text_content = ""
             if isinstance(content_data, list):
                 for part in content_data:
@@ -80,77 +67,35 @@ class LeadManager:
             role = msg.get("role", "")
 
             if role == "user":
+                # Prioridade 1: Extrair o nome se ainda não tivermos
                 if not lead_info.get("name"):
                     name = self._extract_name(content_lower)
                     if name:
                         lead_info["name"] = name
-                    else:
-                        words = content_lower.split()
-                        if 1 <= len(words) <= 4:
-                            blacklist = [
-                                "oi", "olá", "ola", "sim", "não", "nao",
-                                "ok", "tudo", "bom", "dia", "tarde",
-                                "noite", "boa", "legal", "bem", "quero",
-                                "gostaria", "preciso", "pode", "poderia",
-                                "claro", "certeza", "beleza", "blz",
-                                "tbm", "também", "tá", "ta", "está",
-                                "estou", "to", "já", "tenho", "como",
-                                "funciona", "quanto", "vou", "pago",
-                                "minha", "conta", "desconto", "economia",
-                                "origo", "setta", "solar", "energia", "luz"
-                            ]
-                            potential_name = " ".join(
-                                word for word in words if word.lower() not in blacklist
-                            )
-                            if potential_name and self._is_valid_name(potential_name):
-                                lead_info["name"] = potential_name.title()
+                        emoji_logger.system_debug(f"Nome extraído: '{name}'")
 
+                # Extrair outras informações
                 if not lead_info.get("email"):
                     email = self._extract_email(content_lower)
-                    if email:
-                        lead_info["email"] = email
+                    if email: lead_info["email"] = email
 
                 if not lead_info.get("bill_value"):
                     value = self._extract_bill_value(content_lower)
-                    if value:
-                        lead_info["bill_value"] = value
+                    if value: lead_info["bill_value"] = value
 
-                if not lead_info.get("preferences", {}).get("property_type"):
-                    prop_type = self._extract_property_type(content_lower)
-                    if prop_type:
-                        lead_info["preferences"]["property_type"] = prop_type
-
-                if not lead_info.get("preferences", {}).get("location"):
-                    location = self._extract_location(content_lower)
-                    if location:
-                        lead_info["preferences"]["location"] = location
-
-            interests = self._extract_interests(content_lower)
-            if interests:
-                lead_info["preferences"]["interests"].extend(interests)
-
-            objections = self._extract_objections(content_lower)
-            if objections:
-                lead_info["preferences"]["objections"].extend(objections)
-
+            # Extrair informações de fluxo e preferências de todas as mensagens
             if not lead_info.get("chosen_flow"):
                 chosen_flow = self._extract_chosen_flow(content_lower)
                 if chosen_flow:
                     lead_info["chosen_flow"] = chosen_flow
+                    emoji_logger.system_debug(f"Fluxo escolhido detectado: '{chosen_flow}'")
 
-        lead_info["processed_message_count"] = len(messages)
-
-        lead_info["preferences"]["interests"] = list(
-            set(lead_info["preferences"]["interests"])
-        )
-        lead_info["preferences"]["objections"] = list(
-            set(lead_info["preferences"]["objections"])
-        )
-
+        # Log final para depuração
+        if not lead_info.get("name"):
+            emoji_logger.system_warning("Não foi possível extrair o nome do lead do histórico da conversa.")
+        
         if self.scoring_enabled:
-            lead_info["qualification_score"] = (
-                self.calculate_qualification_score(lead_info)
-            )
+            lead_info["qualification_score"] = self.calculate_qualification_score(lead_info)
             lead_info["current_stage"] = self.determine_stage(lead_info)
 
         return lead_info

@@ -106,9 +106,9 @@ class ConversationMonitor:
 
                 lead = await self.db.get_lead_by_phone(phone)
                 if not lead:
-                    emoji_logger.system_warning(f"⚠️ Lead não encontrado para monitoramento: {phone[:8]}... Removendo chave Redis obsoleta.")
-                    await self.redis.delete(key)
-                    await self.redis.delete(status_key)
+                    emoji_logger.system_debug(f"Monitor: Conversa ativa para {phone[:8]}... aguardando criação do lead no DB.")
+                    # Não removemos mais a chave, pois é esperado que o lead seja criado em breve.
+                    # A chave tem um TTL e expirará naturalmente se o lead nunca for criado.
                     continue
 
                 # Delega a lógica de agendamento para o FollowUpManagerService

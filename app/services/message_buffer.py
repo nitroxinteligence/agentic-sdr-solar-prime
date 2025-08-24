@@ -106,11 +106,13 @@ class MessageBuffer:
             emoji_logger.system_warning("Buffer processou um lote de mensagens inválido após a filtragem.", original_count=len(messages))
             return
 
-        combined_content = "\n".join([msg.get("content", "") for msg in valid_messages if msg.get("content")])
+        combined_content = "\n".join([msg.get("content", "") for msg in valid_messages if msg.get("content")] )
         emoji_logger.system_info(
             f"Processando {len(valid_messages)} mensagens combinadas",
             phone=phone, total_chars=len(combined_content)
         )
+        emoji_logger.system_debug(f"Conteúdo combinado para {phone}: \"{combined_content.replace('\
+', ' \\n ')}\"")
         
         last_message_obj = valid_messages[-1]
         last_message_data = last_message_obj.get("data")
