@@ -61,19 +61,21 @@ class MessageBuffer:
                 try:
                     # Aguarda a primeira mensagem
                     first_msg = await asyncio.wait_for(queue.get(), timeout=self.timeout)
-                    messages.append(first_msg)
+                    if first_msg:
+                        messages.append(first_msg)
                     
                     # Tenta coletar mais mensagens que chegaram em um curto espaço de tempo
                     while not queue.empty():
                         try:
                             msg = queue.get_nowait()
-                            messages.append(msg)
+                            if msg:
+                                messages.append(msg)
                         except asyncio.QueueEmpty:
                             break
                 
                 except asyncio.TimeoutError:
-                    # Se não houver mensagens após o timeout inicial, encerra a task.
-                    return
+                    # Se não houver mensagens após o timeout inicial, a lista estará vazia.
+                    pass
 
                 if messages:
                     await self._process_messages(phone, messages)
@@ -94,13 +96,17 @@ class MessageBuffer:
         """
         from app.api.webhooks import process_message_with_agent
 
-        # Filtro de segurança para remover quaisquer Nones que possam ter entrado na lista
-        valid_messages = [m for m in messages if m is not None]
-        if not valid_messages:
-            emoji_logger.system_warning("Buffer processou um lote de mensagens vazio após a filtragem.", original_count=len(messages))
+        if not messages:
+            emoji_logger.system_warning("Buffer tentou processar um lote de mensagens vazio.", phone=phone)
             return
 
-        combined_content = "\n".join([msg["content"] for msg in valid_messages])
+        # Filtro de segurança para remover quaisquer Nones que possam ter entrado na lista
+        valid_messages = [m for m in messages if m and isinstance(m, dict)]
+        if not valid_messages:
+            emoji_logger.system_warning("Buffer processou um lote de mensagens inválido após a filtragem.", original_count=len(messages))
+            return
+
+        combined_content = "\n".join([msg.get("content", "") for msg in valid_messages if msg.get("content")])
         emoji_logger.system_info(
             f"Processando {len(valid_messages)} mensagens combinadas",
             phone=phone, total_chars=len(combined_content)
@@ -111,9 +117,9 @@ class MessageBuffer:
         media_data = last_message_obj.get("media_data")
 
         # Verificação de segurança para garantir que a carga útil da última mensagem exista
-        if last_message_data is None:
+        if not last_message_data or not isinstance(last_message_data, dict):
             emoji_logger.system_error(
-                "O campo 'data' da última mensagem no buffer é None. Abortando processamento.",
+                "O campo 'data' da última mensagem no buffer é inválido ou None. Abortando processamento.",
                 last_message_obj=last_message_obj
             )
             return
