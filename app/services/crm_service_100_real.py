@@ -577,6 +577,41 @@ class CRMServiceReal:
             else:
                 raise
 
+    @async_retry_with_backoff()
+    @handle_kommo_errors()
+    async def get_lead_by_id(self, lead_id: str) -> Optional[Dict[str, Any]]:
+        """Busca um lead no Kommo pelo seu ID."""
+        if not self.is_initialized:
+            await self.initialize()
+        try:
+            await wait_for_kommo()
+            async with await self._get_session() as session:
+                async with session.get(
+                    f"{self.base_url}/api/v4/leads/{lead_id}",
+                    headers=self.headers
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    elif response.status == 404:
+                        return None
+                    else:
+                        error_text = await response.text()
+                        raise KommoAPIException(
+                            f"Erro ao buscar lead por ID: {response.status} - {error_text}",
+                            error_code="KOMMO_GET_LEAD_BY_ID_ERROR",
+                            details={"status_code": response.status, "response": error_text}
+                        )
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao buscar lead por ID {lead_id}: {e}")
+            if not isinstance(e, KommoAPIException):
+                raise KommoAPIException(
+                    f"Erro ao buscar lead por ID: {e}",
+                    error_code="KOMMO_GET_LEAD_BY_ID_EXCEPTION",
+                    details={"exception": str(e)}
+                )
+            else:
+                raise
+
     async def close(self):
         """Fecha conexão com Kommo CRM"""
         self.is_initialized = False

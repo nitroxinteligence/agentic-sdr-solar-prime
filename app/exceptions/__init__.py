@@ -73,3 +73,8 @@ class ToolExecutionError(BaseSDRException):
 class DataExtractionError(BaseSDRException):
     """Exception raised when data extraction from text fails."""
     pass
+
+
+class HandoffActiveException(BaseSDRException):
+    """Exception raised when an operation is attempted on a lead under human handoff."""
+    pass

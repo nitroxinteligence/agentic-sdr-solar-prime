@@ -19,6 +19,7 @@ from app.agents.agentic_sdr_stateless import AgenticSDRStateless
 from app.services.message_buffer import MessageBuffer, get_message_buffer
 from app.services.message_splitter import MessageSplitter, get_message_splitter
 from app.utils.agno_media_detection import AGNOMediaDetector
+from app.exceptions import HandoffActiveException
 
 router = APIRouter(prefix="/webhook", tags=["webhooks"])
 
@@ -38,7 +39,6 @@ def extract_message_content(message: Dict[str, Any]) -> Optional[str]:
     if "textMessage" in msg_content:
         return msg_content["textMessage"].get("text")
     
-    # Adiciona extração de legenda para mídias
     for media_type in ["imageMessage", "videoMessage", "documentMessage"]:
         if media_type in msg_content:
             return msg_content[media_type].get("caption")
@@ -64,8 +64,6 @@ async def _handle_media_message(
         if msg_type in msg_content:
             media_payload = msg_content[msg_type]
             try:
-                # A configuração do webhook (webhook_base64: True) deve enviar a mídia em base64.
-                # A Evolution API normalmente usa a chave "media" para isso.
                 base64_content = media_payload.get("media") or media_payload.get("body")
 
                 if base64_content:
@@ -76,7 +74,6 @@ async def _handle_media_message(
                         "mimetype": media_payload.get("mimetype"),
                     }
                 else:
-                    # Fallback OTIMIZADO: Usa o endpoint específico para buscar a mídia em base64
                     emoji_logger.system_info(f"Payload para {msg_type} sem mídia. Usando endpoint getBase64FromMediaMessage.")
                     base64_from_api = await evolution_client.get_media_as_base64(message.get("key"))
                     if base64_from_api:
@@ -129,55 +126,6 @@ async def process_presence_update(data: Dict[str, Any]):
             f"Presence update from {remote_jid}: {presence}"
         )
 
-def sanitize_final_response(text: str) -> str:
-    """
-    Sanitiza agressivamente o texto final para garantir conformidade total
-    com as regras de formatação do WhatsApp.
-    """
-    if not isinstance(text, str):
-        return ""
-
-    emoji_pattern = re.compile(
-        "["
-        u"\U0001f600-\U0001f64f"
-        u"\U0001f300-\U0001f5ff"
-        u"\U0001f680-\U0001f6ff"
-        u"\U0001f1e0-\U0001f1ff"
-        u"\u2600-\u26ff"
-        u"\u2700-\u27bf"
-        u"\u2300-\u23ff"
-        u"\ufe0f"
-        u"\u200d"
-        "]+",
-        flags=re.UNICODE
-    )
-    text = emoji_pattern.sub(r'', text)
-    text = re.sub(r'\*{2,}', '', text)
-    text = re.sub(r'[_~`]', '', text)
-
-    lines = text.split('\n')
-    cleaned_lines = []
-    for line in lines:
-        cleaned_line = re.sub(
-            r'^\s*\d+\.\s*|^\s*[-*]\s*', '', line.strip()
-        )
-        if cleaned_line:
-            cleaned_lines.append(cleaned_line)
-
-    text = ' '.join(cleaned_lines)
-    text = ' '.join(text.split())
-    text = text.strip()
-
-    if not text or text.lower() == "none":
-        emoji_logger.system_error(
-            "Sanitize",
-            "⚠️ sanitize_final_response resultaria em vazio/None"
-        )
-        return "Oi! Como posso ajudar você hoje? 😊"
-
-    return text
-
-
 def extract_final_response(full_response: str) -> str:
     """
     Extrai e limpa o conteúdo dentro da tag <RESPOSTA_FINAL>, removendo
@@ -186,27 +134,23 @@ def extract_final_response(full_response: str) -> str:
     if not isinstance(full_response, str):
         return "Desculpe, ocorreu um erro inesperado."
 
-    # Tenta extrair o conteúdo da tag principal
     match = re.search(r'<RESPOSTA_FINAL>(.*?)</RESPOSTA_FINAL>', full_response, re.DOTALL | re.IGNORECASE)
     
     if match:
         final_response = match.group(1).strip()
     else:
-        # Fallback: se a tag não for encontrada, loga um aviso e limpa o texto de outras tags conhecidas
         emoji_logger.system_warning(
             "Tag <RESPOSTA_FINAL> não encontrada na resposta do LLM.",
-            raw_response=full_response[:500]  # Loga os primeiros 500 caracteres da resposta bruta
+            raw_response=full_response[:500]
         )
         temp_response = re.sub(r'</?analise_interna>.*?</analise_interna>', '', full_response, flags=re.DOTALL | re.IGNORECASE)
         temp_response = re.sub(r'</?RESPOSTA_FINAL>', '', temp_response, flags=re.IGNORECASE)
         
-        # Se ainda houver tags, a resposta é muito incerta. Retorna um fallback seguro.
         if '<' in temp_response and '>' in temp_response:
             emoji_logger.system_error("extract_final_response", "Nenhuma tag <RESPOSTA_FINAL> clara e ainda há outras tags. Usando fallback.")
             return "Estou finalizando sua solicitação. Um momento."
         final_response = temp_response.strip()
 
-    # Se a resposta final estiver vazia ou for "none", retorna uma resposta de esclarecimento.
     if not final_response or final_response.lower() == "none":
         emoji_logger.system_warning("A resposta final do LLM estava vazia ou 'none'. Usando fallback de esclarecimento.")
         return "Pode repetir, por favor? Não entendi bem o que você quis dizer."
@@ -214,64 +158,48 @@ def extract_final_response(full_response: str) -> str:
     return final_response
 
 
-def detect_media_format(media_data: Any) -> str:
-    """Detecta o formato da mídia recebida"""
-    if media_data is None:
-        return 'unknown'
-
-    if isinstance(media_data, str):
-        if media_data.startswith("data:"):
-            logger.info("Formato detectado: Data URL")
-            return 'data_url'
-        elif media_data.startswith(("http://", "https://")):
-            logger.info("Formato detectado: URL para download")
-            return 'url'
-        elif len(media_data) > 50:
-            try:
-                import base64 as b64
-                test_sample = media_data[:100]
-                b64.b64decode(test_sample)
-                logger.info("Formato detectado: Base64 válido")
-                return 'base64'
-            except Exception:
-                logger.info("Formato detectado: String não-base64")
-                return 'unknown'
-        else:
-            return 'unknown'
-    elif isinstance(media_data, bytes):
-        logger.info(f"Formato detectado: Bytes ({len(media_data)} bytes)")
-        return 'bytes'
-    else:
-        logger.info(f"Formato desconhecido: {type(media_data)}")
-        return 'unknown'
-
-
-def extract_base64_from_data_url(data_url: str) -> str:
-    """Extrai o base64 de uma data URL"""
-    if ";base64," in data_url:
-        return data_url.split(";base64,")[1]
-    return data_url
-
-
 async def create_agent_with_context(
         phone: str,
         conversation_id: str = None,
         media_data: Optional[Dict[str, Any]] = None
 ) -> tuple:
-    """Cria agente stateless com contexto completo carregado"""
+    """
+    Cria agente stateless com contexto completo, sincronizando com o CRM em tempo real.
+    """
     from app.integrations.supabase_client import supabase_client
+    from app.services.crm_service_100_real import CRMServiceReal
+
     emoji_logger.webhook_process("🏭 Criando agente stateless com contexto...")
 
     try:
+        # Passo 1: Obter dados locais do Supabase
         lead_data = await supabase_client.get_lead_by_phone(phone)
+        
+        # Passo 2: Sincronização em Tempo Real com Kommo
+        if lead_data and lead_data.get("kommo_lead_id"):
+            crm_service = CRMServiceReal()
+            await crm_service.initialize() # Garante que o serviço esteja inicializado
+            kommo_lead = await crm_service.get_lead_by_id(str(lead_data["kommo_lead_id"]))
+
+            if kommo_lead:
+                current_status_id = kommo_lead.get('status_id')
+                human_handoff_stage_id = settings.kommo_human_handoff_stage_id
+
+                # Passo 3: Ativar/Desativar Pausa e lançar exceção
+                if str(current_status_id) == str(human_handoff_stage_id):
+                    await redis_client.set_human_handoff_pause(phone)
+                    raise HandoffActiveException(f"Handoff ativo para {phone}")
+                else:
+                    await redis_client.clear_human_handoff_pause(phone)
+                
+                # Atualiza Supabase se necessário
+                if lead_data.get('current_stage_id') != current_status_id:
+                    await supabase_client.update_lead(lead_data['id'], {'current_stage_id': current_status_id})
+
+        # Continua com a criação do contexto se o handoff não estiver ativo
         conversation_history = []
         if conversation_id:
-            conversation_history = (
-                await supabase_client.get_conversation_messages(
-                    conversation_id,
-                    limit=500
-                )
-            )
+            conversation_history = await supabase_client.get_conversation_messages(conversation_id, limit=500)
 
         execution_context = {
             "phone": phone,
@@ -288,18 +216,15 @@ async def create_agent_with_context(
         emoji_logger.system_ready(
             "✅ Agente stateless criado com contexto",
             history_count=len(conversation_history),
-            lead_name=(
-                lead_data.get('name') if lead_data else 'Não identificado'
-            )
+            lead_name=(lead_data.get('name') if lead_data else 'Não identificado')
         )
 
         return agent, execution_context
 
+    except HandoffActiveException:
+        raise
     except Exception as e:
-        emoji_logger.system_error(
-            "Webhook",
-            f"Erro ao criar agente com contexto: {e}"
-        )
+        emoji_logger.system_error("Webhook", f"Erro ao criar agente com contexto: {e}")
         raise
 
 def get_message_buffer_instance():
@@ -414,7 +339,6 @@ async def process_new_message(data: Any):
             return
 
         for message in messages:
-            # Garante que 'message' seja um dicionário antes de prosseguir
             if not isinstance(message, dict):
                 logger.warning(f"Item ignorado no payload de mensagens pois não é um dicionário: {message}")
                 continue
@@ -430,17 +354,8 @@ async def process_new_message(data: Any):
 
             phone = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
 
-            # PASSO 1 DA CORREÇÃO: Adicionar verificação de pausa de handoff
-            if await redis_client.is_human_handoff_active(phone):
-                emoji_logger.system_info(
-                    f"Agente pausado para {phone} (atendimento humano). Mensagem ignorada."
-                )
-                continue
-
             if "@g.us" in remote_jid:
-                emoji_logger.webhook_process(
-                    f"Mensagem de grupo ignorada: {remote_jid}"
-                )
+                emoji_logger.webhook_process(f"Mensagem de grupo ignorada: {remote_jid}")
                 continue
 
             emoji_logger.webhook_process(f"Processando mensagem de {phone}")
@@ -504,7 +419,6 @@ async def process_message_with_agent(
     """Processa mensagem com o agente AGENTIC SDR"""
     from app.integrations.supabase_client import supabase_client
 
-    # Validação Defensiva: Garante que a mensagem original é um dicionário válido
     if not original_message or not isinstance(original_message, dict):
         emoji_logger.system_error(
             "process_message_with_agent",
@@ -527,9 +441,7 @@ async def process_message_with_agent(
     lead_result, conv_result = results
 
     if isinstance(lead_result, Exception):
-        emoji_logger.system_error(
-            "Lead Fetch", f"Erro ao buscar lead: {lead_result}"
-        )
+        emoji_logger.system_error("Lead Fetch", f"Erro ao buscar lead: {lead_result}")
         lead = None
     else:
         lead = lead_result
@@ -544,9 +456,7 @@ async def process_message_with_agent(
     }
 
     if isinstance(conv_result, Exception):
-        emoji_logger.system_error(
-            "Conversation Fetch", f"Erro ao buscar conversa: {conv_result}"
-        )
+        emoji_logger.system_error("Conversation Fetch", f"Erro ao buscar conversa: {conv_result}")
         conversation = None
     else:
         conversation = conv_result
@@ -556,19 +466,11 @@ async def process_message_with_agent(
             phone, lead["id"] if lead else None
         )
 
-    if not conversation or not isinstance(
-            conversation,
-            dict
-    ) or "id" not in conversation:
-        emoji_logger.system_error(
-            "Conversation Validation",
-            f"Conversa inválida criada/buscada: {conversation}"
-        )
+    if not conversation or not isinstance(conversation, dict) or "id" not in conversation:
+        emoji_logger.system_error("Conversation Validation", f"Conversa inválida criada/buscada: {conversation}")
         raise ValueError(f"Conversa inválida: {conversation}")
 
-    emoji_logger.system_info(
-        f"Conversa validada - ID: {conversation['id']}, Phone: {phone}"
-    )
+    emoji_logger.system_info(f"Conversa validada - ID: {conversation['id']}, Phone: {phone}")
 
     message_data["conversation_id"] = conversation["id"]
     save_tasks = [
@@ -593,31 +495,14 @@ async def process_message_with_agent(
             media_data=media_data
         )
         emoji_logger.webhook_process("AGENTIC SDR Stateless pronto para uso")
+    except HandoffActiveException:
+        emoji_logger.system_info(f"Processamento interrompido para {phone} devido a handoff ativo.")
+        return
     except Exception as e:
-        emoji_logger.system_error(
-            "Agent Creation", f"Erro ao criar agente: {e}"
-        )
+        emoji_logger.system_error("Agent Creation", f"Erro ao criar agente: {e}")
         raise HTTPException(
             status_code=503, detail="Agente temporariamente indisponível"
         )
-
-    if not conversation or not conversation.get("id"):
-        emoji_logger.system_error(
-            "WEBHOOK",
-            f"❌ Conversation inválida! Lead: {lead}, Phone: {phone}"
-        )
-        try:
-            conversation = await supabase_client.create_conversation(
-                phone, lead["id"] if lead else None
-            )
-            emoji_logger.system_info(
-                f"✅ Nova conversa criada: {conversation.get('id', 'N/A')}"
-            )
-        except Exception as conv_error:
-            emoji_logger.system_error(
-                "WEBHOOK", f"❌ Falha ao criar conversa: {conv_error}"
-            )
-            return
 
     response_text, updated_lead_info = await agentic.process_message(
         message=message_content,
@@ -626,14 +511,10 @@ async def process_message_with_agent(
 
     final_response = extract_final_response(response_text)
 
-    # Protocolo de Silêncio: Se a tag <SILENCE> for detectada, o agente não responde.
     if "<SILENCE>" in final_response or "<SILENCIO>" in final_response:
-        emoji_logger.system_info(
-            f"Protocolo de silêncio ativado para {phone}. Nenhuma mensagem será enviada."
-        )
+        emoji_logger.system_info(f"Protocolo de silêncio ativado para {phone}. Nenhuma mensagem será enviada.")
         return
 
-    # Salva a resposta do assistente no banco de dados
     if final_response:
         assistant_message_data = {
             "content": final_response,
@@ -645,7 +526,6 @@ async def process_message_with_agent(
         await supabase_client.save_message(assistant_message_data)
 
     if updated_lead_info and updated_lead_info.get("id"):
-        # Remove a chave transitória antes de salvar no banco
         updated_lead_info.pop("processed_message_count", None)
         await supabase_client.update_lead(updated_lead_info["id"], updated_lead_info)
     
