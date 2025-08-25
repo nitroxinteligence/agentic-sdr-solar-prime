@@ -252,6 +252,20 @@ async def process_contacts_update(data: Dict[str, Any]):
                         emoji_logger.system_debug(f"Telefone encontrado em {key}.phone: '{phone_number}'")
                         break
         
+        # Tentativa 4: Buscar telefone em mensagens recentes se pushName estiver disponível
+        if not phone_number and push_name:
+            emoji_logger.system_debug(f"Tentando encontrar telefone para pushName '{push_name}' em mensagens recentes")
+            try:
+                from app.integrations.supabase_client import supabase_client
+                # Buscar leads com nome similar
+                recent_leads = await supabase_client.search_leads_by_name(push_name)
+                if recent_leads:
+                    # Usar o telefone do lead mais recente com nome similar
+                    phone_number = recent_leads[0].get('phone_number', '')
+                    emoji_logger.system_debug(f"Telefone encontrado via busca por nome: '{phone_number}'")
+            except Exception as e:
+                emoji_logger.system_debug(f"Erro ao buscar telefone por nome: {e}")
+        
         emoji_logger.system_debug(f"Dados extraídos - Phone: '{phone_number}', PushName: '{push_name}'")
         
         # Validar se temos dados válidos (telefone não pode estar vazio)

@@ -155,7 +155,7 @@ class CRMServiceReal:
                     if response.status == 200:
                         fields = await response.json()
                         field_mapping = {
-                            "whatsapp": "phone", "telefone": "phone",
+                            "whatsapp": "whatsapp", "telefone": "phone",
                             "phone": "phone", "valor conta energia": "bill_value",
                             "valor_conta_energia": "bill_value",
                             "valor da conta": "bill_value",
@@ -295,14 +295,24 @@ class CRMServiceReal:
             }
             
             custom_fields = []
-            # Adicionar telefone como campo customizado
-            if lead_data.get("phone") and self.custom_fields.get("phone"):
-                custom_fields.append({
-                    "field_id": self.custom_fields["phone"],
-                    "values": [{
-                        "value": lead_data["phone"]
-                    }]
-                })
+            # Adicionar telefone como campo customizado (phone e whatsapp)
+            if lead_data.get("phone"):
+                # Adicionar ao campo phone se existir
+                if self.custom_fields.get("phone"):
+                    custom_fields.append({
+                        "field_id": self.custom_fields["phone"],
+                        "values": [{
+                            "value": lead_data["phone"]
+                        }]
+                    })
+                # Adicionar ao campo whatsapp se existir
+                if self.custom_fields.get("whatsapp"):
+                    custom_fields.append({
+                        "field_id": self.custom_fields["whatsapp"],
+                        "values": [{
+                            "value": lead_data["phone"]
+                        }]
+                    })
             if lead_data.get("bill_value"):
                 custom_fields.append({
                     "field_id": self.custom_fields.get("bill_value", 392804),
@@ -393,6 +403,22 @@ class CRMServiceReal:
 
             # Handle custom fields
             custom_fields = []
+            
+            # Handle phone fields separately (phone and whatsapp)
+            if update_data.get("phone"):
+                # Adicionar ao campo phone se existir
+                if self.custom_fields.get("phone"):
+                    custom_fields.append({
+                        "field_id": self.custom_fields["phone"],
+                        "values": [{"value": update_data["phone"]}]
+                    })
+                # Adicionar ao campo whatsapp se existir
+                if self.custom_fields.get("whatsapp"):
+                    custom_fields.append({
+                        "field_id": self.custom_fields["whatsapp"],
+                        "values": [{"value": update_data["phone"]}]
+                    })
+            
             field_map = {
                 "bill_value": self.custom_fields.get("bill_value"),
                 "chosen_flow": self.custom_fields.get("solution_type"),

@@ -110,6 +110,22 @@ class SupabaseClient:
                 f"Erro ao buscar leads qualificados: {str(e)}", table="leads"
             )
             return []
+    
+    async def search_leads_by_name(self, name: str) -> List[Dict[str, Any]]:
+        """Busca leads por nome (busca parcial, case-insensitive)"""
+        try:
+            # Busca leads com nome similar (case-insensitive)
+            result = self.client.table('leads').select(
+                "id, name, phone_number, created_at"
+            ).ilike('name', f'%{name}%').order(
+                'created_at', desc=True
+            ).limit(5).execute()
+
+            return result.data if result.data else []
+
+        except Exception as e:
+            logger.error(f"Erro ao buscar leads por nome '{name}': {str(e)}")
+            return []
 
     # ============= CONVERSATIONS =============
 

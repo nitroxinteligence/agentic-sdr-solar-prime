@@ -378,8 +378,8 @@ class EmojiLogger:
         cls.log_with_emoji("INFO", "agentic_response", message, **kwargs)
 
     @classmethod
-    def conversation_event(cls, message: str, **kwargs):
-        cls.log_with_emoji("INFO", "agentic_response", message, **kwargs)
+    def conversation_success(cls, message: str, **kwargs):
+        cls.log_with_emoji("INFO", "success", message, **kwargs)
 
 
 EmojiLogger.setup_logger()
