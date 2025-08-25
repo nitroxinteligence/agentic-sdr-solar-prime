@@ -101,47 +101,78 @@ class AgenticSDRStateless:
         Processa mensagem com contexto isolado, orquestrando o fluxo de trabalho.
         """
         if not self.is_initialized:
+            emoji_logger.system_debug("Inicializando AgenticSDRStateless...")
             await self.initialize()
+            emoji_logger.system_success("AgenticSDRStateless inicializado")
 
-        emoji_logger.agentic_start(f"Processando (stateless): {message[:100]}...")
+        emoji_logger.agentic_start(f"🤖 AGENTE STATELESS INICIADO - Mensagem: '{message[:100]}...'")
 
         try:
             # Etapa 1: Preparar o contexto da execução
             conversation_history = execution_context.get("conversation_history", [])
             lead_info = execution_context.get("lead_info", {})
             phone = execution_context.get("phone")
+            
+            emoji_logger.system_debug(
+                f"📋 CONTEXTO CARREGADO - Telefone: {phone}, "
+                f"Histórico: {len(conversation_history)} msgs, "
+                f"Lead: {lead_info.get('name', 'N/A')} (ID: {lead_info.get('id', 'N/A')})"
+            )
 
+            emoji_logger.system_debug("Registrando mensagem do usuário...")
             await self.conversation_monitor.register_message(phone=phone, is_from_user=True, lead_info=lead_info)
+            emoji_logger.system_success("Mensagem do usuário registrada")
 
             # Etapa 2: Atualizar histórico e contexto do lead
+            emoji_logger.system_debug("🔄 ATUALIZANDO CONTEXTO - Processando lead e histórico...")
             conversation_history, lead_info = await self._update_context(message, conversation_history, lead_info, execution_context.get("media"))
+            emoji_logger.system_success(
+                f"Contexto atualizado - Lead: {lead_info.get('name', 'N/A')}, "
+                f"Histórico: {len(conversation_history)} msgs"
+            )
 
             # Etapa 3: Sincronizar com serviços externos (CRM)
+            emoji_logger.system_debug("🔗 SINCRONIZAÇÃO EXTERNA - Conectando com CRM...")
             lead_info = await self._sync_external_services(lead_info, phone)
+            emoji_logger.system_success("Sincronização externa concluída")
 
             # Etapa 3.5: Sincronizar dados de tags e campos com o CRM
+            emoji_logger.system_debug("🏷️ SINCRONIZAÇÃO CRM - Atualizando tags e campos...")
             await self._sync_crm_data(lead_info, conversation_history)
+            emoji_logger.system_success("Dados CRM sincronizados")
 
             # Etapa 4: Gerar resposta via LLM (fluxo unificado)
+            emoji_logger.system_debug("🧠 GERAÇÃO LLM - Processando resposta inteligente...")
             response = await self._generate_llm_response(message, lead_info, conversation_history, execution_context)
+            emoji_logger.system_success(f"Resposta LLM gerada: '{response[:100]}...'")
 
             # Etapa 5: Finalizar e registrar a resposta
+            emoji_logger.system_debug("Registrando resposta do assistente...")
             await self.conversation_monitor.register_message(phone=phone, is_from_user=False, lead_info=lead_info)
-            emoji_logger.system_success(f"Resposta gerada: {response[:100]}...")
+            emoji_logger.system_success("Resposta do assistente registrada")
 
             # Correção: Adicionar verificação do protocolo de silêncio ANTES de formatar
             if "<SILENCE>" in response or "<SILENCIO>" in response:
-                emoji_logger.system_info(f"Protocolo de silêncio ativado para {phone}. Nenhuma mensagem será enviada.")
+                emoji_logger.system_info(f"🔇 PROTOCOLO SILÊNCIO - Ativado para {phone}. Nenhuma mensagem será enviada.")
                 return "<SILENCE>", lead_info
 
-            return response_formatter.ensure_response_tags(response), lead_info
+            final_response = response_formatter.ensure_response_tags(response)
+            emoji_logger.agentic_success(
+                f"✅ AGENTE STATELESS CONCLUÍDO - {phone}: "
+                f"'{message[:50]}...' -> '{final_response[:50]}...'"
+            )
+            return final_response, lead_info
 
         except Exception as e:
             import traceback
+            error_trace = traceback.format_exc()
             emoji_logger.system_error(
                 "AgenticSDRStateless",
-                error=f"Erro: {e}",
-                traceback=traceback.format_exc()
+                error=f"❌ ERRO CRÍTICO NO AGENTE: {e}",
+                traceback=error_trace
+            )
+            emoji_logger.agentic_error(
+                f"💥 FALHA NO PROCESSAMENTO - {phone}: '{message[:50]}...' -> ERRO: {str(e)[:50]}..."
             )
             return (
                 "<RESPOSTA_FINAL>Desculpe, tive um problema aqui. "
@@ -154,9 +185,12 @@ class AgenticSDRStateless:
         Prepara a mensagem do usuário, atualiza o histórico, enriquece as informações
         do lead e persiste as mudanças no banco de dados de forma atômica.
         """
+        emoji_logger.system_debug("📝 PREPARAÇÃO MENSAGEM - Adicionando mensagem do usuário ao histórico...")
+        
         # 1. Adicionar nova mensagem do usuário ao histórico
         user_message_content = [{"type": "text", "text": message}]
         if media_data:
+            emoji_logger.system_debug("📎 PROCESSAMENTO MÍDIA - Detectada mídia na mensagem...")
             # (O restante do código de processamento de mídia permanece o mesmo)
             if media_data.get("type") == "error":
                 raise ValueError(media_data.get("content", "Erro ao processar mídia."))
@@ -180,15 +214,31 @@ class AgenticSDRStateless:
 
         user_message = {"role": "user", "content": user_message_content, "timestamp": datetime.now().isoformat()}
         conversation_history.append(user_message)
+        emoji_logger.system_success(f"Mensagem adicionada ao histórico. Total: {len(conversation_history)} mensagens")
 
-        # 2. Re-processar o histórico COMPLETO para obter o estado mais atual do lead
-        # Esta é a mudança crucial: sempre reavalia o histórico todo.
+        # 2. Analisar contexto da conversa para extração inteligente
+        emoji_logger.system_debug("🔍 ANÁLISE CONTEXTUAL - Analisando contexto da conversa...")
+        context = self.context_analyzer.analyze_context(conversation_history, lead_info)
+        emoji_logger.system_success(
+            f"Contexto analisado - Sentimento: {context.get('sentiment', 'N/A')}, "
+            f"Urgência: {context.get('urgency_level', 'N/A')}"
+        )
+        
+        # 3. Re-processar o histórico COMPLETO para obter o estado mais atual do lead
+        # Agora com contexto para extração inteligente de nomes
+        emoji_logger.system_debug("👤 EXTRAÇÃO LEAD - Re-processando histórico para extrair informações do lead...")
         updated_lead_info = self.lead_manager.extract_lead_info(
             conversation_history,
-            existing_lead_info=lead_info
+            existing_lead_info=lead_info,
+            context=context
+        )
+        emoji_logger.system_success(
+            f"Lead atualizado - Nome: '{updated_lead_info.get('name', 'N/A')}', "
+            f"Valor: {updated_lead_info.get('bill_value', 'N/A')}"
         )
 
-        # 3. Detectar e persistir mudanças no banco de dados
+        # 4. Detectar e persistir mudanças no banco de dados
+        emoji_logger.system_debug("🔄 DETECÇÃO MUDANÇAS - Verificando alterações no lead...")
         lead_changes = self._detect_lead_changes(lead_info, updated_lead_info)
         
         if lead_changes:
@@ -204,8 +254,13 @@ class AgenticSDRStateless:
                 except Exception as e:
                     emoji_logger.system_error(f"Falha ao sincronizar mudanças do lead {lead_id_to_update} com o DB.", error=str(e))
                     # Continuar mesmo se a atualização falhar, para não interromper o fluxo.
+            else:
+                emoji_logger.system_debug("Lead sem ID - mudanças detectadas mas não persistidas")
+        else:
+            emoji_logger.system_debug("Nenhuma mudança detectada no lead")
         
         # 4. Retornar o histórico e o lead_info final e atualizado
+        emoji_logger.system_success("✅ CONTEXTO ATUALIZADO - Histórico e lead_info finalizados")
         return conversation_history, updated_lead_info
 
     async def _sync_external_services(self, lead_info: dict, phone: str) -> dict:
@@ -267,10 +322,10 @@ class AgenticSDRStateless:
         """Gera e envia atualizações de campos e tags para o CRM."""
         kommo_lead_id = lead_info.get("kommo_lead_id")
         if not kommo_lead_id:
-            # Este log é útil, mas pode ser verboso. Manter como debug.
-            # emoji_logger.system_debug("CRM Sync: Pulando, lead sem kommo_lead_id.")
+            emoji_logger.system_debug("CRM Sync: Pulando, lead sem kommo_lead_id.")
             return
 
+        emoji_logger.system_debug(f"Gerando payload de atualização para lead {kommo_lead_id}...")
         update_payload = crm_sync_service.get_update_payload(
             lead_info=lead_info,
             conversation_history=conversation_history
@@ -278,6 +333,7 @@ class AgenticSDRStateless:
 
         if update_payload:
             try:
+                emoji_logger.system_debug(f"Enviando atualização para Kommo: {update_payload}")
                 await self.crm_service.update_lead(
                     lead_id=str(kommo_lead_id),
                     update_data=update_payload
@@ -285,6 +341,8 @@ class AgenticSDRStateless:
                 emoji_logger.system_info("CRM Sync: Dados do lead atualizados no Kommo.", payload=update_payload)
             except Exception as e:
                 emoji_logger.system_error("CRM Sync: Falha ao atualizar dados no Kommo.", error=str(e))
+        else:
+            emoji_logger.system_debug("Nenhuma atualização necessária para o CRM")
 
     
 
@@ -436,7 +494,8 @@ class AgenticSDRStateless:
                 # Garante que o nome do lead está atualizado antes de agendar
                 updated_lead_info = self.lead_manager.extract_lead_info(
                     conversation_history,
-                    existing_lead_info=lead_info
+                    existing_lead_info=lead_info,
+                    context=context
                 )
                 lead_info.update(updated_lead_info)
 

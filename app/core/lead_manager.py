@@ -30,7 +30,8 @@ class LeadManager:
     def extract_lead_info(
             self,
             messages: List[Dict[str, Any]],
-            existing_lead_info: Optional[Dict[str, Any]] = None
+            existing_lead_info: Optional[Dict[str, Any]] = None,
+            context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Extrai e consolida informações do lead de forma robusta,
@@ -67,7 +68,9 @@ class LeadManager:
             if msg.get("role") == "user":
                 # Tenta extrair cada informação apenas se ela ainda não existir no lead_info.
                 if not lead_info.get("name"):
-                    name = self._extract_name(content_lower)
+                    # Passa o contexto para extração contextual de nomes
+                    current_stage = context.get('conversation_stage') if context else None
+                    name = self._extract_name(content_lower, current_stage)
                     if name:
                         lead_info["name"] = name
                         emoji_logger.system_debug(f"Nome extraído do histórico: '{name}'")
@@ -161,8 +164,11 @@ class LeadManager:
         else:
             return "INITIAL_CONTACT"
 
-    def _extract_name(self, text: str) -> Optional[str]:
-        """Extrai nome do texto com foco em padrões explícitos."""
+    def _extract_name(self, text: str, current_stage: Optional[str] = None) -> Optional[str]:
+        """Extrai nome do texto com foco em padrões explícitos e contextuais."""
+        emoji_logger.system_debug(f"Iniciando extração de nome. Estágio: {current_stage}, Texto: '{text[:50]}...'")
+        
+        # Padrões explícitos tradicionais
         patterns = [
             r"meu\s+nome\s+[eé]\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,3})",
             r"me\s+chamo\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,3})",
@@ -170,14 +176,80 @@ class LeadManager:
             r"(?:eu\s+)?sou\s+o\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,3})",
             r"(?:eu\s+)?sou\s+a\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,3})",
         ]
-        for pattern in patterns:
+        
+        emoji_logger.system_debug("Testando padrões explícitos de nome")
+        for i, pattern in enumerate(patterns):
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 potential_name = match.group(1).strip().title()
+                emoji_logger.system_debug(f"Padrão {i+1} encontrou: '{potential_name}'")
                 if self._is_valid_name(potential_name):
+                    emoji_logger.system_success(f"Nome extraído via padrão explícito: '{potential_name}'")
                     return potential_name
+                else:
+                    emoji_logger.system_debug(f"Nome rejeitado pela validação: '{potential_name}'")
+        
+        # Extração contextual: se estamos no estágio de coleta de nome,
+        # tentamos capturar nomes isolados com maior flexibilidade
+        if current_stage == "estagio_0_coleta_nome":
+            emoji_logger.system_debug("Usando extração isolada para estágio de coleta de nome")
+            isolated_name = self._extract_isolated_name(text)
+            if isolated_name:
+                emoji_logger.system_success(f"Nome extraído via método isolado: '{isolated_name}'")
+                return isolated_name
+            else:
+                emoji_logger.system_debug("Método isolado não encontrou nome válido")
+        
+        emoji_logger.system_warning("Nenhum nome foi extraído do texto")
         return None
 
+    def _extract_isolated_name(self, text: str) -> Optional[str]:
+        """Extrai nomes isolados quando estamos no contexto de coleta de nome."""
+        emoji_logger.system_debug(f"Tentando extrair nome isolado de: '{text}'")
+        
+        # Remove pontuação e divide em palavras
+        words = re.findall(r'\b[A-ZÀ-ÿ][a-zà-ÿ]{1,}\b', text)
+        emoji_logger.system_debug(f"Palavras encontradas: {words}")
+        
+        for word in words:
+            emoji_logger.system_debug(f"Validando palavra: '{word}'")
+            if self._is_valid_isolated_name(word):
+                name = word.title()
+                emoji_logger.system_success(f"Nome isolado capturado: '{name}' no estágio de coleta")
+                return name
+            else:
+                emoji_logger.system_debug(f"Palavra rejeitada: '{word}'")
+        
+        emoji_logger.system_debug("Nenhum nome isolado válido encontrado")
+        return None
+    
+    def _is_valid_isolated_name(self, name: str) -> bool:
+        """Valida se uma palavra isolada pode ser um nome no contexto de coleta."""
+        emoji_logger.system_debug(f"Validando nome isolado: '{name}'")
+        
+        if not name or len(name) < 2 or len(name) > 30:
+            emoji_logger.system_debug(f"Nome rejeitado por tamanho: {len(name) if name else 0} caracteres")
+            return False
+        
+        # Lista mais restritiva para nomes isolados
+        blacklist = [
+            'oi', 'ola', 'sim', 'nao', 'ok', 'tudo', 'bem', 'bom', 'dia', 
+            'tarde', 'noite', 'quero', 'gostaria', 'preciso', 'pode', 'claro',
+            'conta', 'valor', 'energia', 'obrigado', 'obrigada', 'tchau', 
+            'ate', 'logo', 'falar', 'conversar', 'legal', 'show', 'perfeito'
+        ]
+        
+        name_lower = name.lower()
+        in_blacklist = name_lower in blacklist
+        is_alpha = name.isalpha()
+        
+        emoji_logger.system_debug(
+            f"Validação - Blacklist: {in_blacklist}, Apenas letras: {is_alpha}, "
+            f"Resultado: {not in_blacklist and is_alpha}"
+        )
+        
+        return not in_blacklist and is_alpha
+    
     def _is_valid_name(self, name: str) -> bool:
         """Valida se uma string é um nome próprio provável."""
         if not name or len(name) < 3 or len(name) > 60:
@@ -205,6 +277,8 @@ class LeadManager:
 
     def _extract_bill_value(self, text: str) -> Optional[float]:
         """Extrai valor da conta do texto"""
+        emoji_logger.system_debug(f"Extraindo valor da conta de: '{text[:50]}...'")
+        
         patterns = [
             r"conta.{0,20}R?\s*\$?\s*(\d+(?:[.,]\d{0,2})?)",
             r"pago.{0,20}R?\s*\$?\s*(\d+(?:[.,]\d{0,2})?)",
@@ -213,16 +287,23 @@ class LeadManager:
             r"uns\s*(\d+(?:[.,]\d{0,2})?)",
             r"R?\s*\$?\s*(\d+(?:[.,]\d{0,2})?)"
         ]
-        for pattern in patterns:
+        
+        for i, pattern in enumerate(patterns):
             matches = re.findall(pattern, text, re.IGNORECASE)
             if matches:
+                emoji_logger.system_debug(f"Padrão {i+1} encontrou valores: {matches}")
                 try:
                     values = [float(m.replace(",", ".")) for m in matches]
                     reasonable_values = [v for v in values if 50 <= v <= 10000]
+                    emoji_logger.system_debug(f"Valores razoáveis filtrados: {reasonable_values}")
                     if reasonable_values:
-                        return max(reasonable_values)
-                except Exception:
-                    pass
+                        final_value = max(reasonable_values)
+                        emoji_logger.system_success(f"Valor da conta extraído: R$ {final_value}")
+                        return final_value
+                except Exception as e:
+                    emoji_logger.system_debug(f"Erro ao processar valores: {e}")
+        
+        emoji_logger.system_debug("Nenhum valor de conta encontrado")
         return None
 
     def _extract_property_type(self, text: str) -> Optional[str]:
@@ -286,6 +367,7 @@ class LeadManager:
         evitar falsos positivos.
         """
         text_lower = text.lower().strip()
+        emoji_logger.system_debug(f"Extraindo fluxo escolhido de: '{text_lower}'")
 
         # Mapeamento com palavras-chave/sinônimos para cada fluxo.
         # A ordem aqui é importante: do mais específico/prioritário para o mais geral.
@@ -297,12 +379,15 @@ class LeadManager:
         }
 
         for flow, keywords in flow_priority_map.items():
+            emoji_logger.system_debug(f"Testando fluxo '{flow}' com palavras-chave: {keywords}")
             for keyword in keywords:
                 # Usamos \b para garantir que estamos combinando palavras inteiras e evitar
                 # que "investimento" combine com "pré-investimento", por exemplo.
                 if re.search(r'\b' + re.escape(keyword) + r'\b', text_lower):
+                    emoji_logger.system_success(f"Fluxo escolhido detectado: '{flow}' via palavra-chave '{keyword}'")
                     return flow
         
+        emoji_logger.system_debug("Nenhum fluxo específico detectado")
         return None
 
     def format_lead_summary(self, lead_info: Dict[str, Any]) -> str:

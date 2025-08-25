@@ -41,12 +41,15 @@ class ContextAnalyzer:
                         messages: List[Dict[str, Any]],
                         lead_info: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Analisa contexto da conversa de forma SIMPLES
+        Analisa contexto da conversa de forma INTELIGENTE e CONTEXTUAL
+        Fornece informações ricas para extração de nomes e tomada de decisões
         """
         current_message_text = self._get_text_from_message(messages[-1]) if messages else ""
+        conversation_stage = self._determine_stage(messages, lead_info)
         
         context = {
-            "conversation_stage": self._determine_stage(messages, lead_info),
+            "conversation_stage": conversation_stage,
+            "stage_context": self._get_stage_context(conversation_stage, messages, lead_info),
             "user_intent": self._extract_intent(current_message_text),
             "sentiment": self._analyze_sentiment(current_message_text),
             "emotional_state": self._analyze_emotional_state(messages),
@@ -55,7 +58,10 @@ class ContextAnalyzer:
             "engagement_level": self._calculate_engagement(messages),
             "objections_raised": self._find_objections(messages),
             "questions_asked": self._extract_questions(messages),
-            "action_needed": self._determine_action(current_message_text)
+            "action_needed": self._determine_action(current_message_text),
+            "conversation_flow": self._analyze_conversation_flow(messages),
+            "name_extraction_hints": self._get_name_extraction_hints(messages, conversation_stage),
+            "behavioral_patterns": self._analyze_behavioral_patterns(messages)
         }
         return context
 
@@ -182,3 +188,224 @@ class ContextAnalyzer:
             if any(key in msg_lower for key in keys):
                 return action
         return "conversar"
+
+    def _get_stage_context(self, stage: str, messages: List[Dict[str, Any]], lead_info: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Fornece contexto específico para cada estágio da conversa
+        """
+        stage_contexts = {
+            "estagio_0_coleta_nome": {
+                "description": "Coletando nome do lead",
+                "expected_info": "nome",
+                "conversation_length": len(messages),
+                "attempts_made": self._count_name_attempts(messages),
+                "resistance_level": self._assess_name_resistance(messages)
+            },
+            "estagio_1_qualificacao_por_valor": {
+                "description": "Qualificando por valor da conta de energia",
+                "expected_info": "valor da conta",
+                "has_name": bool(lead_info.get("name")),
+                "name_quality": self._assess_name_quality(lead_info.get("name", ""))
+            },
+            "estagio_2_roteamento_e_apresentacao": {
+                "description": "Roteamento e apresentação de soluções",
+                "expected_info": "escolha de fluxo",
+                "collected_data": {
+                    "name": lead_info.get("name"),
+                    "bill_value": lead_info.get("bill_value")
+                }
+            },
+            "qualificacao_detalhada": {
+                "description": "Qualificação detalhada do lead",
+                "collected_data": lead_info,
+                "next_steps": "agendamento ou mais qualificação"
+            },
+            "agendamento": {
+                "description": "Processo de agendamento",
+                "ready_for_scheduling": True,
+                "lead_qualified": True
+            }
+        }
+        
+        return stage_contexts.get(stage, {"description": "Estágio não identificado"})
+
+    def _count_name_attempts(self, messages: List[Dict[str, Any]]) -> int:
+        """
+        Conta quantas vezes o sistema tentou coletar o nome
+        """
+        attempts = 0
+        for msg in messages:
+            content = self._get_text_from_message(msg).lower()
+            if any(phrase in content for phrase in [
+                "qual seu nome", "como posso te chamar", "me diga seu nome",
+                "qual é o seu nome", "como você se chama"
+            ]):
+                attempts += 1
+        return attempts
+
+    def _assess_name_resistance(self, messages: List[Dict[str, Any]]) -> str:
+        """
+        Avalia o nível de resistência para fornecer o nome
+        """
+        resistance_indicators = [
+            "não quero falar", "prefiro não dizer", "não precisa saber",
+            "só informação", "apenas informação", "não vou falar"
+        ]
+        
+        all_text = " ".join([self._get_text_from_message(msg) for msg in messages]).lower()
+        
+        if any(indicator in all_text for indicator in resistance_indicators):
+            return "alta"
+        elif len(messages) > 5 and not any("nome" in self._get_text_from_message(msg).lower() for msg in messages[-3:]):
+            return "média"
+        else:
+            return "baixa"
+
+    def _assess_name_quality(self, name: str) -> Dict[str, Any]:
+        """
+        Avalia a qualidade do nome coletado
+        """
+        if not name:
+            return {"quality": "none", "confidence": 0.0}
+        
+        generic_names = ["lead sem nome", "lead", "cliente", "usuário", "pessoa"]
+        
+        if name.lower() in [g.lower() for g in generic_names]:
+            return {"quality": "generic", "confidence": 0.1}
+        
+        # Verifica se parece um nome real
+        if len(name.split()) >= 2 and name.replace(" ", "").isalpha():
+            return {"quality": "high", "confidence": 0.9}
+        elif name.replace(" ", "").isalpha() and len(name) > 2:
+            return {"quality": "medium", "confidence": 0.7}
+        else:
+            return {"quality": "low", "confidence": 0.3}
+
+    def _analyze_conversation_flow(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Analisa o fluxo da conversa para identificar padrões
+        """
+        return {
+            "total_messages": len(messages),
+            "user_messages": len([m for m in messages if m.get("role") == "user"]),
+            "assistant_messages": len([m for m in messages if m.get("role") == "assistant"]),
+            "conversation_pace": "rápida" if len(messages) > 10 else "normal" if len(messages) > 5 else "lenta",
+            "last_user_response_length": len(self._get_text_from_message(messages[-1])) if messages else 0
+        }
+
+    def _get_name_extraction_hints(self, messages: List[Dict[str, Any]], stage: str) -> Dict[str, Any]:
+        """
+        Fornece dicas específicas para extração de nomes baseado no contexto
+        """
+        hints = {
+            "stage_allows_isolated_names": stage == "estagio_0_coleta_nome",
+            "conversation_length": len(messages),
+            "recent_context": []
+        }
+        
+        # Analisa as últimas 3 mensagens para contexto
+        for msg in messages[-3:]:
+            content = self._get_text_from_message(msg)
+            if any(phrase in content.lower() for phrase in [
+                "meu nome", "me chamo", "sou o", "sou a", "eu sou"
+            ]):
+                hints["recent_context"].append("self_introduction")
+            elif "nome" in content.lower():
+                hints["recent_context"].append("name_request")
+        
+        return hints
+
+    def _analyze_behavioral_patterns(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Analisa padrões comportamentais do usuário
+        """
+        if len(messages) < 2:
+            return {"insufficient_data": True}
+        
+        user_messages = [m for m in messages if m.get("role") == "user"]
+        
+        return {
+            "response_style": self._classify_response_style(user_messages),
+            "information_sharing_willingness": self._assess_sharing_willingness(user_messages),
+            "engagement_trend": self._calculate_engagement_trend(user_messages),
+            "communication_preference": self._identify_communication_preference(user_messages)
+        }
+
+    def _classify_response_style(self, user_messages: List[Dict[str, Any]]) -> str:
+        """
+        Classifica o estilo de resposta do usuário
+        """
+        if not user_messages:
+            return "unknown"
+        
+        avg_length = sum(len(self._get_text_from_message(m)) for m in user_messages) / len(user_messages)
+        
+        if avg_length > 50:
+            return "verbose"
+        elif avg_length > 20:
+            return "moderate"
+        else:
+            return "concise"
+
+    def _assess_sharing_willingness(self, user_messages: List[Dict[str, Any]]) -> str:
+        """
+        Avalia a disposição do usuário em compartilhar informações
+        """
+        sharing_indicators = 0
+        resistance_indicators = 0
+        
+        for msg in user_messages:
+            content = self._get_text_from_message(msg).lower()
+            
+            if any(phrase in content for phrase in [
+                "meu nome é", "me chamo", "sou o", "minha conta", "pago", "gasto"
+            ]):
+                sharing_indicators += 1
+            
+            if any(phrase in content for phrase in [
+                "não quero", "prefiro não", "não precisa", "só informação"
+            ]):
+                resistance_indicators += 1
+        
+        if sharing_indicators > resistance_indicators:
+            return "high"
+        elif resistance_indicators > sharing_indicators:
+            return "low"
+        else:
+            return "medium"
+
+    def _calculate_engagement_trend(self, user_messages: List[Dict[str, Any]]) -> str:
+        """
+        Calcula a tendência de engajamento ao longo da conversa
+        """
+        if len(user_messages) < 3:
+            return "insufficient_data"
+        
+        # Analisa o comprimento das mensagens ao longo do tempo
+        lengths = [len(self._get_text_from_message(m)) for m in user_messages]
+        
+        if lengths[-1] > lengths[0]:
+            return "increasing"
+        elif lengths[-1] < lengths[0]:
+            return "decreasing"
+        else:
+            return "stable"
+
+    def _identify_communication_preference(self, user_messages: List[Dict[str, Any]]) -> str:
+        """
+        Identifica a preferência de comunicação do usuário
+        """
+        question_count = 0
+        statement_count = 0
+        
+        for msg in user_messages:
+            content = self._get_text_from_message(msg)
+            if "?" in content:
+                question_count += 1
+            else:
+                statement_count += 1
+        
+        if question_count > statement_count:
+            return "inquisitive"
+        else:
+            return "responsive"

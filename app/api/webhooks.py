@@ -7,6 +7,8 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 import asyncio
 import re
+import json
+import traceback
 
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from loguru import logger
@@ -28,6 +30,11 @@ agno_detector = AGNOMediaDetector()
 
 def extract_message_content(message: Dict[str, Any]) -> Optional[str]:
     """Extrai o conteúdo de texto de vários tipos de mensagem."""
+    # Primeiro, verificar se é uma mensagem do webhook padrão
+    if "type" in message:
+        return extract_webhook_message_content(message)
+    
+    # Caso contrário, usar a lógica original para Evolution API
     msg_content = message.get("message", {})
     if not msg_content:
         return None
@@ -44,6 +51,41 @@ def extract_message_content(message: Dict[str, Any]) -> Optional[str]:
             return msg_content[media_type].get("caption")
             
     return None
+
+
+def extract_webhook_message_content(message: dict) -> str:
+    """Extrai o conteúdo da mensagem baseado no tipo do webhook padrão"""
+    message_type = message.get("type")
+    emoji_logger.system_debug(f"Extraindo conteúdo de mensagem tipo: {message_type}")
+    
+    content = ""
+    
+    if message_type == "text":
+        content = message.get("text", {}).get("body", "")
+        emoji_logger.system_debug(f"Texto extraído: '{content}'")
+    elif message_type == "image":
+        caption = message.get("image", {}).get("caption", "")
+        content = f"[Imagem enviada] {caption}".strip()
+        emoji_logger.system_debug(f"Imagem com caption: '{caption}'")
+    elif message_type == "document":
+        caption = message.get("document", {}).get("caption", "")
+        filename = message.get("document", {}).get("filename", "documento")
+        content = f"[Documento: {filename}] {caption}".strip()
+        emoji_logger.system_debug(f"Documento '{filename}' com caption: '{caption}'")
+    elif message_type == "audio":
+        content = "[Áudio enviado]"
+        emoji_logger.system_debug("Áudio detectado")
+    elif message_type == "video":
+        caption = message.get("video", {}).get("caption", "")
+        content = f"[Vídeo enviado] {caption}".strip()
+        emoji_logger.system_debug(f"Vídeo com caption: '{caption}'")
+    else:
+        content = f"[Mensagem do tipo: {message_type}]"
+        emoji_logger.system_warning(f"Tipo de mensagem não reconhecido: {message_type}")
+        emoji_logger.system_debug(f"Estrutura da mensagem desconhecida: {json.dumps(message, indent=2)}")
+    
+    emoji_logger.system_debug(f"Conteúdo final extraído: '{content}'")
+    return content
 
 
 async def _handle_media_message(
@@ -132,14 +174,85 @@ async def process_contacts_update(data: Dict[str, Any]):
     try:
         from app.integrations.supabase_client import supabase_client
         
-        # Extrair informações do contato
+        # Log detalhado do payload recebido para debugging
+        emoji_logger.system_debug(f"CONTACTS_UPDATE payload completo: {data}")
+        
+        # Extrair informações do contato com múltiplos fallbacks
         contact_data = data.get('data', data)
         if isinstance(contact_data, list) and contact_data:
             contact_data = contact_data[0]
+            emoji_logger.system_debug(f"Usando primeiro item da lista: {contact_data}")
         
-        # Extrair pushName e número de telefone
-        push_name = contact_data.get('pushName')
-        phone_number = contact_data.get('id', '').replace('@c.us', '')
+        # Múltiplas tentativas de extração de pushName
+        push_name = None
+        phone_number = None
+        
+        # Tentativa 1: campos diretos
+        for field in ['pushName', 'name', 'notify', 'displayName', 'verifiedName']:
+            push_name = contact_data.get(field)
+            if push_name:
+                emoji_logger.system_debug(f"pushName encontrado em campo direto '{field}': '{push_name}'")
+                break
+        
+        # Tentativa 2: estruturas aninhadas
+        if not push_name:
+            for key in ['contact', 'contactInfo', 'profile']:
+                nested_data = contact_data.get(key, {})
+                if isinstance(nested_data, dict):
+                    for field in ['pushName', 'name', 'notify', 'displayName', 'verifiedName']:
+                        nested_value = nested_data.get(field)
+                        if nested_value:
+                            push_name = nested_value
+                            emoji_logger.system_debug(f"pushName encontrado em {key}.{field}: '{push_name}'")
+                            break
+                    if push_name:
+                        break
+        
+        # Tentativa 3: estruturas ainda mais aninhadas (profile dentro de contactInfo, etc.)
+        if not push_name:
+            for key in ['contact', 'contactInfo']:
+                nested_data = contact_data.get(key, {})
+                if isinstance(nested_data, dict):
+                    profile_data = nested_data.get('profile', {})
+                    if isinstance(profile_data, dict):
+                        for field in ['pushName', 'name', 'displayName']:
+                            profile_value = profile_data.get(field)
+                            if profile_value:
+                                push_name = profile_value
+                                emoji_logger.system_debug(f"pushName encontrado em {key}.profile.{field}: '{push_name}'")
+                                break
+                        if push_name:
+                            break
+        
+        # Extração de telefone com múltiplos fallbacks e estruturas aninhadas
+        phone_number = None
+        
+        # Tentativa 1: id direto
+        phone_number = contact_data.get('id', '').replace('@c.us', '').replace('@s.whatsapp.net', '')
+        
+        # Tentativa 2: phone/number direto
+        if not phone_number:
+            phone_number = contact_data.get('phone', '').replace('@c.us', '').replace('@s.whatsapp.net', '')
+        if not phone_number:
+            phone_number = contact_data.get('number', '').replace('@c.us', '').replace('@s.whatsapp.net', '')
+        
+        # Tentativa 3: estruturas aninhadas (contact, contactInfo, profile)
+        if not phone_number:
+            for key in ['contact', 'contactInfo', 'profile']:
+                nested_data = contact_data.get(key, {})
+                if isinstance(nested_data, dict):
+                    nested_id = nested_data.get('id', '').replace('@c.us', '').replace('@s.whatsapp.net', '')
+                    if nested_id:
+                        phone_number = nested_id
+                        emoji_logger.system_debug(f"Telefone encontrado em {key}.id: '{phone_number}'")
+                        break
+                    nested_phone = nested_data.get('phone', '').replace('@c.us', '').replace('@s.whatsapp.net', '')
+                    if nested_phone:
+                        phone_number = nested_phone
+                        emoji_logger.system_debug(f"Telefone encontrado em {key}.phone: '{phone_number}'")
+                        break
+        
+        emoji_logger.system_debug(f"Dados extraídos - Phone: '{phone_number}', PushName: '{push_name}'")
         
         if push_name and phone_number:
             # Buscar lead existente por telefone
@@ -157,15 +270,18 @@ async def process_contacts_update(data: Dict[str, Any]):
                         f"Nome do lead atualizado via CONTACTS_UPDATE: {phone_number} -> {push_name}"
                     )
                 else:
-                    logger.info(
+                    emoji_logger.system_info(
                         f"Lead {phone_number} já possui nome '{current_name}', não sobrescrevendo com '{push_name}'"
                     )
             else:
-                logger.info(
+                emoji_logger.system_info(
                     f"Lead não encontrado para telefone {phone_number}, pushName '{push_name}' não aplicado"
                 )
         else:
-            logger.debug(f"CONTACTS_UPDATE sem pushName ou telefone válido: {contact_data}")
+            emoji_logger.system_warning(
+                f"CONTACTS_UPDATE sem pushName ou telefone válido. Phone: '{phone_number}', PushName: '{push_name}'"
+            )
+            emoji_logger.system_debug(f"Estrutura completa do contact_data: {contact_data}")
             
     except Exception as e:
         emoji_logger.system_error(f"Erro ao processar CONTACTS_UPDATE: {str(e)}")
@@ -293,6 +409,82 @@ def get_message_splitter_instance():
             add_indicators=settings.message_add_indicators
         )
     return splitter
+
+
+@router.post("/webhook")
+async def webhook_handler(request: Request):
+    """Manipula webhooks do WhatsApp"""
+    try:
+        body = await request.body()
+        data = json.loads(body)
+        
+        # Log detalhado do webhook recebido
+        emoji_logger.webhook_received(
+            f"Webhook recebido - Tamanho: {len(body)} bytes, "
+            f"Chaves principais: {list(data.keys())}"
+        )
+        emoji_logger.system_debug(f"Payload completo do webhook: {json.dumps(data, indent=2)}")
+        
+        # Processar diferentes tipos de webhook
+        if "messages" in data:
+            emoji_logger.webhook_info("Processando webhook de mensagem")
+            await process_message_webhook(data)
+        elif "contacts" in data:
+            emoji_logger.webhook_info("Processando webhook de atualização de contatos")
+            await process_contacts_update(data)
+        else:
+            emoji_logger.webhook_warning(
+                f"Tipo de webhook não reconhecido. Chaves disponíveis: {list(data.keys())}"
+            )
+            emoji_logger.system_debug(f"Dados do webhook não reconhecido: {data}")
+        
+        emoji_logger.webhook_success("Webhook processado com sucesso")
+        return {"status": "success"}
+    
+    except json.JSONDecodeError as e:
+        emoji_logger.webhook_error(f"Erro ao decodificar JSON do webhook: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    except Exception as e:
+        emoji_logger.system_error(f"Erro crítico no webhook: {str(e)}")
+        emoji_logger.system_debug(f"Traceback completo: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def process_message_webhook(data: dict):
+    """Processa webhooks de mensagens"""
+    try:
+        messages = data.get("messages", [])
+        emoji_logger.webhook_info(f"Processando {len(messages)} mensagem(ns)")
+        
+        for i, message in enumerate(messages):
+            emoji_logger.system_debug(f"Processando mensagem {i+1}/{len(messages)}")
+            emoji_logger.system_debug(f"Dados da mensagem: {json.dumps(message, indent=2)}")
+            
+            phone_number = message.get("from")
+            message_content = extract_message_content(message)
+            message_type = message.get("type", "unknown")
+            
+            emoji_logger.system_debug(
+                f"Mensagem extraída - Telefone: {phone_number}, "
+                f"Tipo: {message_type}, Conteúdo: '{message_content[:100]}...'"
+            )
+            
+            if phone_number and message_content:
+                emoji_logger.webhook_success(
+                    f"Enviando mensagem para processamento - {phone_number}: '{message_content[:50]}...'"
+                )
+                # Processar mensagem através do sistema principal
+                await process_whatsapp_message(phone_number, message_content)
+            else:
+                emoji_logger.webhook_warning(
+                    f"Mensagem ignorada - Telefone: {bool(phone_number)}, "
+                    f"Conteúdo: {bool(message_content)}"
+                )
+    
+    except Exception as e:
+        emoji_logger.webhook_error(f"Erro ao processar webhook de mensagem: {str(e)}")
+        emoji_logger.system_debug(f"Traceback: {traceback.format_exc()}")
+        raise
 
 
 @router.post("/evolution/{event_type}")
@@ -466,6 +658,12 @@ async def process_message_with_agent(
     """Processa mensagem com o agente AGENTIC SDR"""
     from app.integrations.supabase_client import supabase_client
 
+    # Log inicial do processamento
+    emoji_logger.conversation_info(
+        f"🚀 INICIANDO PROCESSAMENTO PRINCIPAL - Telefone: {phone}, "
+        f"Mensagem: '{message_content[:100]}...', ID: {message_id}"
+    )
+    
     if not original_message or not isinstance(original_message, dict):
         emoji_logger.system_error(
             "process_message_with_agent",
@@ -475,9 +673,12 @@ async def process_message_with_agent(
         return
     
     if media_data and media_data.get("error"):
+        emoji_logger.system_warning(f"Erro na mídia para {phone}: {media_data['error']}")
         await evolution_client.send_text_message(phone, media_data["error"])
         return
 
+    # Log de busca de dados
+    emoji_logger.system_debug("Buscando lead e conversa existentes...")
     lead_task = asyncio.create_task(supabase_client.get_lead_by_phone(phone))
     conversation_task = asyncio.create_task(
         supabase_client.get_conversation_by_phone(phone)
@@ -492,6 +693,12 @@ async def process_message_with_agent(
         lead = None
     else:
         lead = lead_result
+        if lead:
+            emoji_logger.system_success(
+                f"Lead encontrado - ID: {lead.get('id')}, Nome: '{lead.get('name', 'N/A')}'"
+            )
+        else:
+            emoji_logger.system_info("Nenhum lead existente encontrado - será criado novo")
 
     message_data = {
         "content": message_content,
@@ -501,17 +708,26 @@ async def process_message_with_agent(
             "message_id": message_id, "raw_data": original_message
         }
     }
+    emoji_logger.system_debug(f"Dados da mensagem estruturados: {json.dumps(message_data, indent=2)[:200]}...")
 
     if isinstance(conv_result, Exception):
         emoji_logger.system_error("Conversation Fetch", f"Erro ao buscar conversa: {conv_result}")
         conversation = None
     else:
         conversation = conv_result
+        if conversation:
+            emoji_logger.system_success(
+                f"Conversa encontrada - ID: {conversation.get('id')}"
+            )
+        else:
+            emoji_logger.system_info("Nenhuma conversa existente - será criada nova")
 
     if not conversation:
+        emoji_logger.system_debug("Criando nova conversa...")
         conversation = await supabase_client.create_conversation(
             phone, lead["id"] if lead else None
         )
+        emoji_logger.system_success(f"Nova conversa criada - ID: {conversation.get('id')}")
 
     if not conversation or not isinstance(conversation, dict) or "id" not in conversation:
         emoji_logger.system_error("Conversation Validation", f"Conversa inválida criada/buscada: {conversation}")
@@ -520,6 +736,7 @@ async def process_message_with_agent(
     emoji_logger.system_info(f"Conversa validada - ID: {conversation['id']}, Phone: {phone}")
 
     message_data["conversation_id"] = conversation["id"]
+    emoji_logger.system_debug("Salvando mensagem e cache...")
     save_tasks = [
         supabase_client.save_message(message_data),
         redis_client.cache_conversation(
@@ -533,6 +750,7 @@ async def process_message_with_agent(
         )
     ]
     await asyncio.gather(*save_tasks, return_exceptions=True)
+    emoji_logger.system_success("Mensagem e cache salvos")
 
     emoji_logger.webhook_process("Criando AGENTIC SDR Stateless...")
     try:
@@ -551,18 +769,24 @@ async def process_message_with_agent(
             status_code=503, detail="Agente temporariamente indisponível"
         )
 
+    emoji_logger.system_debug("Processando mensagem com agente...")
     response_text, updated_lead_info = await agentic.process_message(
         message=message_content,
         execution_context=execution_context
     )
+    emoji_logger.system_success(
+        f"Resposta gerada pelo agente: '{response_text[:100]}...'"
+    )
 
     final_response = extract_final_response(response_text)
+    emoji_logger.system_debug(f"Resposta final extraída: '{final_response[:100]}...'")
 
     if "<SILENCE>" in final_response or "<SILENCIO>" in final_response:
         emoji_logger.system_info(f"Protocolo de silêncio ativado para {phone}. Nenhuma mensagem será enviada.")
         return
 
     if final_response:
+        emoji_logger.system_debug("Salvando resposta do assistente...")
         assistant_message_data = {
             "content": final_response,
             "role": "assistant",
@@ -571,17 +795,28 @@ async def process_message_with_agent(
             "media_data": {} 
         }
         await supabase_client.save_message(assistant_message_data)
+        emoji_logger.system_success("Resposta do assistente salva")
 
     if updated_lead_info and updated_lead_info.get("id"):
+        emoji_logger.system_debug("Atualizando informações do lead...")
         updated_lead_info.pop("processed_message_count", None)
         await supabase_client.update_lead(updated_lead_info["id"], updated_lead_info)
+        emoji_logger.system_success("Lead atualizado")
     
     if final_response:
+        emoji_logger.system_debug("Enviando resposta via WhatsApp...")
         splitter = get_message_splitter_instance()
         message_chunks = splitter.split_message(final_response)
-        for chunk in message_chunks:
+        for i, chunk in enumerate(message_chunks):
+            emoji_logger.system_debug(f"Enviando chunk {i+1}/{len(message_chunks)}: '{chunk[:50]}...'")
             await evolution_client.send_text_message(phone, chunk)
+        emoji_logger.system_success("Resposta enviada via WhatsApp")
     else:
         emoji_logger.system_warning(
             "A resposta final estava vazia, não enviando mensagem."
         )
+    
+    emoji_logger.conversation_success(
+        f"✅ PROCESSAMENTO PRINCIPAL CONCLUÍDO - {phone}: "
+        f"'{message_content[:50]}...' -> '{final_response[:50]}...'"
+    )
