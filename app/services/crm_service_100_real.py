@@ -81,6 +81,7 @@ class CRMServiceReal:
         self.stage_map = {}
         self.solution_type_values = {
             "usina própria": 326358, "usina propria": 326358,
+            "instalação usina própria": 326358, "instalacao usina propria": 326358,
             "fazenda solar": 326360, "consórcio": 326362,
             "consorcio": 326362, "consultoria": 326364,
             "não definido": 326366, "nao definido": 326366,
@@ -88,8 +89,8 @@ class CRMServiceReal:
             "usina investimento": 1078622
         }
         self.solution_type_options = {
-            "Usina Própria": 326358, "Fazenda Solar": 326360,
-            "Consórcio": 326362, "Consultoria": 326364,
+            "Usina Própria": 326358, "Instalação Usina Própria": 326358,
+            "Fazenda Solar": 326360, "Consórcio": 326362, "Consultoria": 326364,
             "Não Definido": 326366, "Aluguel de Lote": 1078618,
             "Compra com Desconto": 1078620, "Usina Investimento": 1078622
         }
@@ -270,17 +271,43 @@ class CRMServiceReal:
             if not lead_name:  # None, empty string, ou falsy
                 lead_name = "Lead sem nome"
             
+            # Inicializar tags com SDR_IA
+            tags = [{"name": "SDR_IA"}]
+            
+            # Adicionar tag baseada no chosen_flow se disponível
+            if lead_data.get("chosen_flow"):
+                chosen_flow = lead_data["chosen_flow"]
+                # Mapear chosen_flow para tag correspondente
+                flow_to_tag_map = {
+                    "Instalação Usina Própria": "Instalação Usina Própria",
+                    "Aluguel de Lote": "Aluguel de Lote",
+                    "Compra com Desconto": "Compra com Desconto",
+                    "Usina Investimento": "Usina Investimento"
+                }
+                tag_name = flow_to_tag_map.get(chosen_flow)
+                if tag_name:
+                    tags.append({"name": tag_name})
+            
             kommo_lead = {
                 "name": lead_name,
                 "pipeline_id": self.pipeline_id,
-                "_embedded": {"tags": [{"name": "SDR_IA"}]}
+                "_embedded": {"tags": tags}
             }
-            custom_fields = []
+            
+            # Se há telefone, criar contato com telefone no campo principal
             if lead_data.get("phone"):
-                custom_fields.append({
-                    "field_id": self.custom_fields.get("phone", 392802),
-                    "values": [{"value": lead_data["phone"]}]
-                })
+                kommo_lead["_embedded"]["contacts"] = [{
+                    "name": lead_name,
+                    "custom_fields_values": [{
+                        "field_code": "PHONE",
+                        "values": [{
+                            "value": lead_data["phone"],
+                            "enum_code": "WORK"
+                        }]
+                    }]
+                }]
+            
+            custom_fields = []
             if lead_data.get("bill_value"):
                 custom_fields.append({
                     "field_id": self.custom_fields.get("bill_value", 392804),

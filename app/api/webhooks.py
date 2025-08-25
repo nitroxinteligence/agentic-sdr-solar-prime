@@ -126,6 +126,51 @@ async def process_presence_update(data: Dict[str, Any]):
             f"Presence update from {remote_jid}: {presence}"
         )
 
+
+async def process_contacts_update(data: Dict[str, Any]):
+    """Processa atualizações de contatos para extrair pushName e atualizar nomes no Supabase"""
+    try:
+        from app.integrations.supabase_client import supabase_client
+        
+        # Extrair informações do contato
+        contact_data = data.get('data', data)
+        if isinstance(contact_data, list) and contact_data:
+            contact_data = contact_data[0]
+        
+        # Extrair pushName e número de telefone
+        push_name = contact_data.get('pushName')
+        phone_number = contact_data.get('id', '').replace('@c.us', '')
+        
+        if push_name and phone_number:
+            # Buscar lead existente por telefone
+            existing_lead = await supabase_client.get_lead_by_phone(phone_number)
+            
+            if existing_lead:
+                # Atualizar nome apenas se o lead não tiver nome ou tiver nome genérico
+                current_name = existing_lead.get('name')
+                if not current_name or current_name in ['Lead sem nome', 'Lead Sem Nome', None]:
+                    await supabase_client.update_lead(
+                        existing_lead['id'], 
+                        {'name': push_name}
+                    )
+                    emoji_logger.system_success(
+                        f"Nome do lead atualizado via CONTACTS_UPDATE: {phone_number} -> {push_name}"
+                    )
+                else:
+                    logger.info(
+                        f"Lead {phone_number} já possui nome '{current_name}', não sobrescrevendo com '{push_name}'"
+                    )
+            else:
+                logger.info(
+                    f"Lead não encontrado para telefone {phone_number}, pushName '{push_name}' não aplicado"
+                )
+        else:
+            logger.debug(f"CONTACTS_UPDATE sem pushName ou telefone válido: {contact_data}")
+            
+    except Exception as e:
+        emoji_logger.system_error(f"Erro ao processar CONTACTS_UPDATE: {str(e)}")
+        logger.exception("Detalhes do erro em process_contacts_update")
+
 def extract_final_response(full_response: str) -> str:
     """
     Extrai e limpa o conteúdo dentro da tag <RESPOSTA_FINAL>, removendo
@@ -275,8 +320,10 @@ async def whatsapp_dynamic_webhook(
             await process_message_update(data)
         elif event == "PRESENCE_UPDATE":
             await process_presence_update(data)
-        elif event in ["CHATS_UPDATE", "CONTACTS_UPDATE"]:
+        elif event == "CHATS_UPDATE":
             logger.info(f"{event} update recebido: {data}")
+        elif event == "CONTACTS_UPDATE":
+            await process_contacts_update(data)
         else:
             logger.warning(f"Evento não reconhecido: {event}")
 
