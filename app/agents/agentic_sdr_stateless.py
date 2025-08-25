@@ -297,7 +297,7 @@ class AgenticSDRStateless:
                     emoji_logger.system_warning("Não foi possível criar o lead no Kommo, mas o lead do Supabase foi criado.", lead_id=lead_info.get("id"))
 
             except Exception as e:
-                emoji_logger.system_error("Lead Creation", f"Falha na criação e sincronização inicial do lead: {str(e)}", traceback=traceback.format_exc())
+                emoji_logger.system_error("Lead Creation", f"Falha na criação e sincronização inicial do lead: {str(e)}", traceback_info=traceback.format_exc())
                 # Retorna o lead_info original para não quebrar o fluxo principal
                 return lead_info
 

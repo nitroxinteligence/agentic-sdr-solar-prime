@@ -797,7 +797,7 @@ class EvolutionAPIClient:
         
         try:
             payload = {"message": {"key": message_key}}
-            emoji_logger.system_info("Evolution API", f"Tentando obter mídia em base64 para key: {message_key}")
+            emoji_logger.system_info(f"Evolution API: Tentando obter mídia em base64 para key: {message_key}")
             
             response = await self._make_request(
                 "post",
