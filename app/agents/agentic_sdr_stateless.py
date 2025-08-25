@@ -522,6 +522,20 @@ class AgenticSDRStateless:
                         await supabase_client.create_lead_qualification(qualification_data)
                         emoji_logger.system_info(f"Registro de qualificação criado para o evento: {event_id}")
 
+                    # ATUALIZA O ESTÁGIO DO LEAD PARA "REUNIÃO AGENDADA" NO CRM
+                    if lead_info.get("kommo_lead_id"):
+                        try:
+                            await self.crm_service.update_lead_stage(
+                                lead_id=str(lead_info["kommo_lead_id"]),
+                                stage_name="reunião_agendada",
+                                notes="Reunião agendada automaticamente pelo agente de IA",
+                                phone_number=lead_info.get("phone_number")
+                            )
+                            emoji_logger.system_success(f"✅ Lead {lead_info['kommo_lead_id']} movido para estágio 'Reunião Agendada'")
+                        except Exception as e:
+                            emoji_logger.service_error(f"❌ Erro ao atualizar estágio do lead no CRM: {e}")
+                            # Continua o fluxo mesmo se a atualização do CRM falhar
+
                     await self._execute_post_scheduling_workflow(
                         result,
                         lead_info,
