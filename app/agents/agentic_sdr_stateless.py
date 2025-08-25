@@ -679,6 +679,24 @@ class AgenticSDRStateless:
                     messages=messages_for_final_response,
                     system_prompt=system_prompt_with_context # Reutiliza o mesmo system_prompt com contexto
                 )
+                
+                # CORREÇÃO DEFINITIVA: Validar resposta após execução de tools
+                if not response_text:
+                    emoji_logger.system_error(
+                        "AgenticSDRStateless", 
+                        "Segunda chamada ao LLM retornou None após execução de tools"
+                    )
+                    response_text = "As informações foram processadas com sucesso. Como posso ajudar mais?"
+                elif re.search(r'\[\w+[:\.].*?\]', response_text):
+                    emoji_logger.system_error(
+                        "AgenticSDRStateless", 
+                        f"Segunda chamada ao LLM ainda contém tools: {response_text[:100]}..."
+                    )
+                    response_text = "As informações foram processadas com sucesso. Como posso ajudar mais?"
+                else:
+                    emoji_logger.system_success(
+                        f"Segunda chamada ao LLM bem-sucedida: {response_text[:50]}..."
+                    )
 
         return response_text or "Não consegui gerar uma resposta no momento."
 
