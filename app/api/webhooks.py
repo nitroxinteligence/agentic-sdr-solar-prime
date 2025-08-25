@@ -254,7 +254,8 @@ async def process_contacts_update(data: Dict[str, Any]):
         
         emoji_logger.system_debug(f"Dados extraídos - Phone: '{phone_number}', PushName: '{push_name}'")
         
-        if push_name and phone_number:
+        # Validar se temos dados válidos (telefone não pode estar vazio)
+        if push_name and phone_number and phone_number.strip():
             # Buscar lead existente por telefone
             existing_lead = await supabase_client.get_lead_by_phone(phone_number)
             
@@ -278,8 +279,16 @@ async def process_contacts_update(data: Dict[str, Any]):
                     f"Lead não encontrado para telefone {phone_number}, pushName '{push_name}' não aplicado"
                 )
         else:
+            # Mensagem mais específica sobre o que está faltando
+            missing_fields = []
+            if not push_name:
+                missing_fields.append("pushName")
+            if not phone_number or not phone_number.strip():
+                missing_fields.append("telefone válido")
+            
             emoji_logger.system_warning(
-                f"CONTACTS_UPDATE sem pushName ou telefone válido. Phone: '{phone_number}', PushName: '{push_name}'"
+                f"CONTACTS_UPDATE ignorado - faltando: {', '.join(missing_fields)}. "
+                f"Phone: '{phone_number}', PushName: '{push_name}'"
             )
             emoji_logger.system_debug(f"Estrutura completa do contact_data: {contact_data}")
             
@@ -659,7 +668,7 @@ async def process_message_with_agent(
     from app.integrations.supabase_client import supabase_client
 
     # Log inicial do processamento
-    emoji_logger.conversation_info(
+    emoji_logger.conversation_event(
         f"🚀 INICIANDO PROCESSAMENTO PRINCIPAL - Telefone: {phone}, "
         f"Mensagem: '{message_content[:100]}...', ID: {message_id}"
     )
