@@ -56,7 +56,12 @@ class CRMDataSync:
             # O campo 'phone' no Kommo é gerenciado pelo 'whatsapp' no nosso mapeamento
             update_payload["phone"] = phone
 
-        # 5. Lógica para tag "sem-resposta" e mudança de estágio
+        # 5. Sincronizar "QUALIFICATION_SCORE"
+        qualification_score = lead_info.get("qualification_score")
+        if qualification_score is not None:
+            update_payload["qualification_score"] = qualification_score
+
+        # 6. Lógica para tag "sem-resposta" e mudança de estágio
         # (Esta lógica pode ser mais complexa e depender do monitor de conversas)
         # Exemplo simples: se a última mensagem for do agente e não houver resposta por um tempo.
         # A implementação real virá da análise do estado do lead.

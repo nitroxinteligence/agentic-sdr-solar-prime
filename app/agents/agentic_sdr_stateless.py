@@ -196,8 +196,11 @@ class AgenticSDRStateless:
             if lead_id_to_update:
                 try:
                     emoji_logger.system_info(f"Detectadas mudanças no lead {lead_id_to_update}. Sincronizando com o DB.", changes=lead_changes)
-                    await supabase_client.update_lead(lead_id_to_update, lead_changes)
-                    emoji_logger.system_success(f"Lead {lead_id_to_update} atualizado no Supabase.")
+                    result = await supabase_client.update_lead(lead_id_to_update, lead_changes)
+                    if result:
+                        emoji_logger.system_success(f"Lead {lead_id_to_update} atualizado no Supabase.")
+                    else:
+                        emoji_logger.system_error(f"Falha ao atualizar lead {lead_id_to_update} no Supabase - resultado vazio.")
                 except Exception as e:
                     emoji_logger.system_error(f"Falha ao sincronizar mudanças do lead {lead_id_to_update} com o DB.", error=str(e))
                     # Continuar mesmo se a atualização falhar, para não interromper o fluxo.
