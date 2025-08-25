@@ -238,11 +238,20 @@ async def process_contacts_update(data: Dict[str, Any]):
         phone_number = None
         emoji_logger.system_info("=== INÍCIO EXTRAÇÃO DE TELEFONE ===")
         
+        # Tentativa 0: remoteJid (campo principal do CONTACTS_UPDATE)
+        raw_remote_jid = contact_data.get('remoteJid', '')
+        emoji_logger.system_info(f"Tentativa 0 - campo 'remoteJid' RAW: '{raw_remote_jid}'")
+        if raw_remote_jid:
+            # Extrair apenas os dígitos antes de @s.whatsapp.net ou @c.us
+            phone_number = raw_remote_jid.replace('@c.us', '').replace('@s.whatsapp.net', '')
+            emoji_logger.system_info(f"Tentativa 0 - telefone extraído de remoteJid: '{phone_number}'")
+        
         # Tentativa 1: id direto
-        raw_id = contact_data.get('id', '')
-        emoji_logger.system_info(f"Tentativa 1 - campo 'id' RAW: '{raw_id}'")
-        phone_number = raw_id.replace('@c.us', '').replace('@s.whatsapp.net', '') if raw_id else ''
-        emoji_logger.system_info(f"Tentativa 1 - telefone após limpeza: '{phone_number}'")
+        if not phone_number:
+            raw_id = contact_data.get('id', '')
+            emoji_logger.system_info(f"Tentativa 1 - campo 'id' RAW: '{raw_id}'")
+            phone_number = raw_id.replace('@c.us', '').replace('@s.whatsapp.net', '') if raw_id else ''
+            emoji_logger.system_info(f"Tentativa 1 - telefone após limpeza: '{phone_number}'")
         
         # Tentativa 2: phone/number direto
         if not phone_number:
