@@ -252,7 +252,41 @@ async def process_contacts_update(data: Dict[str, Any]):
                         emoji_logger.system_debug(f"Telefone encontrado em {key}.phone: '{phone_number}'")
                         break
         
-        # Tentativa 4: Buscar telefone em mensagens recentes se pushName estiver disponível
+        # Tentativa 4: Buscar telefone no cache (Redis em prod, memória em dev) usando pushName
+        if not phone_number and push_name:
+            emoji_logger.system_debug(f"Tentando encontrar telefone para pushName '{push_name}' no cache")
+            try:
+                cached_phone = None
+                
+                # Tentar Redis primeiro (produção)
+                try:
+                    cached_phone = await redis_client.get(f"pushname_phone:{push_name}")
+                    if cached_phone:
+                        phone_number = cached_phone.decode('utf-8') if isinstance(cached_phone, bytes) else cached_phone
+                        emoji_logger.system_debug(f"Telefone encontrado no cache Redis: '{phone_number}'")
+                except Exception:
+                    # Fallback para cache em memória (desenvolvimento)
+                    if hasattr(process_new_message, '_memory_cache'):
+                        cache_key = f"pushname_phone:{push_name}"
+                        if cache_key in process_new_message._memory_cache:
+                            import time
+                            cache_entry = process_new_message._memory_cache[cache_key]
+                            # Verificar se não expirou (TTL 5 minutos)
+                            if time.time() - cache_entry['timestamp'] < 300:
+                                phone_number = cache_entry['phone']
+                                emoji_logger.system_debug(f"Telefone encontrado no cache memória: '{phone_number}'")
+                            else:
+                                # Remover entrada expirada
+                                del process_new_message._memory_cache[cache_key]
+                                emoji_logger.system_debug(f"Cache expirado para pushName '{push_name}'")
+                
+                if not phone_number:
+                    emoji_logger.system_debug(f"Telefone não encontrado no cache para pushName '{push_name}'")
+                    
+            except Exception as e:
+                emoji_logger.system_warning(f"Erro ao buscar telefone no cache: {e}")
+        
+        # Tentativa 5: Buscar telefone em mensagens recentes se pushName estiver disponível
         if not phone_number and push_name:
             emoji_logger.system_debug(f"Tentando encontrar telefone para pushName '{push_name}' em mensagens recentes")
             try:
@@ -627,6 +661,54 @@ async def process_new_message(data: Any):
                 continue
 
             emoji_logger.webhook_process(f"Processando mensagem de {phone}")
+            
+            # Extrair pushName da mensagem para cache
+            push_name = None
+            msg_content = message.get("message", {})
+            
+            # Tentar extrair pushName de várias estruturas
+            if "pushName" in message:
+                push_name = message["pushName"]
+            elif "pushname" in message:
+                push_name = message["pushname"]
+            elif "key" in message and "pushName" in message["key"]:
+                push_name = message["key"]["pushName"]
+            elif msg_content and "pushName" in msg_content:
+                push_name = msg_content["pushName"]
+            
+            # Armazenar correlação pushName -> telefone no cache (Redis em prod, memória em dev)
+            if push_name and phone:
+                try:
+                    # Tentar Redis primeiro (produção)
+                    try:
+                        await redis_client.set(
+                            f"pushname_phone:{push_name}", 
+                            phone, 
+                            ex=300  # 5 minutos
+                        )
+                        emoji_logger.system_debug(f"Cache Redis pushName->telefone: '{push_name}' -> '{phone}'")
+                    except Exception:
+                        # Fallback para cache em memória (desenvolvimento)
+                        if not hasattr(process_new_message, '_memory_cache'):
+                            process_new_message._memory_cache = {}
+                        
+                        # Limpar entradas antigas (simular TTL)
+                        import time
+                        current_time = time.time()
+                        process_new_message._memory_cache = {
+                            k: v for k, v in process_new_message._memory_cache.items() 
+                            if current_time - v['timestamp'] < 300  # 5 minutos
+                        }
+                        
+                        # Armazenar nova entrada
+                        process_new_message._memory_cache[f"pushname_phone:{push_name}"] = {
+                            'phone': phone,
+                            'timestamp': current_time
+                        }
+                        emoji_logger.system_debug(f"Cache memória pushName->telefone: '{push_name}' -> '{phone}'")
+                        
+                except Exception as e:
+                    emoji_logger.system_warning(f"Erro ao armazenar cache pushName: {e}")
             
             message_content = extract_message_content(message)
             media_data = await _handle_media_message(message)

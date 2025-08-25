@@ -1,263 +1,144 @@
-"""
-SDR IA Solar Prime - Aplicação Principal
-Powered by AGnO Teams Framework
-"""
-import asyncio
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import uvicorn
-from loguru import logger
-from app.utils.logger import emoji_logger
-
-from app.config import settings
-from app.api import health, webhooks  # teams module not yet implemented
-from app.integrations.supabase_client import supabase_client
-from app.integrations.redis_client import redis_client
-# from app.teams import create_sdr_team  # Removed - using refactored system
-
-# Configuração do logger
-logger.add(
-    "logs/app.log",
-    rotation="1 day",
-    retention="7 days",
-    level="INFO",
-    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
-)
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Gerencia o ciclo de vida da aplicação
-    """
-    # Startup
-    emoji_logger.system_start("SDR IA Solar Prime v0.3")
-    
-    try:
-        # Conecta ao Redis
-        await redis_client.connect()
-        emoji_logger.system_ready("Redis")
-        
-        # Testa conexão com Supabase
-        await supabase_client.test_connection()
-        emoji_logger.system_ready("Supabase")
-        
-        # Inicializa Message Buffer
-        from app.services.message_buffer import set_message_buffer, MessageBuffer
-        from app.config import settings
-        
-        if settings.enable_message_buffer:
-            message_buffer = MessageBuffer(
-                timeout=settings.message_buffer_timeout,
-                max_size=10
-            )
-            set_message_buffer(message_buffer)
-            emoji_logger.system_ready("Message Buffer", timeout=f"{settings.message_buffer_timeout}s")
-        
-        # Inicializa Message Splitter
-        from app.services.message_splitter import set_message_splitter, MessageSplitter
-        
-        if settings.enable_message_splitter:
-            message_splitter = MessageSplitter(
-                max_length=settings.message_max_length,
-                add_indicators=settings.message_add_indicators,
-                enable_smart_splitting=settings.enable_smart_splitting,
-                smart_splitting_fallback=settings.smart_splitting_fallback
-            )
-            set_message_splitter(message_splitter)
-            emoji_logger.system_ready("Message Splitter", max_length=settings.message_max_length)
-        
-        # Team SDR removido - usando sistema refatorado com módulos centrais
-        # Os serviços são inicializados diretamente quando necessário
-        emoji_logger.system_ready("Sistema Refatorado", modules="Core + Services")
-        
-        # Kommo Auto Sync removido - usava sistema antigo de teams
-        # Sincronização agora é feita diretamente pelo CRMServiceReal
-        
-        
-        # Inicializa FollowUp Scheduler e Worker
-        if settings.enable_follow_up_automation:
-            try:
-                from app.services.followup_executor_service import FollowUpSchedulerService
-                from app.services.followup_worker import FollowUpWorker
-
-                scheduler = FollowUpSchedulerService()
-                worker = FollowUpWorker()
-                
-                await scheduler.start()
-                await worker.start()
-                
-                emoji_logger.system_ready("FollowUp Services (Scheduler & Worker)")
-            except Exception as e:
-                emoji_logger.system_warning(f"⚠️ FollowUp Services não iniciados: {str(e)}")
-        
-        # PRÉ-AQUECIMENTO: Instancia o agente para carregar modelos e serviços
-        from app.agents.agentic_sdr_stateless import AgenticSDRStateless
-        
-        agent_mode = "Stateless"
-        
-        try:
-            emoji_logger.system_info(f"🔥 Pré-aquecendo AgenticSDR ({agent_mode})...")
-            test_agent = AgenticSDRStateless()
-            await test_agent.initialize()
-            emoji_logger.system_ready(f"AgenticSDR ({agent_mode})", status="sistema pronto")
-        except Exception as e:
-            emoji_logger.system_error("AgenticSDR", f"Falha no pré-aquecimento: {e}")
-            # Em caso de falha, a aplicação não deve subir para evitar instabilidade
-            raise
-        
-        emoji_logger.system_ready("SDR IA Solar Prime", startup_time=3.0)
-        
-    except Exception as e:
-        emoji_logger.system_error("SDR IA Solar Prime", f"Erro na inicialização: {e}")
-        raise
-    
-    yield
-    
-    # Shutdown
-    emoji_logger.system_info("Encerrando SDR IA Solar Prime...")
-    
-    try:
-        # Kommo Auto Sync removido - usava sistema antigo
-        
-        
-        # Para FollowUp Executor Service
-        if settings.enable_follow_up_automation:
-            from app.services.followup_executor_service import followup_executor_service
-            await followup_executor_service.stop()
-            emoji_logger.system_info("FollowUp Executor encerrado")
-        
-        # Cancela tasks do Message Buffer se existir
-        from app.services.message_buffer import message_buffer
-        if message_buffer:
-            await message_buffer.shutdown()
-            emoji_logger.system_info("Message Buffer encerrado")
-        
-        # Desconecta do Redis (já faz close/aclose internamente)
-        await redis_client.disconnect()
-        emoji_logger.system_info("Redis desconectado")
-        
-        emoji_logger.system_info("SDR IA Solar Prime encerrado com sucesso")
-        
-    except Exception as e:
-        emoji_logger.system_error("Shutdown", str(e))
-
-# Cria aplicação FastAPI
-app = FastAPI(
-    title="SDR IA Solar Prime",
-    description="Sistema Inteligente de Vendas para Energia Solar - Powered by AGnO Teams",
-    version="0.3.0",  # Pure Stateless Architecture
-    lifespan=lifespan
-)
-
-# Configuração CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins.split(",") if hasattr(settings, 'cors_origins') else ["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Registra rotas
-app.include_router(health.router)
-app.include_router(webhooks.router)
-# app.include_router(teams.router)  # Teams router not yet implemented
-
-# Registra webhook do Kommo
-from app.api import kommo_webhook
-app.include_router(kommo_webhook.router)
-
-# Registra rotas do Google OAuth
-from app.api import google_auth
-app.include_router(google_auth.router)
-
-# Rotas de teste (apenas em desenvolvimento)
-if settings.debug:
-    from app.api import test_kommo
-    app.include_router(test_kommo.router)
-
-# Exception handler global
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """
-    Tratamento global de exceções
-    """
-    emoji_logger.system_error("Global Exception Handler", str(exc))
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "Internal Server Error",
-            "message": str(exc) if settings.debug else "An error occurred",
-            "path": str(request.url)
-        }
-    )
-
-# Rota raiz
-@app.get("/")
-async def root():
-    """
-    Endpoint raiz - Informações da API
-    """
-    return {
-        "name": "SDR IA Solar Prime",
-        "version": "0.2.0",
-        "framework": "AGnO Teams",
-        "status": "operational",
-        "endpoints": {
-            "health": "/health",
-            "webhooks": "/webhooks",
-            "teams": "/teams"
-        },
-        "documentation": "/docs",
-        "team_mode": "COORDINATE"
-    }
-
-# Health check principal
-@app.get("/health")
-async def health_check():
-    """
-    Health check geral do sistema
-    """
-    try:
-        # Verifica Redis
-        redis_status = await redis_client.ping()
-        
-        # Verifica Supabase
-        supabase_status = await supabase_client.test_connection()
-        
-        # Status do Team
-        team_status = "ready"  # Simplificado para evitar criar múltiplas instâncias
-        
-        return {
-            "status": "healthy",
-            "services": {
-                "redis": "connected" if redis_status else "disconnected",
-                "supabase": "connected" if supabase_status else "disconnected",
-                "team": team_status
-            }
-        }
-    except Exception as e:
-        emoji_logger.system_error("Health Check", str(e))
-        return {
-            "status": "unhealthy",
-            "error": str(e)
-        }
-
-if __name__ == "__main__":
-    # Configurações do servidor
-    host = settings.api_host if hasattr(settings, 'api_host') else "0.0.0.0"
-    port = int(settings.api_port) if hasattr(settings, 'api_port') else 8000
-    reload = settings.debug if hasattr(settings, 'debug') else False
-    
-    emoji_logger.system_start(f"Servidor Uvicorn em {host}:{port}")
-    
-    # Inicia servidor
-    uvicorn.run(
-        "main:app",
-        host=host,
-        port=port,
-        reload=reload,
-        log_level="info" if not reload else "debug"
-    )
+✅ Usando variáveis de ambiente do servidor (EasyPanel)
+2025-08-25 18:27:47.894 | INFO     | app.services.knowledge_service:__init__:24 | ✅ KnowledgeService inicializado (versão simplificada)
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+2025-08-25 18:27:49.038 | INFO     | app.utils.logger:log_with_emoji:75 | 🚀 Iniciando SDR IA Solar Prime v0.3
+2025-08-25 18:27:49.044 | INFO     | app.integrations.redis_client:connect:35 | ✅ Conectado ao Redis: redis_redis:6379
+2025-08-25 18:27:49.044 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Redis pronto
+2025-08-25 18:27:49.889 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Supabase pronto
+2025-08-25 18:27:49.890 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Buffer Inteligente inicializado (timeout=15.0s, max=10)
+2025-08-25 18:27:49.890 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Message Buffer pronto | Data: {'timeout': '15.0s'}
+2025-08-25 18:27:49.890 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Message Splitter inicializado (max=200, smart=ativada)
+2025-08-25 18:27:49.890 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Message Splitter pronto | Data: {'max_length': 200}
+2025-08-25 18:27:49.891 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Sistema Refatorado pronto | Data: {'modules': 'Core + Services'}
+2025-08-25 18:27:49.915 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 🔐 GoogleOAuthHandler inicializado
+2025-08-25 18:27:49.924 | INFO     | app.services.knowledge_service:__init__:24 | ✅ KnowledgeService inicializado (versão simplificada)
+2025-08-25 18:27:49.924 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ FollowUp Scheduler pronto
+2025-08-25 18:27:49.924 | INFO     | app.utils.logger:log_with_emoji:75 | 🚀 Iniciando AgenticSDR Stateless
+2025-08-25 18:27:49.925 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo primário Gemini configurado pronto | Data: {'model': 'gemini-2.5-pro'}
+2025-08-25 18:27:49.933 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo fallback OpenAI configurado pronto | Data: {'model': 'o3-mini'}
+2025-08-25 18:27:49.934 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo reasoning configurado pronto | Data: {'model': 'gemini-2.0-flash-thinking'}
+2025-08-25 18:27:49.934 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Sistema de modelos configurado pronto | Data: {'primary_model': 'gemini-2.5-pro', 'fallback_available': True, 'reasoning_enabled': True}
+2025-08-25 18:27:49.936 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 🎨 MultimodalProcessor habilitado pronto | Data: {'dependencies': {'ocr': True, 'audio': True, 'pdf': True}}
+2025-08-25 18:27:49.937 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 📊 LeadManager inicializado pronto
+2025-08-25 18:27:49.937 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 🧠 ContextAnalyzer inicializado pronto
+2025-08-25 18:27:49.937 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 📊 ConversationMonitor inicializado pronto
+2025-08-25 18:27:49.937 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ ✅ ConversationMonitor: Loop iniciado
+2025-08-25 18:27:50.135 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 🔄 Access token renovado com sucesso
+2025-08-25 18:27:50.140 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: ✅ Serviço Google Calendar construído com OAuth
+2025-08-25 18:27:50.410 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: Google Calendar conectado via OAuth ao calendário: 'leonardofvieira00@gmail.com' | Data: {'calendar_id': 'leonardofvieira00@gmail.com'}
+2025-08-25 18:27:51.611 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: ✅ Kommo CRM conectado: leonardofvieira00
+2025-08-25 18:27:52.151 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 📊 9 campos customizados mapeados
+2025-08-25 18:27:52.664 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 📊 30 variações de estágios mapeadas
+2025-08-25 18:27:52.703 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: ✅ Evolution API conectada: 1 instâncias
+2025-08-25 18:27:52.705 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ ✅ AgenticSDR Stateless inicializado! pronto | Data: {'modules': ['ModelManager', 'MultimodalProcessor', 'LeadManager', 'ContextAnalyzer', 'CalendarService', 'CRMService', 'FollowUpService']}
+2025-08-25 18:27:52.705 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ FollowUp Worker pronto
+2025-08-25 18:27:52.705 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ FollowUp Services (Scheduler & Worker) pronto
+2025-08-25 18:27:52.705 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ 🔥 Pré-aquecendo AgenticSDR (Stateless)...
+2025-08-25 18:27:52.712 | INFO     | app.services.knowledge_service:__init__:24 | ✅ KnowledgeService inicializado (versão simplificada)
+2025-08-25 18:27:52.713 | INFO     | app.utils.logger:log_with_emoji:75 | 🚀 Iniciando AgenticSDR Stateless
+2025-08-25 18:27:52.713 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo primário Gemini configurado pronto | Data: {'model': 'gemini-2.5-pro'}
+2025-08-25 18:27:52.722 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo fallback OpenAI configurado pronto | Data: {'model': 'o3-mini'}
+2025-08-25 18:27:52.722 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo reasoning configurado pronto | Data: {'model': 'gemini-2.0-flash-thinking'}
+2025-08-25 18:27:52.722 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Sistema de modelos configurado pronto | Data: {'primary_model': 'gemini-2.5-pro', 'fallback_available': True, 'reasoning_enabled': True}
+2025-08-25 18:27:52.723 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 🎨 MultimodalProcessor habilitado pronto | Data: {'dependencies': {'ocr': True, 'audio': True, 'pdf': True}}
+2025-08-25 18:27:52.723 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 📊 LeadManager inicializado pronto
+2025-08-25 18:27:52.723 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 🧠 ContextAnalyzer inicializado pronto
+2025-08-25 18:27:52.723 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 📊 ConversationMonitor inicializado pronto
+2025-08-25 18:27:52.724 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ ✅ ConversationMonitor: Loop iniciado
+2025-08-25 18:27:52.726 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: ✅ Serviço Google Calendar construído com OAuth
+2025-08-25 18:27:53.344 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: Google Calendar conectado via OAuth ao calendário: 'leonardofvieira00@gmail.com' | Data: {'calendar_id': 'leonardofvieira00@gmail.com'}
+2025-08-25 18:27:53.889 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: ✅ Kommo CRM conectado: leonardofvieira00
+2025-08-25 18:27:54.395 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 📊 9 campos customizados mapeados
+⚠️ Rate Limiter: Usando burst para kommo
+2025-08-25 18:27:54.925 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 📊 30 variações de estágios mapeadas
+2025-08-25 18:27:54.956 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: ✅ Evolution API conectada: 1 instâncias
+2025-08-25 18:27:54.958 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ ✅ AgenticSDR Stateless inicializado! pronto | Data: {'modules': ['ModelManager', 'MultimodalProcessor', 'LeadManager', 'ContextAnalyzer', 'CalendarService', 'CRMService', 'FollowUpService']}
+2025-08-25 18:27:54.958 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ AgenticSDR (Stateless) pronto | Data: {'status': 'sistema pronto'}
+2025-08-25 18:27:54.959 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ SDR IA Solar Prime pronto | Data: {'startup_ms': 3000.0}
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:36260 - "GET /health HTTP/1.1" 200 OK
+2025-08-25 18:27:59.538 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/contacts-update de evolution-api | Data: {'event': 'CONTACTS_UPDATE', 'endpoint': '/whatsapp/contacts-update', 'source': 'evolution-api'}
+2025-08-25 18:27:59.772 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ CONTACTS_UPDATE ignorado - faltando: telefone válido. Phone: '', PushName: 'Mateus M'
+INFO:     10.11.0.4:41136 - "POST /webhook/evolution/contacts-update HTTP/1.1" 200 OK
+2025-08-25 18:27:59.773 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/contacts-update de evolution-api | Data: {'event': 'CONTACTS_UPDATE', 'endpoint': '/whatsapp/contacts-update', 'source': 'evolution-api'}
+2025-08-25 18:28:00.012 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ CONTACTS_UPDATE ignorado - faltando: telefone válido. Phone: '', PushName: 'Mateus M'
+INFO:     10.11.0.4:41138 - "POST /webhook/evolution/contacts-update HTTP/1.1" 200 OK
+2025-08-25 18:28:00.625 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/messages-update de evolution-api | Data: {'event': 'MESSAGES_UPDATE', 'endpoint': '/whatsapp/messages-update', 'source': 'evolution-api'}
+INFO:     10.11.0.4:41138 - "POST /webhook/evolution/messages-update HTTP/1.1" 200 OK
+2025-08-25 18:28:00.635 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/chats-upsert de evolution-api | Data: {'event': 'CHATS_UPSERT', 'endpoint': '/whatsapp/chats-upsert', 'source': 'evolution-api'}
+2025-08-25 18:28:00.636 | WARNING  | app.api.webhooks:whatsapp_dynamic_webhook:549 | Evento não reconhecido: CHATS_UPSERT
+INFO:     10.11.0.4:41138 - "POST /webhook/evolution/chats-upsert HTTP/1.1" 200 OK
+2025-08-25 18:28:04.116 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/presence-update de evolution-api | Data: {'event': 'PRESENCE_UPDATE', 'endpoint': '/whatsapp/presence-update', 'source': 'evolution-api'}
+INFO:     10.11.0.4:41138 - "POST /webhook/evolution/presence-update HTTP/1.1" 200 OK
+2025-08-25 18:28:04.269 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/messages-upsert de evolution-api | Data: {'event': 'MESSAGES_UPSERT', 'endpoint': '/whatsapp/messages-upsert', 'source': 'evolution-api'}
+INFO:     10.11.0.4:41138 - "POST /webhook/evolution/messages-upsert HTTP/1.1" 200 OK
+2025-08-25 18:28:04.270 | INFO     | app.utils.logger:log_with_emoji:75 | ⚙️ Iniciando processamento de 1 nova(s) mensagem(ns)
+2025-08-25 18:28:04.270 | INFO     | app.utils.logger:log_with_emoji:75 | ⚙️ Processando mensagem de 558182986181
+2025-08-25 18:28:04.270 | INFO     | app.utils.logger:log_with_emoji:75 | 📥 Recebido text de 558182986181 | Data: {'preview': 'oi', 'sender': '558182986181', 'type': 'text'}
+2025-08-25 18:28:04.272 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Processando 1 mensagens combinadas | Data: {'phone': '558182986181', 'total_chars': 2}
+2025-08-25 18:28:04.272 | INFO     | app.utils.logger:log_with_emoji:75 | 💬 🚀 INICIANDO PROCESSAMENTO PRINCIPAL - Telefone: 558182986181, Mensagem: 'oi...', ID: 3A582642FD8623352847
+2025-08-25 18:28:04.736 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/chats-update de evolution-api | Data: {'event': 'CHATS_UPDATE', 'endpoint': '/whatsapp/chats-update', 'source': 'evolution-api'}
+2025-08-25 18:28:04.737 | INFO     | app.api.webhooks:whatsapp_dynamic_webhook:545 | CHATS_UPDATE update recebido: {'event': 'chats.update', 'instance': 'SDR IA SolarPrime', 'data': [{'remoteJid': '558195554978@s.whatsapp.net', 'instanceId': '02f1c146-f8b8-4f19-9e8a-d3517ee84269'}], 'destination': 'https://sdr-api-evolution-api.fzvgou.easypanel.host/webhook/evolution', 'date_time': '2025-08-25T15:27:59.169Z', 'sender': '558195554978@s.whatsapp.net', 'server_url': 'https://evoapi-evolution-api.fzvgou.easypanel.host', 'apikey': '3ECB607589F3-4D35-949F-BA5D2D5892E9'}
+INFO:     10.11.0.4:41138 - "POST /webhook/evolution/chats-update HTTP/1.1" 200 OK
+2025-08-25 18:28:04.738 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/chats-update de evolution-api | Data: {'event': 'CHATS_UPDATE', 'endpoint': '/whatsapp/chats-update', 'source': 'evolution-api'}
+2025-08-25 18:28:04.738 | INFO     | app.api.webhooks:whatsapp_dynamic_webhook:545 | CHATS_UPDATE update recebido: {'event': 'chats.update', 'instance': 'SDR IA SolarPrime', 'data': [{'remoteJid': '558182986181@s.whatsapp.net', 'instanceId': '02f1c146-f8b8-4f19-9e8a-d3517ee84269'}], 'destination': 'https://sdr-api-evolution-api.fzvgou.easypanel.host/webhook/evolution', 'date_time': '2025-08-25T15:27:59.215Z', 'sender': '558195554978@s.whatsapp.net', 'server_url': 'https://evoapi-evolution-api.fzvgou.easypanel.host', 'apikey': '3ECB607589F3-4D35-949F-BA5D2D5892E9'}
+INFO:     10.11.0.4:41136 - "POST /webhook/evolution/chats-update HTTP/1.1" 200 OK
+2025-08-25 18:28:04.739 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Nenhum lead existente encontrado - será criado novo
+2025-08-25 18:28:04.740 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Nenhuma conversa existente - será criada nova
+2025-08-25 18:28:05.353 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Nova conversa criada - ID: c8dcb97d-3866-4e37-869e-a80a6c69a710
+2025-08-25 18:28:05.354 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Conversa validada - ID: c8dcb97d-3866-4e37-869e-a80a6c69a710, Phone: 558182986181
+2025-08-25 18:28:07.073 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Mensagem e cache salvos
+2025-08-25 18:28:07.073 | INFO     | app.utils.logger:log_with_emoji:75 | ⚙️ Criando AGENTIC SDR Stateless...
+2025-08-25 18:28:07.073 | INFO     | app.utils.logger:log_with_emoji:75 | ⚙️ 🏭 Criando agente stateless com contexto...
+2025-08-25 18:28:07.535 | INFO     | app.services.knowledge_service:__init__:24 | ✅ KnowledgeService inicializado (versão simplificada)
+2025-08-25 18:28:07.535 | INFO     | app.utils.logger:log_with_emoji:75 | 🚀 Iniciando AgenticSDR Stateless
+2025-08-25 18:28:07.536 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo primário Gemini configurado pronto | Data: {'model': 'gemini-2.5-pro'}
+2025-08-25 18:28:07.544 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo fallback OpenAI configurado pronto | Data: {'model': 'o3-mini'}
+2025-08-25 18:28:07.544 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Modelo reasoning configurado pronto | Data: {'model': 'gemini-2.0-flash-thinking'}
+2025-08-25 18:28:07.544 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Sistema de modelos configurado pronto | Data: {'primary_model': 'gemini-2.5-pro', 'fallback_available': True, 'reasoning_enabled': True}
+2025-08-25 18:28:07.544 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 🎨 MultimodalProcessor habilitado pronto | Data: {'dependencies': {'ocr': True, 'audio': True, 'pdf': True}}
+2025-08-25 18:28:07.544 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 📊 LeadManager inicializado pronto
+2025-08-25 18:28:07.545 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 🧠 ContextAnalyzer inicializado pronto
+2025-08-25 18:28:07.545 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ 📊 ConversationMonitor inicializado pronto
+2025-08-25 18:28:07.545 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ ✅ ConversationMonitor: Loop iniciado
+2025-08-25 18:28:07.548 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: ✅ Serviço Google Calendar construído com OAuth
+2025-08-25 18:28:08.200 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: Google Calendar conectado via OAuth ao calendário: 'leonardofvieira00@gmail.com' | Data: {'calendar_id': 'leonardofvieira00@gmail.com'}
+2025-08-25 18:28:08.758 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: ✅ Kommo CRM conectado: leonardofvieira00
+2025-08-25 18:28:09.650 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 📊 9 campos customizados mapeados
+2025-08-25 18:28:10.387 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Service: 📊 30 variações de estágios mapeadas
+2025-08-25 18:28:10.421 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Service: ✅ Evolution API conectada: 1 instâncias
+2025-08-25 18:28:10.422 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ ✅ AgenticSDR Stateless inicializado! pronto | Data: {'modules': ['ModelManager', 'MultimodalProcessor', 'LeadManager', 'ContextAnalyzer', 'CalendarService', 'CRMService', 'FollowUpService']}
+2025-08-25 18:28:10.423 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ ✅ Agente stateless criado com contexto pronto | Data: {'history_count': 1, 'lead_name': 'Não identificado'}
+2025-08-25 18:28:10.424 | INFO     | app.utils.logger:log_with_emoji:75 | ⚙️ AGENTIC SDR Stateless pronto para uso
+2025-08-25 18:28:10.424 | INFO     | app.utils.logger:log_with_emoji:75 | 🤖 AGENTIC SDR: 🤖 AGENTE STATELESS INICIADO - Mensagem: 'oi...'
+2025-08-25 18:28:10.425 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Mensagem do usuário registrada
+2025-08-25 18:28:10.426 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Mensagem adicionada ao histórico. Total: 2 mensagens
+2025-08-25 18:28:10.426 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Contexto analisado - Sentimento: {'enabled': True, 'sentiment': 'neutro', 'score': 0.0, 'confidence': 0.7}, Urgência: normal
+2025-08-25 18:28:10.432 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ Nenhum nome foi extraído do texto
+2025-08-25 18:28:10.435 | WARNING  | app.utils.logger:log_with_emoji:75 | ⚠️ Nenhum nome foi extraído do texto
+2025-08-25 18:28:10.435 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Lead atualizado - Nome: 'None', Valor: None
+2025-08-25 18:28:10.435 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ ✅ CONTEXTO ATUALIZADO - Histórico e lead_info finalizados
+2025-08-25 18:28:10.436 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Contexto atualizado - Lead: None, Histórico: 2 msgs
+2025-08-25 18:28:10.436 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Iniciando criação de novo lead para 558182986181 com nome 'None'.
+2025-08-25 18:28:10.670 | INFO     | app.utils.logger:log_with_emoji:75 | 📝 1 registro(s) inserido(s) em leads | Data: {'phone': '558182986181', 'name': None, 'lead_id': 'fa08a649-4a56-41fa-a97e-dc00d6cee27d', 'table': 'leads', 'count': 1}
+2025-08-25 18:28:10.670 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Tentando criar lead no Kommo para o lead_id fa08a649-4a56-41fa-a97e-dc00d6cee27d.
+INFO:     10.11.0.4:35084 - "POST /webhook/kommo/events HTTP/1.1" 200 OK
+2025-08-25 18:28:11.581 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Sincronização externa concluída
+2025-08-25 18:28:11.582 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ CRM Sync: Payload de atualização gerado. | Data: {'payload': {'phone': '558182986181', 'qualification_score': 0}}
+INFO:     10.11.0.4:35084 - "POST /webhook/kommo/events HTTP/1.1" 200 OK
+2025-08-25 18:28:12.208 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ CRM Sync: Dados do lead atualizados no Kommo. | Data: {'payload': {'phone': '558182986181', 'qualification_score': 0}}
+2025-08-25 18:28:12.208 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Dados CRM sincronizados
+2025-08-25 18:28:22.320 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Resposta LLM gerada: '<RESPOSTA_FINAL>Olá, boa tarde!! Me chamo Helen Vieira, sou consultora da Solarprime e irei realizar...'
+2025-08-25 18:28:22.321 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Resposta do assistente registrada
+2025-08-25 18:28:22.321 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ AGENTIC SUCCESS: ✅ AGENTE STATELESS CONCLUÍDO - 558182986181: 'oi...' -> '<RESPOSTA_FINAL>Olá, boa tarde!! Me chamo Helen Vi...'
+2025-08-25 18:28:22.321 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Resposta gerada pelo agente: '<RESPOSTA_FINAL>Olá, boa tarde!! Me chamo Helen Vieira, sou consultora da Solarprime e irei realizar...'
+2025-08-25 18:28:24.182 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Resposta do assistente salva
+2025-08-25 18:28:24.808 | INFO     | app.utils.logger:log_with_emoji:75 | ✅ Lead atualizado
+2025-08-25 18:28:24.810 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/connection-update de evolution-api | Data: {'event': 'CONNECTION_UPDATE', 'endpoint': '/whatsapp/connection-update', 'source': 'evolution-api'}
+2025-08-25 18:28:24.810 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Connection status update: {'event': 'connection.update', 'instance': 'SDR IA SolarPrime', 'data': {'instance': 'SDR IA SolarPrime', 'state': 'connecting', 'statusReason': 200}, 'destination': 'https://sdr-api-evolution-api.fzvgou.easypanel.host/webhook/evolution', 'date_time': '2025-08-25T15:28:23.149Z', 'sender': '558195554978@s.whatsapp.net', 'server_url': 'https://evoapi-evolution-api.fzvgou.easypanel.host', 'apikey': '3ECB607589F3-4D35-949F-BA5D2D5892E9'}
+2025-08-25 18:28:24.811 | INFO     | app.utils.logger:log_with_emoji:75 | 📞 Webhook recebido: /whatsapp/connection-update de evolution-api | Data: {'event': 'CONNECTION_UPDATE', 'endpoint': '/whatsapp/connection-update', 'source': 'evolution-api'}
+2025-08-25 18:28:24.812 | INFO     | app.utils.logger:log_with_emoji:75 | ℹ️ Connection status update: {'event': 'connection.update', 'instance': 'SDR IA SolarPrime', 'data': {'instance': 'SDR IA SolarPrime', 'wuid': '558195554978@s.whatsapp.net', 'profileName': 'Mateus M', 'profilePictureUrl': None, 'state': 'open', 'statusReason': 200}, 'destination': 'https://sdr-api-evolution-api.fzvgou.easypanel.host/webhook/evolution', 'date_time': '2025-08-25T15:28:24.517Z', 'sender': '558195554978@s.whatsapp.net', 'server_url': 'https://evoapi-evolution-api.fzvgou.easypanel.host', 'apikey': '3ECB607589F3-4D35-949F-BA5D2D5892E9'}
+INFO:     10.11.0.4:53886 - "POST /webhook/evolution/connection-update HTTP/1.1" 200 OK
+INFO:     10.11.0.4:53894 - "POST /webhook/evolution/connection-update HTTP/1.1" 200 OK
