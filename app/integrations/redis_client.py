@@ -19,10 +19,10 @@ class RedisClient:
         self.default_ttl = 3600
 
     async def connect(self):
-        """Conecta ao Redis com retry automático"""
+        """Conecta ao Redis com retry limitado"""
         import asyncio
-        max_retries = 5
-        retry_delay = 2.0
+        max_retries = 3  # Reduzido para desenvolvimento
+        retry_delay = 1.0  # Reduzido para desenvolvimento
         for attempt in range(max_retries):
             try:
                 self.redis_client = await redis.from_url(
@@ -47,11 +47,11 @@ class RedisClient:
                         f"⚠️ Erro ao conectar no Redis (tentativa {attempt + 1}): {e}"
                     )
                 if attempt < max_retries - 1:
-                    wait_time = retry_delay * (2 ** attempt)
+                    wait_time = retry_delay
                     logger.info(f"⏳ Aguardando {wait_time}s...")
                     await asyncio.sleep(wait_time)
                 else:
-                    logger.error("❌ Falha ao conectar ao Redis.")
+                    logger.warning("⚠️ Redis não disponível - continuando sem cache")
                     self.redis_client = None
 
     async def disconnect(self):

@@ -15,8 +15,8 @@ from app.config import settings
 from app.utils.logger import emoji_logger
 from app.integrations.redis_client import redis_client
 from app.integrations.supabase_client import supabase_client
-from app.services.message_buffer import message_buffer
-from app.services.message_splitter import message_splitter
+from app.services.message_buffer import get_message_buffer
+from app.services.message_splitter import get_message_splitter
 from app.services.followup_manager import followup_manager_service
 from app.services.followup_service_100_real import FollowUpServiceReal
 from app.services.conversation_monitor import get_conversation_monitor
@@ -41,9 +41,15 @@ async def lifespan(app: FastAPI):
     emoji_logger.system_start("SDR IA Solar Prime v0.3")
     
     try:
-        # Inicializar Redis
-        await redis_client.connect()
-        emoji_logger.system_ready("Redis")
+        # Conectar ao Redis (opcional em desenvolvimento)
+        try:
+            await redis_client.connect()
+            if redis_client.redis_client:
+                emoji_logger.system_ready("Redis", data={"url": redis_client.redis_url.split('@')[-1]})
+            else:
+                emoji_logger.system_warning("Redis não disponível - continuando sem cache")
+        except Exception as e:
+            emoji_logger.system_warning(f"Redis não disponível: {e} - continuando sem cache")
         
         # Testar conexão Supabase
         if await supabase_client.test_connection():
@@ -52,11 +58,11 @@ async def lifespan(app: FastAPI):
             emoji_logger.system_error("Supabase", "Falha na conexão")
         
         # Inicializar Message Buffer
-        await message_buffer.initialize()
+        message_buffer = get_message_buffer()
         emoji_logger.system_ready("Message Buffer", data={"timeout": f"{message_buffer.timeout}s"})
         
         # Inicializar Message Splitter
-        await message_splitter.initialize()
+        message_splitter = get_message_splitter()
         emoji_logger.system_ready("Message Splitter", data={"max_length": message_splitter.max_length})
         
         # Inicializar Conversation Monitor
@@ -80,7 +86,7 @@ async def lifespan(app: FastAPI):
         emoji_logger.system_ready("FollowUp Services")
         
         # Pré-aquecer o sistema
-        emoji_logger.info("🔥 Pré-aquecendo AgenticSDR (Stateless)...")
+        emoji_logger.system_info("🔥 Pré-aquecendo AgenticSDR (Stateless)...")
         warmup_agent = AgenticSDRStateless()
         await warmup_agent.initialize()
         
