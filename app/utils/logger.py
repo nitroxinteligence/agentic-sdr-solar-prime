@@ -129,6 +129,18 @@ class EmojiLogger:
         )
 
     @classmethod
+    def agentic_success(cls, message: str, **kwargs):
+        cls.log_with_emoji(
+            "INFO", "success", f"AGENTIC SUCCESS: {message}", **kwargs
+        )
+
+    @classmethod
+    def agentic_error(cls, message: str, **kwargs):
+        cls.log_with_emoji(
+            "ERROR", "error", f"AGENTIC ERROR: {message}", **kwargs
+        )
+
+    @classmethod
     def team_start(cls, team_name: str, message: str, **kwargs):
         cls.log_with_emoji(
             "INFO", "team_start",
