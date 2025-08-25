@@ -262,7 +262,13 @@ async def process_contacts_update(data: Dict[str, Any]):
             if existing_lead:
                 # Atualizar nome apenas se o lead não tiver nome ou tiver nome genérico
                 current_name = existing_lead.get('name')
-                if not current_name or current_name in ['Lead sem nome', 'Lead Sem Nome', None]:
+                is_generic_name = (
+                    not current_name or 
+                    current_name in ['Lead sem nome', 'Lead Sem Nome', None] or
+                    'Lead sem nome' in current_name or
+                    'Lead Sem Nome' in current_name
+                )
+                if is_generic_name:
                     await supabase_client.update_lead(
                         existing_lead['id'], 
                         {'name': push_name}

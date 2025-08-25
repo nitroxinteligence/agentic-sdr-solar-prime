@@ -294,20 +294,15 @@ class CRMServiceReal:
                 "_embedded": {"tags": tags}
             }
             
-            # Se há telefone, criar contato com telefone no campo principal
-            if lead_data.get("phone"):
-                kommo_lead["_embedded"]["contacts"] = [{
-                    "name": lead_name,
-                    "custom_fields_values": [{
-                        "field_code": "PHONE",
-                        "values": [{
-                            "value": lead_data["phone"],
-                            "enum_code": "WORK"
-                        }]
-                    }]
-                }]
-            
             custom_fields = []
+            # Adicionar telefone como campo customizado
+            if lead_data.get("phone") and self.custom_fields.get("phone"):
+                custom_fields.append({
+                    "field_id": self.custom_fields["phone"],
+                    "values": [{
+                        "value": lead_data["phone"]
+                    }]
+                })
             if lead_data.get("bill_value"):
                 custom_fields.append({
                     "field_id": self.custom_fields.get("bill_value", 392804),
@@ -483,7 +478,6 @@ class CRMServiceReal:
         finally:
             await redis_client.release_lock(lock_key)
 
-    @async_retry_with_backoff()
     @handle_kommo_errors()
     async def get_lead_by_phone(
             self, phone: str
