@@ -690,9 +690,12 @@ class EvolutionAPIClient:
         """
         try:
             payload = {
-                "url": webhook_url,
-                "webhookByEvents": True,
-                "webhookBase64": True,
+                "webhook": {
+                    "enabled": True,
+                    "url": webhook_url,
+                    "webhookByEvents": True,
+                    "webhookBase64": True
+                },
                 "events": [
                     "APPLICATION_STARTUP", "QRCODE_UPDATED",
                     "CONNECTION_UPDATE", "MESSAGES_SET", "MESSAGES_UPSERT",

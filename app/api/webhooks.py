@@ -173,15 +173,25 @@ async def process_contacts_update(data: Dict[str, Any]):
     """Processa atualizações de contatos para extrair pushName e atualizar nomes no Supabase"""
     try:
         from app.integrations.supabase_client import supabase_client
+        import json
         
-        # Log detalhado do payload recebido para debugging
-        emoji_logger.system_debug(f"CONTACTS_UPDATE payload completo: {data}")
+        # LOGGING ULTRA-DETALHADO PARA DEBUG CIRÚRGICO
+        emoji_logger.system_info("=== INÍCIO ANÁLISE CONTACTS_UPDATE ===")
+        emoji_logger.system_info(f"Payload RAW completo:\n{json.dumps(data, indent=2, ensure_ascii=False)}")
+        emoji_logger.system_info(f"Tipo do payload: {type(data)}")
+        emoji_logger.system_info(f"Chaves do payload: {list(data.keys()) if isinstance(data, dict) else 'N/A'}")
         
         # Extrair informações do contato com múltiplos fallbacks
         contact_data = data.get('data', data)
+        emoji_logger.system_info(f"contact_data inicial: {json.dumps(contact_data, indent=2, ensure_ascii=False)}")
+        
         if isinstance(contact_data, list) and contact_data:
+            emoji_logger.system_info(f"contact_data é lista com {len(contact_data)} itens")
             contact_data = contact_data[0]
-            emoji_logger.system_debug(f"Usando primeiro item da lista: {contact_data}")
+            emoji_logger.system_info(f"Usando primeiro item da lista: {json.dumps(contact_data, indent=2, ensure_ascii=False)}")
+        
+        emoji_logger.system_info(f"contact_data final para processamento: {json.dumps(contact_data, indent=2, ensure_ascii=False)}")
+        emoji_logger.system_info(f"Chaves disponíveis em contact_data: {list(contact_data.keys()) if isinstance(contact_data, dict) else 'N/A'}")
         
         # Múltiplas tentativas de extração de pushName
         push_name = None
@@ -226,35 +236,56 @@ async def process_contacts_update(data: Dict[str, Any]):
         
         # Extração de telefone com múltiplos fallbacks e estruturas aninhadas
         phone_number = None
+        emoji_logger.system_info("=== INÍCIO EXTRAÇÃO DE TELEFONE ===")
         
         # Tentativa 1: id direto
-        phone_number = contact_data.get('id', '').replace('@c.us', '').replace('@s.whatsapp.net', '')
+        raw_id = contact_data.get('id', '')
+        emoji_logger.system_info(f"Tentativa 1 - campo 'id' RAW: '{raw_id}'")
+        phone_number = raw_id.replace('@c.us', '').replace('@s.whatsapp.net', '') if raw_id else ''
+        emoji_logger.system_info(f"Tentativa 1 - telefone após limpeza: '{phone_number}'")
         
         # Tentativa 2: phone/number direto
         if not phone_number:
-            phone_number = contact_data.get('phone', '').replace('@c.us', '').replace('@s.whatsapp.net', '')
+            raw_phone = contact_data.get('phone', '')
+            emoji_logger.system_info(f"Tentativa 2a - campo 'phone' RAW: '{raw_phone}'")
+            phone_number = raw_phone.replace('@c.us', '').replace('@s.whatsapp.net', '') if raw_phone else ''
+            emoji_logger.system_info(f"Tentativa 2a - telefone após limpeza: '{phone_number}'")
+            
         if not phone_number:
-            phone_number = contact_data.get('number', '').replace('@c.us', '').replace('@s.whatsapp.net', '')
+            raw_number = contact_data.get('number', '')
+            emoji_logger.system_info(f"Tentativa 2b - campo 'number' RAW: '{raw_number}'")
+            phone_number = raw_number.replace('@c.us', '').replace('@s.whatsapp.net', '') if raw_number else ''
+            emoji_logger.system_info(f"Tentativa 2b - telefone após limpeza: '{phone_number}'")
         
         # Tentativa 3: estruturas aninhadas (contact, contactInfo, profile)
         if not phone_number:
+            emoji_logger.system_info("Tentativa 3 - Buscando em estruturas aninhadas")
             for key in ['contact', 'contactInfo', 'profile']:
                 nested_data = contact_data.get(key, {})
+                emoji_logger.system_info(f"Tentativa 3 - Verificando chave '{key}': {json.dumps(nested_data, indent=2, ensure_ascii=False)}")
+                
                 if isinstance(nested_data, dict):
-                    nested_id = nested_data.get('id', '').replace('@c.us', '').replace('@s.whatsapp.net', '')
+                    raw_nested_id = nested_data.get('id', '')
+                    emoji_logger.system_info(f"Tentativa 3 - {key}.id RAW: '{raw_nested_id}'")
+                    nested_id = raw_nested_id.replace('@c.us', '').replace('@s.whatsapp.net', '') if raw_nested_id else ''
                     if nested_id:
                         phone_number = nested_id
-                        emoji_logger.system_debug(f"Telefone encontrado em {key}.id: '{phone_number}'")
+                        emoji_logger.system_info(f"Telefone encontrado em {key}.id: '{phone_number}'")
                         break
-                    nested_phone = nested_data.get('phone', '').replace('@c.us', '').replace('@s.whatsapp.net', '')
+                        
+                    raw_nested_phone = nested_data.get('phone', '')
+                    emoji_logger.system_info(f"Tentativa 3 - {key}.phone RAW: '{raw_nested_phone}'")
+                    nested_phone = raw_nested_phone.replace('@c.us', '').replace('@s.whatsapp.net', '') if raw_nested_phone else ''
                     if nested_phone:
                         phone_number = nested_phone
-                        emoji_logger.system_debug(f"Telefone encontrado em {key}.phone: '{phone_number}'")
+                        emoji_logger.system_info(f"Telefone encontrado em {key}.phone: '{phone_number}'")
                         break
+                else:
+                    emoji_logger.system_info(f"Tentativa 3 - {key} não é dict: {type(nested_data)}")
         
         # Tentativa 4: Buscar telefone no cache (Redis em prod, memória em dev) usando pushName
         if not phone_number and push_name:
-            emoji_logger.system_debug(f"Tentando encontrar telefone para pushName '{push_name}' no cache")
+            emoji_logger.system_info(f"Tentando encontrar telefone para pushName '{push_name}' no cache")
             try:
                 cached_phone = None
                 
@@ -263,7 +294,7 @@ async def process_contacts_update(data: Dict[str, Any]):
                     cached_phone = await redis_client.get(f"pushname_phone:{push_name}")
                     if cached_phone:
                         phone_number = cached_phone.decode('utf-8') if isinstance(cached_phone, bytes) else cached_phone
-                        emoji_logger.system_debug(f"Telefone encontrado no cache Redis: '{phone_number}'")
+                        emoji_logger.system_info(f"Telefone encontrado no cache Redis: '{phone_number}'")
                 except Exception:
                     # Fallback para cache em memória (desenvolvimento)
                     if hasattr(process_new_message, '_memory_cache'):
@@ -274,21 +305,21 @@ async def process_contacts_update(data: Dict[str, Any]):
                             # Verificar se não expirou (TTL 5 minutos)
                             if time.time() - cache_entry['timestamp'] < 300:
                                 phone_number = cache_entry['phone']
-                                emoji_logger.system_debug(f"Telefone encontrado no cache memória: '{phone_number}'")
+                                emoji_logger.system_info(f"Telefone encontrado no cache memória: '{phone_number}'")
                             else:
                                 # Remover entrada expirada
                                 del process_new_message._memory_cache[cache_key]
-                                emoji_logger.system_debug(f"Cache expirado para pushName '{push_name}'")
+                                emoji_logger.system_info(f"Cache expirado para pushName '{push_name}'")
                 
                 if not phone_number:
-                    emoji_logger.system_debug(f"Telefone não encontrado no cache para pushName '{push_name}'")
+                    emoji_logger.system_info(f"Telefone não encontrado no cache para pushName '{push_name}'")
                     
             except Exception as e:
                 emoji_logger.system_warning(f"Erro ao buscar telefone no cache: {e}")
         
         # Tentativa 5: Buscar telefone em mensagens recentes se pushName estiver disponível
         if not phone_number and push_name:
-            emoji_logger.system_debug(f"Tentando encontrar telefone para pushName '{push_name}' em mensagens recentes")
+            emoji_logger.system_info(f"Tentando encontrar telefone para pushName '{push_name}' em mensagens recentes")
             try:
                 from app.integrations.supabase_client import supabase_client
                 # Buscar leads com nome similar
@@ -296,15 +327,18 @@ async def process_contacts_update(data: Dict[str, Any]):
                 if recent_leads:
                     # Usar o telefone do lead mais recente com nome similar
                     phone_number = recent_leads[0].get('phone_number', '')
-                    emoji_logger.system_debug(f"Telefone encontrado via busca por nome: '{phone_number}'")
+                    emoji_logger.system_info(f"Telefone encontrado via busca por nome: '{phone_number}'")
             except Exception as e:
-                emoji_logger.system_debug(f"Erro ao buscar telefone por nome: {e}")
+                emoji_logger.system_info(f"Erro ao buscar telefone por nome: {e}")
         
-        emoji_logger.system_debug(f"Dados extraídos - Phone: '{phone_number}', PushName: '{push_name}'")
+        emoji_logger.system_info("=== RESULTADO FINAL DA EXTRAÇÃO ===")
+        emoji_logger.system_info(f"Telefone extraído: '{phone_number}' (válido: {bool(phone_number and phone_number.strip())})")
+        emoji_logger.system_info(f"PushName extraído: '{push_name}' (válido: {bool(push_name)})")
+        emoji_logger.system_info("=== FIM ANÁLISE CONTACTS_UPDATE ===")
         
-        # Validar se temos dados válidos (telefone não pode estar vazio)
+        # Validar se temos dados válidos
         if push_name and phone_number and phone_number.strip():
-            # Buscar lead existente por telefone
+            # Cenário 1: Temos telefone e pushName - processar normalmente
             existing_lead = await supabase_client.get_lead_by_phone(phone_number)
             
             if existing_lead:
@@ -332,8 +366,49 @@ async def process_contacts_update(data: Dict[str, Any]):
                 emoji_logger.system_info(
                     f"Lead não encontrado para telefone {phone_number}, pushName '{push_name}' não aplicado"
                 )
+        elif push_name and (not phone_number or not phone_number.strip()):
+            # Cenário 2: Temos pushName mas não telefone - busca reversa por nome
+            emoji_logger.system_info(f"=== BUSCA REVERSA POR PUSHNAME ===\nTentando encontrar lead existente com nome '{push_name}'")
+            try:
+                # Buscar leads com nome similar
+                matching_leads = await supabase_client.search_leads_by_name(push_name)
+                if matching_leads:
+                    # Pegar o lead mais recente
+                    lead = matching_leads[0]
+                    lead_phone = lead.get('phone_number', '')
+                    lead_name = lead.get('name', '')
+                    
+                    emoji_logger.system_success(
+                        f"Lead encontrado via busca reversa: '{lead_name}' -> {lead_phone}"
+                    )
+                    
+                    # Salvar associação pushName -> telefone no cache para futuras consultas
+                    try:
+                        await redis_client.set(f"pushname_phone:{push_name}", lead_phone, ttl=3600)  # 1 hora
+                        emoji_logger.system_info(f"Associação salva no cache: '{push_name}' -> {lead_phone}")
+                    except Exception as cache_error:
+                        emoji_logger.system_warning(f"Erro ao salvar no cache: {cache_error}")
+                        # Fallback para cache em memória
+                        if not hasattr(process_new_message, '_memory_cache'):
+                            process_new_message._memory_cache = {}
+                        import time
+                        process_new_message._memory_cache[f"pushname_phone:{push_name}"] = {
+                            'phone': lead_phone,
+                            'timestamp': time.time()
+                        }
+                        emoji_logger.system_info(f"Associação salva no cache memória: '{push_name}' -> {lead_phone}")
+                    
+                    emoji_logger.system_success(
+                        f"CONTACTS_UPDATE processado via busca reversa: '{push_name}' associado ao lead {lead_phone}"
+                    )
+                else:
+                    emoji_logger.system_info(
+                        f"Nenhum lead encontrado com nome similar a '{push_name}'"
+                    )
+            except Exception as e:
+                emoji_logger.system_error(f"Erro na busca reversa por nome: {e}")
         else:
-            # Mensagem mais específica sobre o que está faltando
+            # Cenário 3: Dados insuficientes
             missing_fields = []
             if not push_name:
                 missing_fields.append("pushName")
@@ -615,6 +690,8 @@ async def evolution_webhook(
             await process_message_update(data.get("data", {}))
         elif event == "PRESENCE_UPDATE":
             await process_presence_update(data.get("data", {}))
+        elif event == "CONTACTS_UPDATE":
+            await process_contacts_update(data.get("data", {}))
 
         return {"status": "ok", "event": event}
 
