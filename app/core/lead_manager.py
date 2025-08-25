@@ -371,8 +371,9 @@ class LeadManager:
 
         # Mapeamento com palavras-chave/sinônimos para cada fluxo.
         # A ordem aqui é importante: do mais específico/prioritário para o mais geral.
+        # IMPORTANTE: Palavras-chave devem ser específicas para evitar falsos positivos
         flow_priority_map = {
-            "Usina Investimento": ["investimento", "usina de investimento", "opção 4", "modelo 4"],
+            "Usina Investimento": ["usina de investimento", "usina investimento", "opção 4", "modelo 4"],
             "Aluguel de Lote": ["aluguel de lote", "alugar lote", "opção 2", "modelo 2"],
             "Compra com Desconto": ["compra de energia", "comprar energia", "desconto", "opção 3", "modelo 3"],
             "Instalação Usina Própria": ["instalação", "usina própria", "minha usina", "opção 1", "modelo 1"],

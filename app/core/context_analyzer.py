@@ -143,7 +143,8 @@ class ContextAnalyzer:
         return {"enabled": True, "dominant": dominant, "scores": emotions, "intensity": intensity}
 
     def _extract_topics(self, messages: List[Dict[str, Any]]) -> List[str]:
-        topics, keywords = [], {"economia": ["economizar", "conta", "valor"], "energia_solar": ["solar", "painel", "energia"], "investimento": ["investir", "retorno", "custo"], "instalação": ["instalar", "obra", "telhado"]}
+        # IMPORTANTE: Palavras-chave devem ser específicas para evitar falsos positivos
+        topics, keywords = [], {"economia": ["economizar", "conta", "valor"], "energia_solar": ["solar", "painel", "energia"], "investimento_solar": ["investir em solar", "retorno solar", "custo solar"], "instalação": ["instalar", "obra", "telhado"]}
         all_text = " ".join([self._get_text_from_message(msg) for msg in messages]).lower()
         for topic, keys in keywords.items():
             if any(key in all_text for key in keys):
