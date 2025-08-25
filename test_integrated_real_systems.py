@@ -462,7 +462,7 @@ class IntegratedRealSystemsTest:
             emoji_logger.system_success(f"✅ Limpeza concluída: {cleanup_count} itens removidos")
             
         except Exception as e:
-            emoji_logger.system_error(f"❌ Erro na limpeza: {str(e)}")
+            emoji_logger.system_error("Cleanup", f"❌ Erro na limpeza: {str(e)}")
     
     def generate_report(self) -> Dict[str, Any]:
         """Gera relatório detalhado dos testes"""

@@ -81,7 +81,7 @@ class MessageBuffer:
                     await self._process_messages(phone, messages)
 
         except Exception as e:
-            logger.error(f"Erro ao processar queue para {phone}: {e}")
+            emoji_logger.system_error("Message Buffer", f"Erro ao processar queue para {phone}: {e}")
         finally:
             # Limpa a task e a fila para este telefone
             self.tasks.pop(phone, None)

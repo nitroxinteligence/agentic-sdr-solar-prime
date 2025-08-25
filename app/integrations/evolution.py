@@ -923,16 +923,15 @@ class EvolutionAPIClient:
             
             media_url = message_data.get("mediaUrl") or message_data.get("url")
             if not media_url:
-                emoji_logger.system_error("URL da mídia não encontrada nos dados", f"Dados: {list(message_data.keys())}")
+                emoji_logger.system_error("Evolution Media", f"URL da mídia não encontrada nos dados. Dados: {list(message_data.keys())}")
                 return None
                 
             media_key = message_data.get("mediaKey")
-            emoji_logger.system_info(f"Baixando mídia de: {media_url[:50]}...", f"MediaKey presente: {bool(media_key)}")
+            emoji_logger.system_info(f"Baixando mídia de: {media_url[:50]}... - MediaKey presente: {bool(media_key)}")
             
             if media_key:
                 emoji_logger.system_info(
-                    f"MediaKey presente - mídia será descriptografada (tipo: {media_type})",
-                    f"MediaKey length: {len(media_key) if isinstance(media_key, str) else 'N/A'}"
+                    f"MediaKey presente - mídia será descriptografada (tipo: {media_type}) - MediaKey length: {len(media_key) if isinstance(media_key, str) else 'N/A'}"
                 )
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(30.0),
@@ -944,8 +943,7 @@ class EvolutionAPIClient:
                 if response.status_code == 200:
                     content = response.content
                     emoji_logger.system_success(
-                        f"Mídia baixada com sucesso: {len(content)} bytes",
-                        f"Status: {response.status_code}, Content-Type: {response.headers.get('content-type', 'N/A')}"
+                        f"Mídia baixada com sucesso: {len(content)} bytes - Status: {response.status_code}, Content-Type: {response.headers.get('content-type', 'N/A')}"
                     )
                     
                     if media_key:
@@ -957,12 +955,11 @@ class EvolutionAPIClient:
                         )
                         if decrypted_content:
                             emoji_logger.system_success(
-                                f"Mídia descriptografada com sucesso: {len(decrypted_content)} bytes",
-                                f"Redução de tamanho: {len(content) - len(decrypted_content)} bytes"
+                                f"Mídia descriptografada com sucesso: {len(decrypted_content)} bytes - Redução de tamanho: {len(content) - len(decrypted_content)} bytes"
                             )
                             return decrypted_content
                         else:
-                            emoji_logger.system_error("Falha na descriptografia da mídia")
+                            emoji_logger.system_error("Evolution Media", "Falha na descriptografia da mídia")
                             emoji_logger.system_warning("Retornando mídia criptografada como fallback")
                             return content
                     else:
@@ -970,18 +967,17 @@ class EvolutionAPIClient:
                         return content
                 else:
                     emoji_logger.system_error(
-                        f"Erro HTTP ao baixar mídia: {response.status_code}",
-                        f"URL: {media_url[:50]}..., Headers: {dict(response.headers)}"
+                        f"Erro HTTP ao baixar mídia: {response.status_code} - URL: {media_url[:50]}..., Headers: {dict(response.headers)}"
                     )
                     return None
         except httpx.TimeoutException as e:
-            emoji_logger.system_error("Timeout ao baixar mídia", f"URL: {media_url[:50]}..., Erro: {str(e)}")
+            emoji_logger.system_error(f"Timeout ao baixar mídia - URL: {media_url[:50]}..., Erro: {str(e)}")
             return None
         except httpx.RequestError as e:
-            emoji_logger.system_error(f"Erro de requisição ao baixar mídia: {e}", f"URL: {media_url[:50]}...")
+            emoji_logger.system_error("Evolution Media", f"Erro de requisição ao baixar mídia: {e} - URL: {media_url[:50]}...")
             return None
         except Exception as e:
-            emoji_logger.system_error(f"Erro inesperado ao baixar mídia: {e}", f"Tipo: {type(e).__name__}")
+            emoji_logger.system_error("Evolution Media", f"Erro inesperado ao baixar mídia: {e} - Tipo: {type(e).__name__}")
             logger.exception(e)
             return None
 

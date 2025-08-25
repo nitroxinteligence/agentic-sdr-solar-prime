@@ -87,8 +87,7 @@ class AgenticSDRStateless:
         except Exception as e:
             import traceback
             emoji_logger.system_error(
-                "AgenticSDRStateless",
-                error=f"Erro na inicialização: {e}"
+                f"AgenticSDRStateless - Erro na inicialização: {e}"
             )
             raise
 
@@ -167,8 +166,7 @@ class AgenticSDRStateless:
             import traceback
             error_trace = traceback.format_exc()
             emoji_logger.system_error(
-                "AgenticSDRStateless",
-                error=f"❌ ERRO CRÍTICO NO AGENTE: {e}",
+                f"AgenticSDRStateless - ❌ ERRO CRÍTICO NO AGENTE: {e}",
                 traceback=error_trace
             )
             emoji_logger.agentic_error(
@@ -250,9 +248,9 @@ class AgenticSDRStateless:
                     if result:
                         emoji_logger.system_success(f"Lead {lead_id_to_update} atualizado no Supabase.")
                     else:
-                        emoji_logger.system_error(f"Falha ao atualizar lead {lead_id_to_update} no Supabase - resultado vazio.")
+                        emoji_logger.system_error("Lead Update", f"Falha ao atualizar lead {lead_id_to_update} no Supabase - resultado vazio.")
                 except Exception as e:
-                    emoji_logger.system_error(f"Falha ao sincronizar mudanças do lead {lead_id_to_update} com o DB.", error=str(e))
+                    emoji_logger.system_error("Lead Sync", f"Falha ao sincronizar mudanças do lead {lead_id_to_update} com o DB: {str(e)}")
                     # Continuar mesmo se a atualização falhar, para não interromper o fluxo.
             else:
                 emoji_logger.system_debug("Lead sem ID - mudanças detectadas mas não persistidas")
@@ -279,7 +277,7 @@ class AgenticSDRStateless:
                 created_supabase_lead = await supabase_client.create_lead(lead_data_to_create)
                 
                 if not created_supabase_lead or not created_supabase_lead.get("id"):
-                    emoji_logger.system_error("Falha crítica: Supabase não retornou um lead válido após a criação.")
+                    emoji_logger.system_error("Lead Creation", "Falha crítica: Supabase não retornou um lead válido após a criação.")
                     return lead_info # Retorna o lead_info original sem ID
 
                 lead_info.update(created_supabase_lead)
@@ -299,7 +297,7 @@ class AgenticSDRStateless:
                     emoji_logger.system_warning("Não foi possível criar o lead no Kommo, mas o lead do Supabase foi criado.", lead_id=lead_info.get("id"))
 
             except Exception as e:
-                emoji_logger.system_error("Falha na criação e sincronização inicial do lead", error=str(e), traceback=traceback.format_exc())
+                emoji_logger.system_error("Lead Creation", f"Falha na criação e sincronização inicial do lead: {str(e)}", traceback=traceback.format_exc())
                 # Retorna o lead_info original para não quebrar o fluxo principal
                 return lead_info
 
@@ -314,7 +312,7 @@ class AgenticSDRStateless:
                     await supabase_client.update_lead(lead_info["id"], {"kommo_lead_id": new_kommo_id})
                     emoji_logger.team_crm(f"Lead existente sincronizado com Kommo. ID: {new_kommo_id}")
             except Exception as e:
-                emoji_logger.system_error("Falha ao criar lead no Kommo para lead existente no Supabase", error=str(e))
+                emoji_logger.system_error("Kommo Integration", f"Falha ao criar lead no Kommo para lead existente no Supabase: {str(e)}")
 
         return lead_info
 
@@ -340,7 +338,7 @@ class AgenticSDRStateless:
                 )
                 emoji_logger.system_info("CRM Sync: Dados do lead atualizados no Kommo.", payload=update_payload)
             except Exception as e:
-                emoji_logger.system_error("CRM Sync: Falha ao atualizar dados no Kommo.", error=str(e))
+                emoji_logger.system_error("CRM Sync", f"Falha ao atualizar dados no Kommo: {str(e)}")
         else:
             emoji_logger.system_debug("Nenhuma atualização necessária para o CRM")
 
@@ -429,8 +427,7 @@ class AgenticSDRStateless:
             tool_matches = re.findall(tool_pattern, response)
         except re.error as e:
             emoji_logger.system_error(
-                "Tool parsing error",
-                error=f"Erro de regex ao parsear tools: {e}. Resposta: {response[:200]}..."
+                f"Tool parsing error - Erro de regex ao parsear tools: {e}. Resposta: {response[:200]}..."
             )
             return {} # Retorna vazio se a regex falhar
 
@@ -463,8 +460,7 @@ class AgenticSDRStateless:
             except Exception as e:
                 tool_results[service_method] = {"error": str(e)}
                 emoji_logger.system_error(
-                    "Tool execution error",
-                    error=f"❌ Erro no tool {service_method}: {e}"
+                    f"Tool execution error - ❌ Erro no tool {service_method}: {e}"
                 )
 
         return tool_results
@@ -649,9 +645,7 @@ class AgenticSDRStateless:
         # VERIFICAÇÃO CRÍTICA: Garantir que não estamos enviando conteúdo vazio.
         if not messages_for_model or not any(msg.get("content") for msg in messages_for_model):
             emoji_logger.model_error(
-                "Tentativa de chamar o modelo com conteúdo vazio.",
-                history_len=len(conversation_history),
-                is_followup=is_followup
+                f"Tentativa de chamar o modelo com conteúdo vazio. History len: {len(conversation_history)}, is_followup: {is_followup}"
             )
             return "<RESPOSTA_FINAL>Não consegui processar sua solicitação no momento.</RESPOSTA_FINAL>"
 

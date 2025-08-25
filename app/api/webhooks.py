@@ -125,7 +125,7 @@ async def _handle_media_message(
                     emoji_logger.system_info(f"Payload para {msg_type} sem mídia direta. Tentando endpoint getBase64FromMediaMessage.")
                     
                     if not message_key:
-                        emoji_logger.system_error("Message key ausente", "Não é possível buscar mídia sem a chave da mensagem")
+                        emoji_logger.system_error("Webhook Media", "Message key ausente - Não é possível buscar mídia sem a chave da mensagem")
                         return {
                             "type": "error", 
                             "content": "Erro interno: chave da mensagem não encontrada. Tente enviar a mídia novamente."
@@ -160,7 +160,7 @@ async def _handle_media_message(
                                         "mimetype": media_payload.get("mimetype"),
                                     }
                                 else:
-                                    emoji_logger.system_error(f"download_media também falhou para {msg_type}")
+                                    emoji_logger.system_error("Webhook Media", f"download_media também falhou para {msg_type}")
                             else:
                                 emoji_logger.system_warning(f"Dados insuficientes para download_media em {msg_type}")
                         except Exception as fallback_error:
@@ -513,7 +513,7 @@ async def process_contacts_update(data: Dict[str, Any]):
                         f"Nenhum lead encontrado com nome similar a '{push_name}'"
                     )
             except Exception as e:
-                emoji_logger.system_error(f"Erro na busca reversa por nome: {e}")
+                emoji_logger.system_error("Webhook Contact", f"Erro na busca reversa por nome: {e}")
         else:
             # Cenário 3: Dados insuficientes
             missing_fields = []
@@ -529,7 +529,7 @@ async def process_contacts_update(data: Dict[str, Any]):
             emoji_logger.system_debug(f"Estrutura completa do contact_data: {contact_data}")
             
     except Exception as e:
-        emoji_logger.system_error(f"Erro ao processar CONTACTS_UPDATE: {str(e)}")
+        emoji_logger.system_error("Webhook Contact", f"Erro ao processar CONTACTS_UPDATE: {str(e)}")
         logger.exception("Detalhes do erro em process_contacts_update")
 
 def extract_final_response(full_response: str) -> str:
@@ -553,7 +553,7 @@ def extract_final_response(full_response: str) -> str:
         temp_response = re.sub(r'</?RESPOSTA_FINAL>', '', temp_response, flags=re.IGNORECASE)
         
         if '<' in temp_response and '>' in temp_response:
-            emoji_logger.system_error("extract_final_response", "Nenhuma tag <RESPOSTA_FINAL> clara e ainda há outras tags. Usando fallback.")
+            emoji_logger.system_error("extract_final_response - Nenhuma tag <RESPOSTA_FINAL> clara e ainda há outras tags. Usando fallback.")
             return "Estou finalizando sua solicitação. Um momento."
         final_response = temp_response.strip()
 
@@ -630,7 +630,7 @@ async def create_agent_with_context(
     except HandoffActiveException:
         raise
     except Exception as e:
-        emoji_logger.system_error("Webhook", f"Erro ao criar agente com contexto: {e}")
+        emoji_logger.system_error(f"Webhook - Erro ao criar agente com contexto: {e}")
         raise
 
 def get_message_buffer_instance():
@@ -690,7 +690,7 @@ async def webhook_handler(request: Request):
         emoji_logger.webhook_error(f"Erro ao decodificar JSON do webhook: {str(e)}")
         raise HTTPException(status_code=400, detail="Invalid JSON")
     except Exception as e:
-        emoji_logger.system_error(f"Erro crítico no webhook: {str(e)}")
+        emoji_logger.system_error("Webhook Critical", f"Erro crítico no webhook: {str(e)}")
         emoji_logger.system_debug(f"Traceback completo: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -767,7 +767,7 @@ async def whatsapp_dynamic_webhook(
         return {"status": "ok", "event": event}
 
     except Exception as e:
-        emoji_logger.system_error(f"Webhook WhatsApp {event_type}", str(e))
+        emoji_logger.system_error(f"Webhook WhatsApp {event_type} - {str(e)}")
         return {"status": "error", "message": str(e)}
 
 
@@ -803,7 +803,7 @@ async def evolution_webhook(
         return {"status": "ok", "event": event}
 
     except Exception as e:
-        emoji_logger.system_error("Webhook Evolution", str(e))
+        emoji_logger.system_error(f"Webhook Evolution - {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -939,7 +939,7 @@ async def process_new_message(data: Any):
                 )
 
     except Exception as e:
-        emoji_logger.system_error("Webhook Message Processing", str(e))
+        emoji_logger.system_error(f"Webhook Message Processing - {str(e)}")
         logger.exception("Erro detalhado no processamento:")
 
 
@@ -984,7 +984,7 @@ async def process_message_with_agent(
     lead_result, conv_result = results
 
     if isinstance(lead_result, Exception):
-        emoji_logger.system_error("Lead Fetch", f"Erro ao buscar lead: {lead_result}")
+        emoji_logger.system_error(f"Lead Fetch - Erro ao buscar lead: {lead_result}")
         lead = None
     else:
         lead = lead_result
@@ -1006,7 +1006,7 @@ async def process_message_with_agent(
     emoji_logger.system_debug(f"Dados da mensagem estruturados: {json.dumps(message_data, indent=2)[:200]}...")
 
     if isinstance(conv_result, Exception):
-        emoji_logger.system_error("Conversation Fetch", f"Erro ao buscar conversa: {conv_result}")
+        emoji_logger.system_error(f"Conversation Fetch - Erro ao buscar conversa: {conv_result}")
         conversation = None
     else:
         conversation = conv_result
@@ -1025,7 +1025,7 @@ async def process_message_with_agent(
         emoji_logger.system_success(f"Nova conversa criada - ID: {conversation.get('id')}")
 
     if not conversation or not isinstance(conversation, dict) or "id" not in conversation:
-        emoji_logger.system_error("Conversation Validation", f"Conversa inválida criada/buscada: {conversation}")
+        emoji_logger.system_error(f"Conversation Validation - Conversa inválida criada/buscada: {conversation}")
         raise ValueError(f"Conversa inválida: {conversation}")
 
     emoji_logger.system_info(f"Conversa validada - ID: {conversation['id']}, Phone: {phone}")
@@ -1059,7 +1059,7 @@ async def process_message_with_agent(
         emoji_logger.system_info(f"Processamento interrompido para {phone} devido a handoff ativo.")
         return
     except Exception as e:
-        emoji_logger.system_error("Agent Creation", f"Erro ao criar agente: {e}")
+        emoji_logger.system_error(f"Agent Creation - Erro ao criar agente: {e}")
         raise HTTPException(
             status_code=503, detail="Agente temporariamente indisponível"
         )
