@@ -68,7 +68,7 @@ Este PRD define um plano abrangente de limpeza da codebase do **Agent SDR IA Sol
 ### 🟠 CATEGORIA 3: CONFIGURAÇÕES DUPLICADAS
 **Prioridade:** MÉDIA
 
-#### Arquivos Identificados:
+#### Arquivos Identificados (VERIFIQUE SE REALMETE NAO PRECISAMOS DESTES ARQUIVOS ANTES DE REMOVER, VOCE PRECISA TER PLENA CERTEZA):
 1. **`docker-compose.redis.yml`** - Configuração específica não utilizada
 2. **`docker-env-setup.sh`** - Script de setup redundante
 3. **`easypanel-deploy.yml`** - Deploy específico não ativo
