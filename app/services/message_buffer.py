@@ -108,9 +108,8 @@ class MessageBuffer:
 
         combined_content = "\n".join([msg.get("content", "") for msg in valid_messages if msg.get("content")] )
         emoji_logger.system_info(
-            f"Processando {len(valid_messages)} mensagens combinadas",
-            phone=phone, total_chars=len(combined_content)
-        )
+                f"Processando {len(valid_messages)} mensagens combinadas para {phone} (total: {len(combined_content)} chars)"
+            )
         # Correção: Usar repr() para exibir o conteúdo de forma segura, incluindo escapes.
         emoji_logger.system_debug(f"Conteúdo combinado para {phone}: {repr(combined_content)}")
         

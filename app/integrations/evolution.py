@@ -301,8 +301,7 @@ class EvolutionAPIClient:
                     "Mensagem não foi enviada - resposta inválida da API"
                 )
             emoji_logger.system_info(
-                "Evolution API",
-                f"Mensagem de texto enviada para {phone} (tamanho: {len(message)}, delay: {round(delay, 2)}s)"
+                f"Evolution API - Mensagem de texto enviada para {phone} (tamanho: {len(message)}, delay: {round(delay, 2)}s)"
             )
             emoji_logger.system_debug(f"Resposta da Evolution API: {result}")
             return result
@@ -380,8 +379,7 @@ class EvolutionAPIClient:
                 json=payload
             )
             emoji_logger.system_info(
-                "Evolution API",
-                f"Typing enviado para {phone} (duração: {round(duration, 2)}s, tamanho: {message_length})"
+                f"Evolution API - Typing enviado para {phone} (duração: {round(duration, 2)}s, tamanho: {message_length})"
             )
             logger.debug(f"Typing enviado por {duration}s")
         except Exception as e:
@@ -428,8 +426,7 @@ class EvolutionAPIClient:
                     "Reação não foi enviada - resposta inválida da API"
                 )
             emoji_logger.system_info(
-                "Evolution API",
-                f"Reação '{emoji}' enviada. ID: {result.get('key', {}).get('id', 'N/A')}"
+                f"Evolution API - Reação '{emoji}' enviada. ID: {result.get('key', {}).get('id', 'N/A')}"
             )
             return result
         except Exception as e:
@@ -497,8 +494,7 @@ class EvolutionAPIClient:
                     "Resposta não foi enviada - resposta inválida da API"
                 )
             emoji_logger.system_info(
-                "Evolution API",
-                f"Resposta enviada para {phone} (tamanho: {len(text)})"
+                f"Evolution API - Resposta enviada para {phone} (tamanho: {len(text)})"
             )
             return result
         except Exception as e:
@@ -531,8 +527,7 @@ class EvolutionAPIClient:
                 json=payload
             )
             emoji_logger.system_info(
-                "Evolution API",
-                f"Imagem enviada para {phone}"
+                f"Evolution API - Imagem enviada para {phone}"
             )
             return response.json()
         except Exception as e:
@@ -567,8 +562,7 @@ class EvolutionAPIClient:
                 json=payload
             )
             emoji_logger.system_info(
-                "Evolution API",
-                f"Documento enviado para {phone}"
+                f"Evolution API - Documento enviado para {phone}"
             )
             return response.json()
         except Exception as e:
@@ -600,8 +594,7 @@ class EvolutionAPIClient:
                 json=payload
             )
             emoji_logger.system_info(
-                "Evolution API",
-                f"Áudio enviado para {phone}"
+                f"Evolution API - Áudio enviado para {phone}"
             )
             return response.json()
         except Exception as e:
