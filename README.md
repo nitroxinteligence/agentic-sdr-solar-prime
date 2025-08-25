@@ -48,6 +48,31 @@
 | **MultimodalProcessor**| Processa mídias como áudio e imagens para extração de texto. | ✅ 100% |
 | **ModelManager** | Gerencia a comunicação com os LLMs (Gemini), incluindo a lógica de retry e fallback. | ✅ 100% |
 
+## 📁 Estrutura do Projeto
+
+```
+├── app/                    # Código principal da aplicação
+│   ├── agents/            # Agentes IA (AgenticSDRStateless)
+│   ├── api/               # Endpoints FastAPI
+│   ├── services/          # Serviços integrados (Calendar, CRM, etc.)
+│   └── utils/             # Utilitários e helpers
+├── docs/                  # Documentação do projeto
+│   └── archive/           # Documentação histórica/obsoleta
+├── sqls/                  # Scripts SQL para setup do banco
+├── test_*.py              # Testes automatizados
+├── main.py                # Ponto de entrada da aplicação
+├── docker-compose.yml     # Configuração Docker
+└── .env                   # Variáveis de ambiente
+```
+
+### 📚 Documentação Arquivada
+
+A pasta `docs/archive/` contém documentação histórica e diagnósticos de correções implementadas:
+- Diagnósticos de erros corrigidos (DIAGNOSTICO_*.md)
+- PRDs de correções específicas
+- Guias de troubleshooting antigos
+- Documentação de agentes descontinuados
+
 ## 📦 Instalação Rápida
 
 ### Pré-requisitos
@@ -177,6 +202,28 @@ graph TD
 - **Autenticação**: Google OAuth 2.0 (para Calendário)
 - **CRM**: Kommo
 - **Deploy**: Docker, Docker Compose
+
+## 🧪 Testes
+
+O projeto mantém dois conjuntos de testes essenciais:
+
+### Testes Principais
+- **`test_integrated_real_systems.py`**: Testes de integração com sistemas reais (Supabase, Kommo, Google)
+- **`test_real_scenarios.py`**: Testes de cenários reais de uso do sistema
+
+### Executar Testes
+```bash
+# Teste de integração com sistemas reais
+python test_integrated_real_systems.py
+
+# Teste de cenários reais
+python test_real_scenarios.py
+```
+
+### Status dos Testes
+- ✅ **test_integrated_real_systems.py**: 5/5 testes passando (100%)
+- ✅ **test_real_scenarios.py**: 8/8 cenários passando (100%)
+- ✅ **Sistema 100% funcional** após limpeza do codebase
 
 ## 🤝 Contribuindo
 
