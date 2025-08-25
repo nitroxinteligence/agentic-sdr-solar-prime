@@ -94,6 +94,8 @@ async def _handle_media_message(
     """Lida com o processamento de mídia recebida via webhook base64."""
     import base64
     msg_content = message.get("message", {})
+    message_key = message.get("key")
+    
     media_type_map = {
         "imageMessage": "image",
         "videoMessage": "video",
@@ -102,35 +104,103 @@ async def _handle_media_message(
         "stickerMessage": "sticker",
     }
 
+    emoji_logger.system_info(f"Processando mídia. Message key: {message_key}")
+    
     for msg_type, media_type in media_type_map.items():
         if msg_type in msg_content:
             media_payload = msg_content[msg_type]
+            emoji_logger.system_debug(f"Encontrado {msg_type} no payload. Mimetype: {media_payload.get('mimetype')}")
+            
             try:
                 base64_content = media_payload.get("media") or media_payload.get("body")
 
                 if base64_content:
-                    emoji_logger.system_debug(f"Mídia Base64 extraída diretamente do payload para {msg_type}")
+                    emoji_logger.system_success(f"Mídia Base64 extraída diretamente do payload para {msg_type}")
                     return {
                         "type": media_type,
                         "content": base64_content,
                         "mimetype": media_payload.get("mimetype"),
                     }
                 else:
-                    emoji_logger.system_info(f"Payload para {msg_type} sem mídia. Usando endpoint getBase64FromMediaMessage.")
-                    base64_from_api = await evolution_client.get_media_as_base64(message.get("key"))
+                    emoji_logger.system_info(f"Payload para {msg_type} sem mídia direta. Tentando endpoint getBase64FromMediaMessage.")
+                    
+                    if not message_key:
+                        emoji_logger.system_error("Message key ausente", "Não é possível buscar mídia sem a chave da mensagem")
+                        return {
+                            "type": "error", 
+                            "content": "Erro interno: chave da mensagem não encontrada. Tente enviar a mídia novamente."
+                        }
+                    
+                    base64_from_api = await evolution_client.get_media_as_base64(message_key)
                     if base64_from_api:
+                        emoji_logger.system_success(f"Mídia obtida via API para {msg_type}")
                         return {
                             "type": media_type,
                             "content": base64_from_api,
                             "mimetype": media_payload.get("mimetype"),
                         }
                     else:
-                         emoji_logger.system_error(f"Falha no download de fallback para {msg_type}", "Não foi possível obter os bytes da mídia.")
-                         return {"type": "error", "content": "Desculpe, não consegui obter a mídia que você enviou."}
+                        emoji_logger.system_warning(f"get_media_as_base64 falhou para {msg_type}. Tentando fallback com download_media...")
+                        
+                        # Fallback alternativo: tentar download_media se disponível no payload
+                        try:
+                            # Verificar se temos dados suficientes para download_media
+                            if media_payload.get("mediaUrl") or media_payload.get("url"):
+                                emoji_logger.system_info(f"Tentando download direto da mídia para {msg_type}")
+                                media_bytes = await evolution_client.download_media(media_payload, media_type)
+                                
+                                if media_bytes:
+                                    # Converter bytes para base64
+                                    import base64
+                                    base64_content = base64.b64encode(media_bytes).decode('utf-8')
+                                    emoji_logger.system_success(f"Mídia obtida via download direto para {msg_type}")
+                                    return {
+                                        "type": media_type,
+                                        "content": base64_content,
+                                        "mimetype": media_payload.get("mimetype"),
+                                    }
+                                else:
+                                    emoji_logger.system_error(f"download_media também falhou para {msg_type}")
+                            else:
+                                emoji_logger.system_warning(f"Dados insuficientes para download_media em {msg_type}")
+                        except Exception as fallback_error:
+                            emoji_logger.system_error(
+                                f"Erro no fallback download_media para {msg_type}",
+                                f"Erro: {str(fallback_error)}"
+                            )
+                        
+                        # Se todos os métodos falharam
+                        emoji_logger.system_error(
+                            f"Falha total no download de mídia para {msg_type}", 
+                            f"Key: {message_key}, Mimetype: {media_payload.get('mimetype')}"
+                        )
+                        
+                        # Mensagem mais específica baseada no tipo de mídia
+                        media_type_names = {
+                            "image": "imagem",
+                            "video": "vídeo", 
+                            "audio": "áudio",
+                            "document": "documento",
+                            "sticker": "figurinha"
+                        }
+                        
+                        media_name = media_type_names.get(media_type, "mídia")
+                        return {
+                            "type": "error", 
+                            "content": f"Não consegui baixar a {media_name} que você enviou. Isso pode ser um problema temporário da Evolution API. Tente enviar novamente em alguns instantes."
+                        }
 
             except Exception as e:
-                emoji_logger.system_error(f"Falha ao processar mídia para {msg_type}", str(e))
-                return {"type": "error", "content": "Desculpe, tive um problema ao processar a mídia que você enviou."}
+                emoji_logger.system_error(
+                    f"Exceção ao processar mídia para {msg_type}", 
+                    f"Erro: {str(e)}, Key: {message_key}, Traceback: {traceback.format_exc()}"
+                )
+                return {
+                    "type": "error", 
+                    "content": f"Erro inesperado ao processar a mídia. Detalhes técnicos foram registrados. Tente novamente."
+                }
+    
+    emoji_logger.system_warning("Nenhum tipo de mídia reconhecido encontrado no payload")
     return None
 
 

@@ -761,29 +761,76 @@ class EvolutionAPIClient:
             logger.error(f"Erro ao obter info do grupo: {e}")
             raise
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=2, min=1, max=30),
+        retry=retry_if_exception_type(
+            (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError)
+        )
+    )
     async def get_media_as_base64(self, message_key: Dict[str, Any]) -> Optional[str]:
         """
         Busca a mídia de uma mensagem diretamente em base64 usando a chave da mensagem.
+        Implementa retry com backoff exponencial para lidar com timeouts da Evolution API.
         """
         if not message_key:
+            emoji_logger.evolution_warning("Message key vazia fornecida para get_media_as_base64")
             return None
+        
         try:
             payload = {"message": {"key": message_key}}
+            emoji_logger.evolution_info(f"Tentando obter mídia em base64 para key: {message_key}")
+            
             response = await self._make_request(
                 "post",
                 f"/chat/getBase64FromMediaMessage/{self.instance_name}",
                 json=payload
             )
+            
             if response.status_code in [200, 201]:  # Aceita 200 (OK) e 201 (Created)
                 result = response.json()
-                return result.get("base64")
+                base64_data = result.get("base64")
+                if base64_data:
+                    emoji_logger.evolution_success("Mídia em base64 obtida com sucesso")
+                    return base64_data
+                else:
+                    emoji_logger.evolution_warning("Resposta da API não contém dados base64")
+                    return None
+            elif response.status_code == 400:
+                # Erro 400 específico - pode ser AggregateError
+                error_text = response.text
+                emoji_logger.evolution_error(
+                    f"Erro 400 da Evolution API (possível AggregateError): {error_text}"
+                )
+                # Para erro 400, não fazemos retry - é um erro de dados
+                raise httpx.HTTPStatusError(
+                    f"Bad Request: {error_text}", 
+                    request=response.request, 
+                    response=response
+                )
             else:
                 emoji_logger.evolution_error(
                     f"Erro ao buscar mídia em base64: {response.status_code} - {response.text}"
                 )
+                # Para outros códigos de erro, fazemos retry
+                response.raise_for_status()
                 return None
+                
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                # Não faz retry para erro 400
+                emoji_logger.evolution_error(f"Erro 400 definitivo: {e}")
+                return None
+            else:
+                # Re-raise para outros códigos para permitir retry
+                emoji_logger.evolution_warning(f"Erro HTTP que será retentado: {e}")
+                raise
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as e:
+            # Estes erros serão retentados automaticamente pelo decorador @retry
+            emoji_logger.evolution_warning(f"Erro de rede que será retentado: {e}")
+            raise
         except Exception as e:
-            emoji_logger.evolution_error(f"Exceção ao buscar mídia em base64: {e}")
+            emoji_logger.evolution_error(f"Exceção inesperada ao buscar mídia em base64: {e}")
             return None
 
     def _format_phone(self, phone: str) -> str:
@@ -872,17 +919,20 @@ class EvolutionAPIClient:
         Baixa e descriptografa mídia de uma mensagem do WhatsApp
         """
         try:
+            emoji_logger.system_info(f"Iniciando download_media para tipo: {media_type}")
+            
             media_url = message_data.get("mediaUrl") or message_data.get("url")
             if not media_url:
-                logger.warning("URL da mídia não encontrada nos dados")
+                emoji_logger.system_error("URL da mídia não encontrada nos dados", f"Dados: {list(message_data.keys())}")
                 return None
+                
             media_key = message_data.get("mediaKey")
-            # O media_type agora é passado como argumento, garantindo a precisão
-            logger.info(f"Baixando mídia de: {media_url[:50]}...")
+            emoji_logger.system_info(f"Baixando mídia de: {media_url[:50]}...", f"MediaKey presente: {bool(media_key)}")
+            
             if media_key:
-                logger.info(
-                    f"MediaKey presente - mídia será descriptografada "
-                    f"(tipo: {media_type})"
+                emoji_logger.system_info(
+                    f"MediaKey presente - mídia será descriptografada (tipo: {media_type})",
+                    f"MediaKey length: {len(media_key) if isinstance(media_key, str) else 'N/A'}"
                 )
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(30.0),
@@ -893,41 +943,45 @@ class EvolutionAPIClient:
                 response = await client.get(media_url, headers=headers)
                 if response.status_code == 200:
                     content = response.content
-                    logger.info(
-                        f"Mídia baixada com sucesso: {len(content)} bytes"
+                    emoji_logger.system_success(
+                        f"Mídia baixada com sucesso: {len(content)} bytes",
+                        f"Status: {response.status_code}, Content-Type: {response.headers.get('content-type', 'N/A')}"
                     )
+                    
                     if media_key:
-                        logger.info("Iniciando descriptografia da mídia...")
+                        emoji_logger.system_info("Iniciando descriptografia da mídia...")
                         decrypted_content = self.decrypt_whatsapp_media(
                             encrypted_data=content,
                             media_key_base64=media_key,
                             media_type=media_type
                         )
                         if decrypted_content:
-                            logger.info(
-                                f"Mídia descriptografada: "
-                                f"{len(decrypted_content)} bytes"
+                            emoji_logger.system_success(
+                                f"Mídia descriptografada com sucesso: {len(decrypted_content)} bytes",
+                                f"Redução de tamanho: {len(content) - len(decrypted_content)} bytes"
                             )
                             return decrypted_content
                         else:
-                            logger.error("Falha na descriptografia da mídia")
-                            logger.warning("Retornando mídia criptografada")
+                            emoji_logger.system_error("Falha na descriptografia da mídia")
+                            emoji_logger.system_warning("Retornando mídia criptografada como fallback")
                             return content
                     else:
+                        emoji_logger.system_info("Mídia não criptografada, retornando conteúdo original")
                         return content
                 else:
-                    logger.error(
-                        f"Erro HTTP ao baixar mídia: {response.status_code}"
+                    emoji_logger.system_error(
+                        f"Erro HTTP ao baixar mídia: {response.status_code}",
+                        f"URL: {media_url[:50]}..., Headers: {dict(response.headers)}"
                     )
                     return None
-        except httpx.TimeoutException:
-            logger.error("Timeout ao baixar mídia")
+        except httpx.TimeoutException as e:
+            emoji_logger.system_error("Timeout ao baixar mídia", f"URL: {media_url[:50]}..., Erro: {str(e)}")
             return None
         except httpx.RequestError as e:
-            logger.error(f"Erro de requisição ao baixar mídia: {e}")
+            emoji_logger.system_error(f"Erro de requisição ao baixar mídia: {e}", f"URL: {media_url[:50]}...")
             return None
         except Exception as e:
-            logger.error(f"Erro inesperado ao baixar mídia: {e}")
+            emoji_logger.system_error(f"Erro inesperado ao baixar mídia: {e}", f"Tipo: {type(e).__name__}")
             logger.exception(e)
             return None
 
