@@ -17,12 +17,19 @@ class ResponseFormatter:
     def ensure_response_tags(response: str) -> str:
         """
         Garante que a resposta tenha tags <RESPOSTA_FINAL>
+        IMPORTANTE: NÃO processa respostas que contêm tools
         """
         if not response:
             return (
                 "<RESPOSTA_FINAL>Oi! Como posso ajudar você com energia solar? "
                 "☀️</RESPOSTA_FINAL>"
             )
+        
+        # CRÍTICO: Detecta se a resposta contém uma tool e NÃO a processa
+        tool_pattern = r'\[\w+[:\.].*?\]'
+        if re.search(tool_pattern, response):
+            emoji_logger.system_debug("🔧 Tool detectada na resposta - não adicionando tags RESPOSTA_FINAL")
+            return response
 
         has_opening = "<RESPOSTA_FINAL>" in response
         has_closing = "</RESPOSTA_FINAL>" in response
