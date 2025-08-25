@@ -169,11 +169,39 @@ async def process_presence_update(data: Dict[str, Any]):
         )
 
 
+# Cache para deduplicação de webhooks CONTACTS_UPDATE
+_contacts_update_cache = {}
+_cache_ttl = 30  # 30 segundos
+
 async def process_contacts_update(data: Dict[str, Any]):
     """Processa atualizações de contatos para extrair pushName e atualizar nomes no Supabase"""
     try:
         from app.integrations.supabase_client import supabase_client
         import json
+        import time
+        
+        # DEDUPLICAÇÃO DE WEBHOOKS - Evita processamento duplicado
+        contact_data = data.get('data', data)
+        if isinstance(contact_data, list) and contact_data:
+            contact_data = contact_data[0]
+        
+        remote_jid = contact_data.get('remoteJid', '') if isinstance(contact_data, dict) else ''
+        current_time = time.time()
+        
+        # Limpar cache expirado
+        expired_keys = [k for k, v in _contacts_update_cache.items() if current_time - v > _cache_ttl]
+        for key in expired_keys:
+            del _contacts_update_cache[key]
+        
+        # Verificar se webhook já foi processado recentemente
+        cache_key = f"contacts_update_{remote_jid}"
+        if cache_key in _contacts_update_cache:
+            time_since_last = current_time - _contacts_update_cache[cache_key]
+            emoji_logger.system_info(f"🚫 CONTACTS_UPDATE ignorado - Duplicata detectada para {remote_jid} (processado há {time_since_last:.1f}s)")
+            return
+        
+        # Marcar como processado
+        _contacts_update_cache[cache_key] = current_time
         
         # LOGGING ULTRA-DETALHADO PARA DEBUG CIRÚRGICO
         emoji_logger.system_info("=== INÍCIO ANÁLISE CONTACTS_UPDATE ===")
