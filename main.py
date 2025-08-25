@@ -45,9 +45,11 @@ async def lifespan(app: FastAPI):
         await redis_client.connect()
         emoji_logger.system_ready("Redis")
         
-        # Inicializar Supabase
-        await supabase_client.initialize()
-        emoji_logger.system_ready("Supabase")
+        # Testar conexão Supabase
+        if await supabase_client.test_connection():
+            emoji_logger.system_ready("Supabase")
+        else:
+            emoji_logger.system_error("Supabase", "Falha na conexão")
         
         # Inicializar Message Buffer
         await message_buffer.initialize()
@@ -89,7 +91,7 @@ async def lifespan(app: FastAPI):
         yield
         
     except Exception as e:
-        emoji_logger.error(f"Erro durante startup: {e}")
+        emoji_logger.system_error("Startup", f"Erro durante startup: {e}")
         raise
     
     # Shutdown
