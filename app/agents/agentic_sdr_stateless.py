@@ -207,10 +207,12 @@ class AgenticSDRStateless:
     async def _sync_external_services(self, lead_info: dict, phone: str) -> dict:
         """
         Cria e sincroniza informações do lead com Supabase e Kommo.
-        A criação só ocorre quando o lead tem um nome e ainda não tem um ID do Supabase.
+        A criação ocorre quando o lead ainda não tem um ID do Supabase, garantindo
+        captura de todos os contatos desde a primeira interação.
         """
-        # CONDIÇÃO DE CRIAÇÃO: Lead tem nome, mas ainda não foi salvo no banco (sem 'id')
-        if lead_info.get("name") and not lead_info.get("id"):
+        # CONDIÇÃO DE CRIAÇÃO: Lead ainda não foi salvo no banco (sem 'id')
+        # Removida exigência de nome para capturar todos os contatos desde primeira interação
+        if not lead_info.get("id"):
             emoji_logger.system_info(f"Iniciando criação de novo lead para {phone} com nome '{lead_info.get('name')}'.")
             try:
                 # 1. Criar no Supabase para obter um ID estável
@@ -484,9 +486,11 @@ class AgenticSDRStateless:
         elif service_name == "crm":
             if method_name == "update_stage":
                 stage = params.get("stage", "").lower()
+                phone_number = lead_info.get("phone_number")
                 return await self.crm_service.update_lead_stage(
-                    lead_info.get("kommo_lead_id"),
-                    stage
+                    lead_id=lead_info.get("kommo_lead_id"),
+                    stage_name=stage,
+                    phone_number=phone_number
                 )
             elif method_name == "update_field":
                 field_name = params.get("field")

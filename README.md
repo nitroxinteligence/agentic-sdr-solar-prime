@@ -1,11 +1,11 @@
-# 🤖 AGENTIC SDR - SOLAR PRIME
+# 🤖 Agentic SDR - SolarPrime
 
 <div align="center">
   
   ![Version](https://img.shields.io/badge/version-0.5-blue)
   ![Status](https://img.shields.io/badge/status-100%25%20functional-success)
   ![License](https://img.shields.io/badge/license-MIT-green)
-  ![Python](https://img.shields.io/badge/python-3.11+-blue)
+  ![Python](https://img.shields.io/badge/python-3.9+-blue)
   
   **Sistema Inteligente de Vendas com IA para Energia Solar**
   
@@ -17,340 +17,175 @@
 
 ## 🌟 Sobre o Projeto
 
-**AGENTIC SDR - SOLAR PRIME** é um sistema de automação de vendas alimentado por IA, especializado no setor de energia solar. Com 100% de funcionalidade operacional, o sistema combina agentes inteligentes, processamento multimodal, Tool Calling robusto e integrações enterprise-ready para revolucionar o processo de vendas.
+**Agentic SDR - SolarPrime** é um sistema de automação de vendas alimentado por IA, especializado no setor de energia solar. Com 100% de funcionalidade operacional, o sistema combina um agente inteligente (Helen Vieira), processamento multimodal, um robusto sistema de `Tool Calling` e integrações `enterprise-ready` para revolucionar o processo de qualificação e vendas.
 
 ### 🎯 Características Principais
 
-- **100% Funcional** - Sistema pronto para produção enterprise
-- **Tool Calling System** - Zero alucinações, 100% precisão
-- **Arquitetura STATELESS** - ZERO complexidade, 100% isolamento
-- **Ultra-Humanização** - Conversas naturais e empáticas (Helen)
-- **Multimodal** - Processa texto, imagem, áudio e documentos
-- **100% Configurável** - Via arquivo `.env`
-- **Thread-Safe** - Multi-tenant e totalmente escalável
+- **100% Funcional**: Sistema pronto para produção.
+- **Arquitetura STATELESS**: Garante escalabilidade, robustez e total isolamento entre conversas.
+- **Tool Calling System**: Zero alucinações em tarefas críticas. O agente usa ferramentas para interagir com sistemas externos, garantindo 100% de precisão.
+- **Ultra-Humanização**: A agente "Helen" possui uma personalidade empática, com identidade regional e inteligência emocional para criar conversas naturais.
+- **Multimodal**: Processa texto, imagem (OCR de contas de luz) e áudio (transcrição).
+- **100% Configurável**: Todo o comportamento do sistema é controlado via arquivo `.env`.
+- **Thread-Safe**: Projetado para alta concorrência, capaz de gerenciar múltiplos leads simultaneamente sem conflitos.
 
 ## 🚀 Features
 
-### 🤖 AGENTIC SDR - Agente Principal
-- **Helen**: Personalidade ultra-humanizada de consultora solar
-- **Stateless Design**: Cada conversa completamente isolada
-- **Análise Contextual**: Compreende intenção e contexto em tempo real
-- **Processamento Multimodal**: Imagens (OCR), áudio, documentos
-- **Decisão Inteligente**: Ativa serviços especializados automaticamente
-- **Monitor de Conversas**: Detecta inatividade e agenda follow-ups
+### 🤖 Agente Principal (AgenticSDRStateless)
+- **Helen Vieira**: Persona ultra-humanizada de uma consultora sênior da SolarPrime.
+- **Design Stateless**: Cada mensagem cria uma nova instância do agente, garantindo isolamento total.
+- **Análise de Contexto**: Compreende intenção, sentimento e extrai informações relevantes em tempo real.
+- **Processamento Multimodal**: Extrai dados de imagens (contas de luz) e transcreve mensagens de áudio.
+- **Sistema de Ferramentas**: Ativa serviços especializados (Calendário, CRM, Follow-up) de forma autônoma e precisa.
+- **Base de Conhecimento**: Consulta o Supabase para responder a perguntas técnicas e sobre objeções, garantindo consistência.
 
-### 👥 Time de Agentes Especializados
-| Agente | Função | Status |
-|--------|--------|--------|
-| CalendarAgent | Agendamento Google Calendar | ✅ 100% |
-| CRMAgent | Integração Kommo CRM | ✅ 100% |
-| FollowUpAgent | Nurturing automático | ✅ 100% |
-| QualificationAgent | Lead scoring | ✅ 100% |
-| KnowledgeAgent | Base de conhecimento | ✅ 100% |
-| BillAnalyzerAgent | Análise de contas | ✅ 100% |
-
-### ⚡ Melhorias v0.5 (16/08/2025)
-- ✅ **Tool Calling System** - Sistema robusto de chamada de ferramentas
-- ✅ **Zero Alucinações** - Regras anti-alucinação críticas implementadas
-- ✅ **Parser de Tool Calls** - Sintaxe [TOOL: service.method | param=value]
-- ✅ **Executor Inteligente** - Executa calendar, CRM e follow-up tools
-- ✅ **Re-injeção de Contexto** - Tool results integrados na resposta
-- ✅ **Detecção Aprimorada** - Captura "amanhã pode ser?", "pode ser às 9h?"
-- ✅ **Correções Críticas** - Sem saudações repetidas, sem loops de agendamento
+### 🛠️ Serviços Integrados
+| Serviço | Função | Status |
+|---|---|---|
+| **CalendarService** | Agendamento, reagendamento e cancelamento no Google Calendar via OAuth 2.0, com criação de links do Google Meet. | ✅ 100% |
+| **CRMService** | Sincronização completa com Kommo CRM: criação/atualização de leads, mudança de estágios e adição de tags. | ✅ 100% |
+| **FollowUpService** | Agendamento de mensagens de acompanhamento (follow-ups) através do Supabase e Redis. | ✅ 100% |
+| **MultimodalProcessor**| Processa mídias como áudio e imagens para extração de texto. | ✅ 100% |
+| **ModelManager** | Gerencia a comunicação com os LLMs (Gemini), incluindo a lógica de retry e fallback. | ✅ 100% |
 
 ## 📦 Instalação Rápida
 
 ### Pré-requisitos
-- Python 3.11+
-- Docker (opcional, recomendado)
-- Contas: Supabase, Evolution API, Kommo CRM, Google Cloud
+- Python 3.9+
+- Docker e Docker Compose
+- Contas: Supabase, Evolution API, Kommo CRM, Google Cloud (com OAuth 2.0 configurado)
 
 ### 1. Clone o Repositório
 ```bash
-git clone https://github.com/nitroxinteligence/agentic-sdr-solar-prime.git
-cd agentic-sdr-solar-prime
+git clone <URL_DO_REPOSITORIO>
+cd agent-sdr-ia-solarprime
 ```
 
 ### 2. Configure o Ambiente
-```bash
-cp .env.example .env
-# Edite .env com suas credenciais
-```
+- Renomeie `.env.example` para `.env`.
+- Preencha **todas** as variáveis de ambiente com suas credenciais.
 
-### 3. Instale Dependências
+### 3. Instale Dependências e Execute com Docker (Recomendado)
 ```bash
-# Opção 1: Python
-pip install -r requirements.txt
-
-# Opção 2: Docker (recomendado)
-docker-compose up -d
+docker-compose up --build -d
 ```
 
 ### 4. Configure o Banco de Dados
-Execute no Supabase SQL Editor:
-```sql
--- Em ordem:
-sqls/tabela-*.sql     -- Criar tabelas
-sqls/fix_*.sql        -- Aplicar correções
-sqls/migration_*.sql  -- Migrações
-```
+- Acesse o SQL Editor do seu projeto Supabase.
+- Execute os scripts da pasta `sqls/` na ordem correta para criar e popular as tabelas necessárias.
 
-### 5. Execute
+### 5. Acompanhe os Logs
 ```bash
-# Desenvolvimento
-python main.py
-
-# Produção
-uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
+docker-compose logs -f
 ```
 
-## ⚙️ Configuração
-
-### Variáveis Essenciais (.env)
+## ⚙️ Configuração Essencial (.env)
 
 ```env
 # Supabase
 SUPABASE_URL=https://seu-projeto.supabase.co
-SUPABASE_KEY=sua-chave
+SUPABASE_KEY=sua-chave-anon
 
-# Evolution API
+# Evolution API (WhatsApp)
 EVOLUTION_API_URL=http://localhost:8080
 EVOLUTION_API_KEY=sua-api-key
 EVOLUTION_INSTANCE_NAME=sua-instancia
 
 # Kommo CRM
 KOMMO_BASE_URL=https://sua-conta.kommo.com
-KOMMO_LONG_LIVED_TOKEN=seu-token
-KOMMO_PIPELINE_ID=11672895
+KOMMO_LONG_LIVED_TOKEN=seu-token-de-longa-duração
+KOMMO_PIPELINE_ID=123456
 
-# Google
+# Google (OAuth 2.0 é crucial para o calendário)
 GOOGLE_API_KEY=sua-api-key-gemini
 GOOGLE_CALENDAR_ID=seu-calendario@gmail.com
-
-# Controle de Agentes
-ENABLE_CALENDAR_AGENT=true
-ENABLE_CRM_AGENT=true
-ENABLE_FOLLOWUP_AGENT=true
+GOOGLE_OAUTH_CLIENT_ID=seu-client-id
+GOOGLE_OAUTH_CLIENT_SECRET=seu-client-secret
+GOOGLE_OAUTH_REFRESH_TOKEN=seu-refresh-token-obtido-via-script
 
 # IA
 PRIMARY_AI_MODEL=gemini-1.5-pro
-FALLBACK_AI_MODEL=gpt-4-turbo
 AI_TEMPERATURE=0.7
 ```
 
-## 🐳 Deploy
+## 🛠️ Sistema de Tool Calling
 
-### Docker Compose
-```yaml
-version: '3.8'
-services:
-  app:
-    image: agentic-sdr:latest
-    env_file: .env
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./logs:/app/logs
-    restart: unless-stopped
-```
-
-### Deploy em Produção
-```bash
-cd prod
-docker-compose -f docker-compose.production.yml up -d
-```
-
-## 🛠️ Tool Calling System
-
-### Visão Geral
-O sistema Tool Call permite que o agente execute ferramentas de forma controlada, eliminando completamente alucinações sobre horários, agendamentos e dados.
+O agente utiliza um sistema de chamada de ferramentas para interagir com o mundo real, eliminando alucinações.
 
 ### Sintaxe
-```
-[TOOL: service.method | param1=value1 | param2=value2]
-```
+`[TOOL: service.method | param1=value1 | param2=value2]`
 
 ### Ferramentas Disponíveis
 | Ferramenta | Descrição | Exemplo |
-|------------|-----------|---------|
-| `calendar.check_availability` | Verifica horários disponíveis | `[TOOL: calendar.check_availability]` |
-| `calendar.schedule_meeting` | Agenda reunião com Google Meet | `[TOOL: calendar.schedule_meeting \| date=2025-08-17 \| time=09:00 \| email=cliente@email.com]` |
-| `calendar.suggest_times` | Sugere melhores horários | `[TOOL: calendar.suggest_times]` |
-| `crm.update_stage` | Atualiza estágio no CRM | `[TOOL: crm.update_stage \| stage=qualificado]` |
-| `crm.update_field` | Atualiza campo específico | `[TOOL: crm.update_field \| field=phone \| value=11999999999]` |
-| `followup.schedule` | Agenda follow-up automático | `[TOOL: followup.schedule \| hours=24 \| message=Oi! Tudo bem?]` |
-
-### Anti-Alucinação
-- ❌ **NUNCA** inventa horários sem usar `calendar.check_availability`
-- ❌ **NUNCA** confirma agendamentos sem usar `calendar.schedule_meeting`
-- ✅ **SEMPRE** transparente sobre ações sendo executadas
-- ✅ **SEMPRE** usa dados reais dos tools
-
-## 🧪 Testes
-
-```bash
-# Teste completo do sistema
-python test_system_complete.py
-
-# Teste do sistema Tool Call (NOVO)
-python test_tool_call_system.py
-
-# Teste de correções de repetição e agendamento
-python test_repeticao_agendamento_fix.py
-
-# Teste de filtro de frases
-python test_filtro_frases.py
-
-# Teste da implementação Stateless
-python test_stateless_implementation.py
-
-# Teste multimodal
-python test_multimodal_production_ready.py
-
-# Teste de performance (500+ mensagens)
-python test_500_messages.py
-```
+|---|---|---|
+| `calendar.check_availability` | Verifica horários disponíveis para uma data. | `[TOOL: calendar.check_availability \| date_request=2025-08-25]` |
+| `calendar.schedule_meeting` | Agenda uma reunião com link do Google Meet. | `[TOOL: calendar.schedule_meeting \| date=2025-08-25 \| time=10:00]` |
+| `calendar.reschedule_meeting`| Reagenda a última reunião do lead. | `[TOOL: calendar.reschedule_meeting \| date=2025-08-26 \| time=11:00]` |
+| `calendar.cancel_meeting` | Cancela a última reunião agendada. | `[TOOL: calendar.cancel_meeting]` |
+| `crm.update_stage` | Atualiza o estágio do lead no funil do Kommo. | `[TOOL: crm.update_stage \| stage_name=reuniao_agendada]` |
+| `crm.update_lead` | Atualiza campos específicos do lead no Kommo. | `[TOOL: crm.update_lead \| bill_value=500]` |
+| `followup.schedule_followup` | Agenda uma mensagem de acompanhamento. | `[TOOL: followup.schedule_followup \| delay_hours=24 \| message=Oi! Tudo bem?]` |
+| `knowledge.search` | Busca informações na base de conhecimento. | `[TOOL: knowledge.search \| query=qual a garantia das placas?]` |
 
 ## 📊 Arquitetura
 
 ```mermaid
 graph TD
-    WhatsApp[WhatsApp] --> Evolution[Evolution API]
-    Evolution --> Webhook[Webhook]
-    Webhook --> Buffer[Message Buffer]
-    Buffer --> AGENTIC[AGENTIC SDR Stateless]
-    AGENTIC --> Parser[Tool Call Parser]
-    Parser --> Executor[Tool Executor]
-    Executor --> Team[Team Coordinator]
-    AGENTIC --> Monitor[Conversation Monitor]
-    Team --> Calendar[Calendar Service]
-    Team --> CRM[CRM Service]
-    Team --> FollowUp[FollowUp Service]
-    Monitor --> Supabase[Supabase DB]
-    Calendar --> Google[Google Calendar OAuth]
-    CRM --> Kommo[Kommo CRM]
-    FollowUp --> Supabase
+    subgraph "Usuário"
+        WhatsApp
+    end
+
+    subgraph "Infraestrutura"
+        Evolution[Evolution API]
+        FastAPI[FastAPI App]
+        Supabase[Supabase DB]
+        Redis[Redis Cache/Lock]
+        Kommo[Kommo CRM]
+        Google[Google Calendar]
+    end
+
+    subgraph "Aplicação"
+        Webhook[API Webhook]
+        Buffer[Message Buffer]
+        Agent[AgenticSDR Stateless]
+        Model[Model Manager]
+        Tools[Tool Executor]
+        Services[Calendar/CRM/FollowUp Services]
+    end
+
+    WhatsApp --> Evolution
+    Evolution --> Webhook
+    Webhook --> Buffer
+    Buffer --> Agent
+    Agent --> Model
+    Agent --> Tools
+    Tools --> Services
+    Services --> Kommo
+    Services --> Google
+    Agent -- Contexto --> Supabase
+    Agent -- Cache/Lock --> Redis
 ```
-
-## 📈 Métricas de Performance
-
-| Métrica | Valor |
-|---------|-------|
-| Taxa de Sucesso | 100% |
-| Tempo de Resposta | <2s |
-| Inicialização | <0.5s |
-| Uptime | 99.9% |
-| Mensagens Simultâneas | 500+ |
-| Isolamento | 100% |
-| Thread-Safety | 100% |
-| Tool Call Accuracy | 100% |
-| Anti-Alucinação | 100% |
-
-## 🏗️ Nova Arquitetura Stateless
-
-### Principais Mudanças
-- **Sem Singleton**: Cada requisição cria sua própria instância
-- **Sem Estado Compartilhado**: 100% isolamento entre conversas
-- **Thread-Safe**: Suporta múltiplas requisições simultâneas
-- **Multi-Tenant Ready**: Preparado para múltiplos clientes
-
-### Componentes Core
-```python
-# app/agents/agentic_sdr_stateless.py
-class AgenticSDRStateless:
-    # Cada requisição é completamente isolada
-    # Não há estado compartilhado entre conversas
-    
-# app/core/team_coordinator.py
-class TeamCoordinator:
-    # Coordenação SIMPLES de serviços
-    # Threshold dinâmico por serviço
-    
-# app/services/conversation_monitor.py
-class ConversationMonitor:
-    # Detecta inatividade e agenda follow-ups
-    # Sistema inteligente de reengajamento
-```
-
-## 📚 Documentação
-
-### 🏗️ Arquitetura e Sistema
-- [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) - Arquitetura completa do sistema v0.3
-- [CLAUDE.md](CLAUDE.md) - Guia completo para desenvolvimento com Claude Code
-- [Implementação Stateless](docs/docs-3/ANALISE_IMPLEMENTACAO_STATELESS.md) - Decisão e implementação da arquitetura stateless
-
-### 📖 Guias de Referência
-- [Google Calendar OAuth Setup](docs/reference/GOOGLE_CALENDAR_OAUTH_SETUP.md) - Configuração do OAuth 2.0
-- [Kommo CRM Integration](docs/reference/CRM_DYNAMIC_SYNC_DOCUMENTATION.md) - Integração completa com Kommo
-- [AGNO Framework Guide](docs/reference/AGNO_FRAMEWORK_GUIDE.md) - Documentação do framework
-- [Transbordo System](docs/reference/TRANSBORDO_DOCUMENTATION.md) - Sistema de handoff para humanos
-
-### 📊 Relatórios Atuais
-- [Release Notes v0.3](docs/docs-3/RELEASE_NOTES_v03.md) - Últimas funcionalidades implementadas
-- [Validação do Sistema](docs/docs-3/RELATORIO_VALIDACAO_v03.md) - Relatório de validação completo
-- [Arquitetura Atual](docs/docs-2/ARQUITETURA_ATUAL.md) - Visão geral dos componentes
-
-### 📦 Arquivo Histórico
-- [Documentação Histórica](docs/archive/) - 150+ documentos de desenvolvimento (93 arquivados)
-  - `phase1-gemini-errors/` - Problemas resolvidos com API Gemini
-  - `phase2-refactoring/` - Processo de refatoração modular
-  - `phase3-stateless/` - Migração para arquitetura stateless
-  - `agno-framework/` - Evolução do uso do framework AGNO
-  - `diagnostics/` - Análises e diagnósticos resolvidos
-  - `implementations/` - Implementações concluídas
-  - `validations/` - Relatórios de validação anteriores
 
 ## 🔧 Stack Tecnológica
 
-- **Core**: Python 3.11+, AGnO Framework v1.7.6
-- **Arquitetura**: Stateless, Thread-Safe, Multi-Tenant
-- **API**: FastAPI, Evolution API v2
-- **Database**: Supabase (PostgreSQL + pgvector)
-- **Cache**: Redis (opcional)
-- **AI**: Google Gemini 1.5 Pro, OpenAI GPT-4
-- **Auth**: Google OAuth 2.0
-- **Deploy**: Docker, EasyPanel
-
-## 🚨 Troubleshooting
-
-| Problema | Solução |
-|----------|---------|
-| Timeout Kommo | Sistema tem retry automático com backoff |
-| Campos não atualizando | Verificar IDs em `crm_service_100_real.py` |
-| NLTK download runtime | Rebuild Docker (já tem pre-download) |
-| Follow-up não agenda | Verificar formato phone_number |
+- **Core**: Python 3.9+, FastAPI
+- **Arquitetura**: 100% Stateless, Orientada a Serviços
+- **API Gateway**: Evolution API (WhatsApp)
+- **Banco de Dados**: Supabase (PostgreSQL)
+- **Cache & Locks**: Redis
+- **IA**: Google Gemini 1.5 Pro
+- **Autenticação**: Google OAuth 2.0 (para Calendário)
+- **CRM**: Kommo
+- **Deploy**: Docker, Docker Compose
 
 ## 🤝 Contribuindo
 
-1. Fork o projeto
-2. Crie sua feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit suas mudanças (`git commit -m 'Add AmazingFeature'`)
-4. Push para a branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
+1.  Faça um Fork do projeto.
+2.  Crie sua Feature Branch (`git checkout -b feature/AmazingFeature`).
+3.  Faça o Commit de suas mudanças (`git commit -m 'Add some AmazingFeature'`).
+4.  Faça o Push para a Branch (`git push origin feature/AmazingFeature`).
+5.  Abra um Pull Request.
 
 ## 📝 Licença
 
 Distribuído sob a licença MIT. Veja `LICENSE` para mais informações.
-
-## 👥 Time
-
-- **Desenvolvimento**: [Nitrox Intelligence](https://github.com/nitroxinteligence)
-- **Arquitetura**: AGnO Framework Team
-- **Deploy**: DevOps Team
-
-## 📞 Contato
-
-- **GitHub Issues**: [Reportar Bug](https://github.com/nitroxinteligence/agentic-sdr-solar-prime/issues)
-- **Email**: suporte@nitroxinteligence.com
-
----
-
-<div align="center">
-  
-  **AGENTIC SDR - SOLAR PRIME v0.5**
-  
-  *Sistema Inteligente de Vendas com Arquitetura ZERO Complexidade*
-  
-  ⭐ Star este repositório se este projeto ajudou você!
-  
-</div>
