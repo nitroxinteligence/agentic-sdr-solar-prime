@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 import pytz
 import re
+import traceback
 
 from app.integrations.supabase_client import supabase_client
 from app.core.model_manager import ModelManager

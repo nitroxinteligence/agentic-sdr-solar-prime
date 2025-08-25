@@ -52,13 +52,12 @@ async def test_lead_creation_without_name():
         print(f"📱 Processando mensagem: '{test_message}' do número: {test_phone}")
         
         # Processar mensagem
-        response, updated_context = await agent.process_message(
+        response, updated_lead_info = await agent.process_message(
             message=test_message,
             execution_context=execution_context
         )
         
-        # Verificar se lead foi criado
-        updated_lead_info = updated_context.get("lead_info", {})
+        # O process_message retorna (response, lead_info) diretamente
         
         if updated_lead_info.get("id"):
             print(f"✅ SUCESSO! Lead criado com ID: {updated_lead_info.get('id')}")

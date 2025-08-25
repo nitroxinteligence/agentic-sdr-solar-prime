@@ -265,8 +265,13 @@ class CRMServiceReal:
         if not self.is_initialized:
             await self.initialize()
         try:
+            # Garantir que name nunca seja None/null para o Kommo
+            lead_name = lead_data.get("name")
+            if not lead_name:  # None, empty string, ou falsy
+                lead_name = "Lead sem nome"
+            
             kommo_lead = {
-                "name": lead_data.get("name", "Lead sem nome"),
+                "name": lead_name,
                 "pipeline_id": self.pipeline_id,
                 "_embedded": {"tags": [{"name": "SDR_IA"}]}
             }
