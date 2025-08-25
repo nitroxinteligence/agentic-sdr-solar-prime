@@ -605,7 +605,7 @@ async def create_agent_with_context(
         # Continua com a criação do contexto se o handoff não estiver ativo
         conversation_history = []
         if conversation_id:
-            conversation_history = await supabase_client.get_conversation_messages(conversation_id, limit=500)
+            conversation_history = await supabase_client.get_conversation_messages(conversation_id, limit=200)
 
         execution_context = {
             "phone": phone,

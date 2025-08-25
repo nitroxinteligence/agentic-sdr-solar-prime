@@ -640,7 +640,7 @@ class AgenticSDRStateless:
                 "Histórico longo detectado, truncando para as últimas 200 mensagens.",
                 original_size=len(messages_for_model)
             )
-            messages_for_model = messages_for_model[-30:]
+            messages_for_model = messages_for_model[-200:]
 
         # VERIFICAÇÃO CRÍTICA: Garantir que não estamos enviando conteúdo vazio.
         if not messages_for_model or not any(msg.get("content") for msg in messages_for_model):
