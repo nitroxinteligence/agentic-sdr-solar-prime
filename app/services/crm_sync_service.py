@@ -40,18 +40,23 @@ class CRMDataSync:
             if tag:
                 tags_to_add.append(tag)
 
-        # 2. Sincronizar "VALOR CONTA DE ENERGIA"
+        # 2. Sincronizar "NOME" do lead
+        name = lead_info.get("name")
+        if name:
+            update_payload["name"] = name
+
+        # 3. Sincronizar "VALOR CONTA DE ENERGIA"
         bill_value = lead_info.get("bill_value")
         if bill_value:
             update_payload["bill_value"] = bill_value
         
-        # 3. Sincronizar "WHATSAPP" (se necessário, embora geralmente seja pego no início)
+        # 4. Sincronizar "WHATSAPP" (se necessário, embora geralmente seja pego no início)
         phone = lead_info.get("phone_number")
         if phone:
             # O campo 'phone' no Kommo é gerenciado pelo 'whatsapp' no nosso mapeamento
             update_payload["phone"] = phone
 
-        # 4. Lógica para tag "sem-resposta" e mudança de estágio
+        # 5. Lógica para tag "sem-resposta" e mudança de estágio
         # (Esta lógica pode ser mais complexa e depender do monitor de conversas)
         # Exemplo simples: se a última mensagem for do agente e não houver resposta por um tempo.
         # A implementação real virá da análise do estado do lead.
