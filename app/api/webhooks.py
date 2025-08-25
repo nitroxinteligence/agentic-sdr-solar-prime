@@ -810,6 +810,8 @@ async def evolution_webhook(
 async def process_new_message(data: Any):
     """Processa cada nova mensagem recebida, normalizando o payload para sempre ser uma lista."""
     try:
+        emoji_logger.system_debug(f"🔥 DEBUG: process_new_message CHAMADA com data: {type(data)}")
+        
         if isinstance(data, list):
             messages = data
         elif isinstance(data, dict):
@@ -819,6 +821,7 @@ async def process_new_message(data: Any):
             return
 
         emoji_logger.webhook_process(f"Iniciando processamento de {len(messages)} nova(s) mensagem(ns)")
+        emoji_logger.system_debug(f"🔥 DEBUG: Processando {len(messages)} mensagens")
 
         if not messages:
             emoji_logger.system_warning("Payload de mensagens vazio")

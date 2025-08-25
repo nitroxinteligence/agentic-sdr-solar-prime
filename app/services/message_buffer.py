@@ -34,12 +34,19 @@ class MessageBuffer:
         """
         if phone not in self.queues:
             self.queues[phone] = asyncio.Queue(maxsize=self.max_size)
+        
+        # Só cria uma nova task se não existir uma ativa para este telefone
+        if phone not in self.tasks or self.tasks[phone].done():
             self.tasks[phone] = asyncio.create_task(self._process_queue(phone))
+            emoji_logger.system_debug(
+                f"Nova task de processamento criada para {phone}"
+            )
+        
         message = {"content": content, "data": message_data, "media_data": media_data}
         try:
             self.queues[phone].put_nowait(message)
             emoji_logger.system_debug(
-                f"Mensagem adicionada ao buffer para {phone}"
+                f"Mensagem adicionada ao buffer para {phone} (task ativa: {not self.tasks[phone].done()})"
             )
         except asyncio.QueueFull:
             emoji_logger.system_warning(f"Buffer para {phone} cheio. O processamento ocorrerá em breve.")
@@ -66,9 +73,8 @@ class MessageBuffer:
                         emoji_logger.system_debug(f"Primeira mensagem recebida para {phone}, aguardando mensagens adicionais...")
                     
                     # Aguarda um período adicional para capturar mensagens sequenciais
-                    # Isso resolve o problema de mensagens que chegam com intervalos de poucos segundos
-                    additional_wait_time = 5.0  # 5 segundos para capturar mensagens relacionadas
-                    end_time = asyncio.get_event_loop().time() + additional_wait_time
+                    # Usa o timeout configurado para capturar mensagens relacionadas
+                    end_time = asyncio.get_event_loop().time() + self.timeout
                     
                     while asyncio.get_event_loop().time() < end_time:
                         try:
@@ -102,10 +108,9 @@ class MessageBuffer:
         except Exception as e:
             emoji_logger.system_error("Message Buffer", f"Erro ao processar queue para {phone}: {e}")
         finally:
-            # Limpa a task e a fila para este telefone
+            # Limpa apenas a task para este telefone
+            # Mantém queue e lock para futuras mensagens
             self.tasks.pop(phone, None)
-            self.queues.pop(phone, None)
-            self.processing_locks.pop(phone, None)
 
     async def _process_messages(
             self, phone: str, messages: List[Dict]
@@ -155,13 +160,14 @@ class MessageBuffer:
         )
 
     async def shutdown(self) -> None:
-        """Cancela todas as tasks ativas"""
+        """Cancela todas as tasks ativas e limpa recursos"""
         for task in self.tasks.values():
             task.cancel()
         if self.tasks:
             await asyncio.gather(*self.tasks.values(), return_exceptions=True)
         self.queues.clear()
         self.tasks.clear()
+        self.processing_locks.clear()
 
 
 message_buffer: Optional[MessageBuffer] = None

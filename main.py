@@ -57,8 +57,13 @@ async def lifespan(app: FastAPI):
         else:
             emoji_logger.system_error("Supabase", "Falha na conexão")
         
-        # Inicializar Message Buffer
-        message_buffer = get_message_buffer()
+        # Inicializar Message Buffer com configurações corretas
+        from app.services.message_buffer import set_message_buffer, MessageBuffer
+        message_buffer = MessageBuffer(
+            timeout=settings.message_buffer_timeout,
+            max_size=10
+        )
+        set_message_buffer(message_buffer)
         emoji_logger.system_ready("Message Buffer", data={"timeout": f"{message_buffer.timeout}s"})
         
         # Inicializar Message Splitter
