@@ -63,14 +63,33 @@ class MessageBuffer:
                     first_msg = await asyncio.wait_for(queue.get(), timeout=self.timeout)
                     if first_msg:
                         messages.append(first_msg)
+                        emoji_logger.system_debug(f"Primeira mensagem recebida para {phone}, aguardando mensagens adicionais...")
                     
-                    # Tenta coletar mais mensagens que chegaram em um curto espaço de tempo
-                    while not queue.empty():
+                    # Aguarda um período adicional para capturar mensagens sequenciais
+                    # Isso resolve o problema de mensagens que chegam com intervalos de poucos segundos
+                    additional_wait_time = 5.0  # 5 segundos para capturar mensagens relacionadas
+                    end_time = asyncio.get_event_loop().time() + additional_wait_time
+                    
+                    while asyncio.get_event_loop().time() < end_time:
                         try:
-                            msg = queue.get_nowait()
+                            # Aguarda por mais mensagens com timeout curto
+                            remaining_time = end_time - asyncio.get_event_loop().time()
+                            if remaining_time <= 0:
+                                break
+                            
+                            msg = await asyncio.wait_for(queue.get(), timeout=min(remaining_time, 1.0))
                             if msg:
                                 messages.append(msg)
-                        except asyncio.QueueEmpty:
+                                emoji_logger.system_debug(f"Mensagem adicional capturada para {phone} (total: {len(messages)})")
+                        except asyncio.TimeoutError:
+                            # Timeout normal - verifica se há mais mensagens na fila
+                            while not queue.empty():
+                                try:
+                                    msg = queue.get_nowait()
+                                    if msg:
+                                        messages.append(msg)
+                                except asyncio.QueueEmpty:
+                                    break
                             break
                 
                 except asyncio.TimeoutError:
@@ -108,7 +127,7 @@ class MessageBuffer:
 
         combined_content = "\n".join([msg.get("content", "") for msg in valid_messages if msg.get("content")] )
         emoji_logger.system_info(
-                f"Processando {len(valid_messages)} mensagens combinadas para {phone} (total: {len(combined_content)} chars)"
+                f"🔄 Processando {len(valid_messages)} mensagens combinadas para {phone} (total: {len(combined_content)} chars)"
             )
         # Correção: Usar repr() para exibir o conteúdo de forma segura, incluindo escapes.
         emoji_logger.system_debug(f"Conteúdo combinado para {phone}: {repr(combined_content)}")

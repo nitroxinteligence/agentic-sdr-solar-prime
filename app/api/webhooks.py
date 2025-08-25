@@ -921,7 +921,10 @@ async def process_new_message(data: Any):
                 )
                 return
 
+            emoji_logger.system_debug(f"🔍 Verificando MessageBuffer - enable_message_buffer: {settings.enable_message_buffer}")
+            
             if settings.enable_message_buffer:
+                emoji_logger.system_debug(f"✅ MessageBuffer habilitado - adicionando mensagem ao buffer para {phone}")
                 buffer = get_message_buffer_instance()
                 await buffer.add_message(
                     phone=phone,
@@ -929,7 +932,9 @@ async def process_new_message(data: Any):
                     message_data=message,
                     media_data=media_data
                 )
+                emoji_logger.system_debug(f"📨 Mensagem '{message_content[:50]}...' adicionada ao buffer para {phone}")
             else:
+                emoji_logger.system_debug(f"❌ MessageBuffer desabilitado - processando diretamente")
                 await process_message_with_agent(
                     phone=phone,
                     message_content=message_content,
