@@ -96,7 +96,8 @@ class EvolutionAPIClient:
             self._circuit_breaker_reset_time = (
                 time.time() + self._circuit_breaker_timeout
             )
-            emoji_logger.evolution_error(
+            emoji_logger.system_error(
+                "Evolution API",
                 f"Circuit breaker ativado por {self._circuit_breaker_timeout}s "
                 f"após {self._circuit_breaker_failure_count} falhas"
             )
@@ -150,19 +151,22 @@ class EvolutionAPIClient:
             return response
         except httpx.RequestError as e:
             self._record_failure()
-            emoji_logger.evolution_error(
+            emoji_logger.system_error(
+                "Evolution API",
                 f"Erro de requisição para {e.request.method} {e.request.url}: {e}"
             )
             raise
         except httpx.HTTPStatusError as e:
             self._record_failure()
-            emoji_logger.evolution_error(
+            emoji_logger.system_error(
+                "Evolution API",
                 f"Erro de status {e.response.status_code} para {e.request.method} {e.request.url}: {e.response.text}"
             )
             raise
         except Exception as e:
             self._record_failure()
-            emoji_logger.evolution_error(
+            emoji_logger.system_error(
+                "Evolution API",
                 f"Erro inesperado na requisição {method.upper()} {path}: {e}"
             )
             raise
@@ -184,12 +188,12 @@ class EvolutionAPIClient:
             response = await self._make_request(
                 "post", "/instance/create", json=payload
             )
-            emoji_logger.evolution_success(
+            emoji_logger.system_success(
                 f"Instância {self.instance_name} criada"
             )
             return response.json()
         except Exception as e:
-            emoji_logger.evolution_error(f"Erro ao criar instância: {e}")
+            emoji_logger.system_error("Evolution API", f"Erro ao criar instância: {e}")
             raise
 
     async def get_instance_info(self) -> Dict[str, Any]:
@@ -200,7 +204,8 @@ class EvolutionAPIClient:
             )
             return response.json()
         except Exception as e:
-            emoji_logger.evolution_error(
+            emoji_logger.system_error(
+                "Evolution API",
                 f"Erro ao obter info da instância: {e}"
             )
             raise
@@ -213,11 +218,11 @@ class EvolutionAPIClient:
             )
             data = response.json()
             if "qrcode" in data:
-                emoji_logger.evolution_success("QR Code gerado")
+                emoji_logger.system_success("QR Code gerado")
                 emoji_logger.system_debug(f"QR Code: {data['qrcode'][:50]}...")
             return data
         except Exception as e:
-            emoji_logger.evolution_error(f"Erro ao conectar instância: {e}")
+            emoji_logger.system_error("Evolution API", f"Erro ao conectar instância: {e}")
             raise
 
     async def disconnect_instance(self) -> Dict[str, Any]:
@@ -228,7 +233,7 @@ class EvolutionAPIClient:
             )
             return response.json()
         except Exception as e:
-            emoji_logger.evolution_error(f"Erro ao desconectar instância: {e}")
+            emoji_logger.system_error("Evolution API", f"Erro ao desconectar instância: {e}")
             raise
 
     async def send_text_message(
@@ -277,7 +282,8 @@ class EvolutionAPIClient:
             )
             if response.status_code not in [200, 201]:
                 error_text = response.text
-                emoji_logger.evolution_error(
+                emoji_logger.system_error(
+                    "Evolution API",
                     f"Evolution API retornou erro {response.status_code}: "
                     f"{error_text}"
                 )
@@ -287,21 +293,21 @@ class EvolutionAPIClient:
                 )
             result = response.json()
             if not result.get("key", {}).get("id"):
-                emoji_logger.evolution_error(
+                emoji_logger.system_error(
+                    "Evolution API",
                     f"Mensagem não enviada - sem ID na resposta: {result}"
                 )
                 raise Exception(
                     "Mensagem não foi enviada - resposta inválida da API"
                 )
-            emoji_logger.evolution_send(
-                phone, "text",
-                message_length=len(message),
-                delay_used=round(delay, 2)
+            emoji_logger.system_info(
+                "Evolution API",
+                f"Mensagem de texto enviada para {phone} (tamanho: {len(message)}, delay: {round(delay, 2)}s)"
             )
             emoji_logger.system_debug(f"Resposta da Evolution API: {result}")
             return result
         except Exception as e:
-            emoji_logger.evolution_error(f"Erro ao enviar mensagem: {e}")
+            emoji_logger.system_error("Evolution API", f"Erro ao enviar mensagem: {e}")
             raise
 
     def _calculate_humanized_typing_duration(
@@ -373,14 +379,13 @@ class EvolutionAPIClient:
                 f"/chat/sendPresence/{self.instance_name}",
                 json=payload
             )
-            emoji_logger.evolution_send(
-                phone, "typing",
-                duration_seconds=round(duration, 2),
-                message_length=message_length
+            emoji_logger.system_info(
+                "Evolution API",
+                f"Typing enviado para {phone} (duração: {round(duration, 2)}s, tamanho: {message_length})"
             )
             logger.debug(f"Typing enviado por {duration}s")
         except Exception as e:
-            emoji_logger.evolution_error(f"Erro ao simular digitação: {e}")
+            emoji_logger.system_error("Evolution API", f"Erro ao simular digitação: {e}")
             logger.debug(f"Digitação falhou mas continuando: {e}")
 
     async def send_reaction(self, phone: str, message_id: str, emoji: str):
@@ -404,7 +409,8 @@ class EvolutionAPIClient:
             )
             if response.status_code not in [200, 201]:
                 error_text = response.text
-                emoji_logger.evolution_error(
+                emoji_logger.system_error(
+                    "Evolution API",
                     f"Evolution API retornou erro {response.status_code}: "
                     f"{error_text}"
                 )
@@ -414,20 +420,20 @@ class EvolutionAPIClient:
                 )
             result = response.json()
             if not result.get("key", {}).get("id"):
-                emoji_logger.evolution_error(
+                emoji_logger.system_error(
+                    "Evolution API",
                     f"Reação não enviada - sem ID na resposta: {result}"
                 )
                 raise Exception(
                     "Reação não foi enviada - resposta inválida da API"
                 )
-            emoji_logger.evolution_send("reaction", "emoji", reaction=emoji)
             emoji_logger.system_info(
-                f"Reação '{emoji}' enviada. "
-                f"ID: {result.get('key', {}).get('id', 'N/A')}"
+                "Evolution API",
+                f"Reação '{emoji}' enviada. ID: {result.get('key', {}).get('id', 'N/A')}"
             )
             return result
         except Exception as e:
-            emoji_logger.evolution_error(f"Erro ao enviar reação: {e}")
+            emoji_logger.system_error("Evolution API", f"Erro ao enviar reação: {e}")
             raise
 
     async def send_reply(
@@ -472,7 +478,8 @@ class EvolutionAPIClient:
             )
             if response.status_code not in [200, 201]:
                 error_text = response.text
-                emoji_logger.evolution_error(
+                emoji_logger.system_error(
+                    "Evolution API",
                     f"Evolution API retornou erro {response.status_code}: "
                     f"{error_text}"
                 )
@@ -482,18 +489,20 @@ class EvolutionAPIClient:
                 )
             result = response.json()
             if not result.get("key", {}).get("id"):
-                emoji_logger.evolution_error(
+                emoji_logger.system_error(
+                    "Evolution API",
                     f"Resposta não enviada - sem ID na resposta: {result}"
                 )
                 raise Exception(
                     "Resposta não foi enviada - resposta inválida da API"
                 )
-            emoji_logger.evolution_send(
-                phone, "reply", message_length=len(text)
+            emoji_logger.system_info(
+                "Evolution API",
+                f"Resposta enviada para {phone} (tamanho: {len(text)})"
             )
             return result
         except Exception as e:
-            emoji_logger.evolution_error(f"Erro ao enviar resposta: {e}")
+            emoji_logger.system_error("Evolution API", f"Erro ao enviar resposta: {e}")
             raise
 
     async def send_image(
@@ -521,10 +530,13 @@ class EvolutionAPIClient:
                 f"/message/sendMedia/{self.instance_name}",
                 json=payload
             )
-            emoji_logger.evolution_send(phone, "image")
+            emoji_logger.system_info(
+                "Evolution API",
+                f"Imagem enviada para {phone}"
+            )
             return response.json()
         except Exception as e:
-            emoji_logger.evolution_error(f"Erro ao enviar imagem: {e}")
+            emoji_logger.system_error("Evolution API", f"Erro ao enviar imagem: {e}")
             raise
 
     async def send_document(
@@ -554,10 +566,13 @@ class EvolutionAPIClient:
                 f"/message/sendMedia/{self.instance_name}",
                 json=payload
             )
-            emoji_logger.evolution_send(phone, "document")
+            emoji_logger.system_info(
+                "Evolution API",
+                f"Documento enviado para {phone}"
+            )
             return response.json()
         except Exception as e:
-            emoji_logger.evolution_error(f"Erro ao enviar documento: {e}")
+            emoji_logger.system_error("Evolution API", f"Erro ao enviar documento: {e}")
             raise
 
     async def send_audio(
@@ -584,10 +599,13 @@ class EvolutionAPIClient:
                 f"/message/sendMedia/{self.instance_name}",
                 json=payload
             )
-            emoji_logger.evolution_send(phone, "audio")
+            emoji_logger.system_info(
+                "Evolution API",
+                f"Áudio enviado para {phone}"
+            )
             return response.json()
         except Exception as e:
-            emoji_logger.evolution_error(f"Erro ao enviar áudio: {e}")
+            emoji_logger.system_error("Evolution API", f"Erro ao enviar áudio: {e}")
             raise
 
     async def get_all_chats(self) -> List[Dict[str, Any]]:
@@ -598,7 +616,7 @@ class EvolutionAPIClient:
             )
             return response.json()
         except Exception as e:
-            emoji_logger.evolution_error(f"Erro ao obter chats: {e}")
+            emoji_logger.system_error("Evolution API", f"Erro ao obter chats: {e}")
             raise
 
     async def get_messages(
@@ -774,12 +792,12 @@ class EvolutionAPIClient:
         Implementa retry com backoff exponencial para lidar com timeouts da Evolution API.
         """
         if not message_key:
-            emoji_logger.evolution_warning("Message key vazia fornecida para get_media_as_base64")
+            emoji_logger.system_warning("Message key vazia fornecida para get_media_as_base64")
             return None
         
         try:
             payload = {"message": {"key": message_key}}
-            emoji_logger.evolution_info(f"Tentando obter mídia em base64 para key: {message_key}")
+            emoji_logger.system_info("Evolution API", f"Tentando obter mídia em base64 para key: {message_key}")
             
             response = await self._make_request(
                 "post",
@@ -791,15 +809,16 @@ class EvolutionAPIClient:
                 result = response.json()
                 base64_data = result.get("base64")
                 if base64_data:
-                    emoji_logger.evolution_success("Mídia em base64 obtida com sucesso")
+                    emoji_logger.system_success("Mídia em base64 obtida com sucesso")
                     return base64_data
                 else:
-                    emoji_logger.evolution_warning("Resposta da API não contém dados base64")
+                    emoji_logger.system_warning("Resposta da API não contém dados base64")
                     return None
             elif response.status_code == 400:
                 # Erro 400 específico - pode ser AggregateError
                 error_text = response.text
-                emoji_logger.evolution_error(
+                emoji_logger.system_error(
+                    "Evolution API",
                     f"Erro 400 da Evolution API (possível AggregateError): {error_text}"
                 )
                 # Para erro 400, não fazemos retry - é um erro de dados
@@ -809,7 +828,8 @@ class EvolutionAPIClient:
                     response=response
                 )
             else:
-                emoji_logger.evolution_error(
+                emoji_logger.system_error(
+                    "Evolution API",
                     f"Erro ao buscar mídia em base64: {response.status_code} - {response.text}"
                 )
                 # Para outros códigos de erro, fazemos retry
@@ -819,18 +839,18 @@ class EvolutionAPIClient:
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 400:
                 # Não faz retry para erro 400
-                emoji_logger.evolution_error(f"Erro 400 definitivo: {e}")
+                emoji_logger.system_error("Evolution API", f"Erro 400 definitivo: {e}")
                 return None
             else:
                 # Re-raise para outros códigos para permitir retry
-                emoji_logger.evolution_warning(f"Erro HTTP que será retentado: {e}")
+                emoji_logger.system_warning(f"Erro HTTP que será retentado: {e}")
                 raise
         except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as e:
             # Estes erros serão retentados automaticamente pelo decorador @retry
-            emoji_logger.evolution_warning(f"Erro de rede que será retentado: {e}")
+            emoji_logger.system_warning(f"Erro de rede que será retentado: {e}")
             raise
         except Exception as e:
-            emoji_logger.evolution_error(f"Exceção inesperada ao buscar mídia em base64: {e}")
+            emoji_logger.system_error("Evolution API", f"Exceção inesperada ao buscar mídia em base64: {e}")
             return None
 
     def _format_phone(self, phone: str) -> str:
@@ -967,11 +987,15 @@ class EvolutionAPIClient:
                         return content
                 else:
                     emoji_logger.system_error(
+                        "Evolution Media",
                         f"Erro HTTP ao baixar mídia: {response.status_code} - URL: {media_url[:50]}..., Headers: {dict(response.headers)}"
                     )
                     return None
         except httpx.TimeoutException as e:
-            emoji_logger.system_error(f"Timeout ao baixar mídia - URL: {media_url[:50]}..., Erro: {str(e)}")
+            emoji_logger.system_error(
+                "Evolution Media",
+                f"Timeout ao baixar mídia - URL: {media_url[:50]}..., Erro: {str(e)}"
+            )
             return None
         except httpx.RequestError as e:
             emoji_logger.system_error("Evolution Media", f"Erro de requisição ao baixar mídia: {e} - URL: {media_url[:50]}...")
