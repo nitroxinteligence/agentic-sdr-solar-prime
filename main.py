@@ -82,13 +82,39 @@ async def lifespan(app: FastAPI):
         followup_service = FollowUpServiceReal()
         emoji_logger.system_ready("FollowUp Service")
         
+        # Inicializar Workers Redis (APENAS SE REDIS DISPONÍVEL)
+        followup_scheduler = None
+        followup_worker = None
+        
+        if redis_client.redis_client:
+            try:
+                # Inicializar FollowUp Scheduler
+                from app.services.followup_executor_service import FollowUpSchedulerService
+                followup_scheduler = FollowUpSchedulerService()
+                await followup_scheduler.start()
+                emoji_logger.system_ready("FollowUp Scheduler", data={"interval": "15s"})
+                
+                # Inicializar FollowUp Worker  
+                from app.services.followup_worker import FollowUpWorker
+                followup_worker = FollowUpWorker()
+                await followup_worker.start()
+                emoji_logger.system_ready("FollowUp Worker", data={"queue": "followup_tasks"})
+                
+            except Exception as e:
+                emoji_logger.system_warning(f"Erro ao inicializar workers Redis: {e}")
+                followup_scheduler = None
+                followup_worker = None
+        else:
+            emoji_logger.system_warning("Workers Redis desabilitados - Redis não disponível")
+        
         # Inicializar AgenticSDR Stateless
         agentic_sdr = AgenticSDRStateless()
         await agentic_sdr.initialize()
         emoji_logger.system_ready("AgenticSDR (Stateless)", data={"status": "sistema pronto"})
         
         # FollowUp Services prontos
-        emoji_logger.system_ready("FollowUp Services")
+        redis_status = "✅ Com Redis Workers" if followup_scheduler else "⚠️ Sem Redis Workers"
+        emoji_logger.system_ready("FollowUp Services", data={"redis_workers": redis_status})
         
         # Pré-aquecer o sistema
         emoji_logger.system_info("🔥 Pré-aquecendo AgenticSDR (Stateless)...")
@@ -116,6 +142,15 @@ async def lifespan(app: FastAPI):
         conversation_monitor = get_conversation_monitor()
         if conversation_monitor:
             await conversation_monitor.shutdown()
+            
+        # Parar Workers Redis
+        if 'followup_scheduler' in locals() and followup_scheduler:
+            await followup_scheduler.stop()
+            emoji_logger.system_info("FollowUp Scheduler parado")
+            
+        if 'followup_worker' in locals() and followup_worker:
+            await followup_worker.stop()
+            emoji_logger.system_info("FollowUp Worker parado")
             
         # FollowUp Manager não precisa de shutdown
             

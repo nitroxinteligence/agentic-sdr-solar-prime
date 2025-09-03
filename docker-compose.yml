@@ -30,21 +30,27 @@ services:
       retries: 3
       start_period: 40s
 
-  # Redis opcional (descomente se quiser usar)
-  # redis:
-  #   image: redis:7-alpine
-  #   container_name: sdr-redis
-  #   restart: unless-stopped
-  #   ports:
-  #     - "6379:6379"
-  #   networks:
-  #     - sdr-network
-  #   volumes:
-  #     - redis-data:/data
+  # Redis para Follow-ups (recomendado)
+  redis:
+    image: redis:7-alpine
+    container_name: sdr-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - sdr-network
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
   sdr-network:
     driver: bridge
 
-# volumes:
-#   redis-data:
+volumes:
+  redis-data:
