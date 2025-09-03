@@ -46,17 +46,28 @@ async def process_lead_status_change(payload: Dict[str, Any]):
             return
 
         human_handoff_stage_id = settings.kommo_human_handoff_stage_id
+        not_interested_stage_id = settings.kommo_not_interested_stage_id
 
         if str(new_status_id) == str(human_handoff_stage_id):
-            # Ativa a pausa
+            # Ativa a pausa para handoff
             await redis_client.set_human_handoff_pause(phone)
-            logger.info(f"PAUSA ATIVADA via Webhook Kommo para o lead com telefone {phone}")
+            logger.info(f"PAUSA HANDOFF ATIVADA via Webhook Kommo para o lead com telefone {phone}")
+        elif str(new_status_id) == str(not_interested_stage_id):
+            # Ativa a pausa para lead não interessado
+            await redis_client.set_not_interested_pause(phone)
+            logger.info(f"PAUSA NÃO INTERESSADO ATIVADA via Webhook Kommo para o lead com telefone {phone}")
         else:
-            # Desativa a pausa se o lead for movido para qualquer outro estágio
-            was_active = await redis_client.is_human_handoff_active(phone)
-            if was_active:
+            # Desativa as pausas se o lead for movido para qualquer outro estágio
+            was_handoff_active = await redis_client.is_human_handoff_active(phone)
+            was_not_interested_active = await redis_client.is_not_interested_active(phone)
+            
+            if was_handoff_active:
                 await redis_client.clear_human_handoff_pause(phone)
-                logger.info(f"PAUSA DESATIVADA via Webhook Kommo para o lead com telefone {phone}")
+                logger.info(f"PAUSA HANDOFF DESATIVADA via Webhook Kommo para o lead com telefone {phone}")
+            
+            if was_not_interested_active:
+                await redis_client.clear_not_interested_pause(phone)
+                logger.info(f"PAUSA NÃO INTERESSADO DESATIVADA via Webhook Kommo para o lead com telefone {phone}")
 
     except Exception as e:
         logger.error(f"Erro ao processar webhook de mudança de status do Kommo: {e}", payload=payload)

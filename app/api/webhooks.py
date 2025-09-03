@@ -21,7 +21,7 @@ from app.agents.agentic_sdr_stateless import AgenticSDRStateless
 from app.services.message_buffer import MessageBuffer, get_message_buffer
 from app.services.message_splitter import MessageSplitter, get_message_splitter
 from app.utils.agno_media_detection import AGNOMediaDetector
-from app.exceptions import HandoffActiveException
+from app.exceptions import HandoffActiveException, NotInterestedLeadException
 
 router = APIRouter(prefix="/webhook", tags=["webhooks"])
 
@@ -534,34 +534,41 @@ async def process_contacts_update(data: Dict[str, Any]):
 
 def extract_final_response(full_response: str) -> str:
     """
-    Extrai e limpa o conteúdo dentro da tag <RESPOSTA_FINAL>, removendo
-    outras tags de raciocínio e garantindo uma saída segura.
+    Extrai e limpa o conteúdo dentro da tag <RESPOSTA_FINAL>.
+    Atua como um guardrail de segurança: se a tag não for encontrada,
+    retorna uma mensagem de fallback para evitar vazar lógica interna.
     """
     if not isinstance(full_response, str):
         return "Desculpe, ocorreu um erro inesperado."
 
+    # Verifica se a resposta é uma chamada de ferramenta, que não deve chegar aqui.
+    # Se chegar, é um sintoma de falha no fluxo anterior.
+    tool_pattern = r'\[TOOL:.*\]'
+    if re.search(tool_pattern, full_response):
+        emoji_logger.system_error(
+            "extract_final_response - CRITICAL: Chamada de ferramenta vazou até a etapa final de extração.",
+            raw_response=full_response
+        )
+        # Retorna uma mensagem segura para o usuário em vez de expor a ferramenta.
+        return "Estou processando sua solicitação. Um momento, por favor."
+
+    # Tenta encontrar a tag <RESPOSTA_FINAL>
     match = re.search(r'<RESPOSTA_FINAL>(.*?)</RESPOSTA_FINAL>', full_response, re.DOTALL | re.IGNORECASE)
     
     if match:
         final_response = match.group(1).strip()
+        if not final_response or final_response.lower() == "none":
+            emoji_logger.system_warning("A resposta final do LLM dentro da tag estava vazia ou 'none'. Usando fallback.")
+            return "Pode repetir, por favor? Não entendi bem o que você quis dizer."
+        return final_response
     else:
+        # Se a tag não for encontrada, é uma falha de formatação do LLM.
+        # Não devemos enviar a resposta bruta.
         emoji_logger.system_warning(
-            "Tag <RESPOSTA_FINAL> não encontrada na resposta do LLM.",
-            raw_response=full_response[:500]
+            "extract_final_response - Tag <RESPOSTA_FINAL> não encontrada. Usando fallback de segurança.",
+            raw_response=full_response[:250] # Loga parte da resposta para debug
         )
-        temp_response = re.sub(r'</?analise_interna>.*?</analise_interna>', '', full_response, flags=re.DOTALL | re.IGNORECASE)
-        temp_response = re.sub(r'</?RESPOSTA_FINAL>', '', temp_response, flags=re.IGNORECASE)
-        
-        if '<' in temp_response and '>' in temp_response:
-            emoji_logger.system_error("extract_final_response - Nenhuma tag <RESPOSTA_FINAL> clara e ainda há outras tags. Usando fallback.")
-            return "Estou finalizando sua solicitação. Um momento."
-        final_response = temp_response.strip()
-
-    if not final_response or final_response.lower() == "none":
-        emoji_logger.system_warning("A resposta final do LLM estava vazia ou 'none'. Usando fallback de esclarecimento.")
         return "Pode repetir, por favor? Não entendi bem o que você quis dizer."
-
-    return final_response
 
 
 async def create_agent_with_context(
@@ -590,13 +597,18 @@ async def create_agent_with_context(
             if kommo_lead:
                 current_status_id = kommo_lead.get('status_id')
                 human_handoff_stage_id = settings.kommo_human_handoff_stage_id
+                not_interested_stage_id = settings.kommo_not_interested_stage_id
 
                 # Passo 3: Ativar/Desativar Pausa e lançar exceção
                 if str(current_status_id) == str(human_handoff_stage_id):
                     await redis_client.set_human_handoff_pause(phone)
                     raise HandoffActiveException(f"Handoff ativo para {phone}")
+                elif str(current_status_id) == str(not_interested_stage_id):
+                    await redis_client.set_not_interested_pause(phone)
+                    raise NotInterestedLeadException(f"Lead não interessado bloqueado para {phone}")
                 else:
                     await redis_client.clear_human_handoff_pause(phone)
+                    await redis_client.clear_not_interested_pause(phone)
                 
                 # Atualiza Supabase se necessário
                 if lead_data.get('current_stage_id') != current_status_id:
@@ -628,6 +640,8 @@ async def create_agent_with_context(
         return agent, execution_context
 
     except HandoffActiveException:
+        raise
+    except NotInterestedLeadException:
         raise
     except Exception as e:
         emoji_logger.system_error(f"Webhook - Erro ao criar agente com contexto: {e}")
@@ -719,7 +733,12 @@ async def process_message_webhook(data: dict):
                     f"Enviando mensagem para processamento - {phone_number}: '{message_content[:50]}...'"
                 )
                 # Processar mensagem através do sistema principal
-                await process_whatsapp_message(phone_number, message_content)
+                await process_new_message({
+                    "remoteJid": phone_number,
+                    "message": {
+                        "conversation": message_content
+                    }
+                })
             else:
                 emoji_logger.webhook_warning(
                     f"Mensagem ignorada - Telefone: {bool(phone_number)}, "
@@ -967,6 +986,16 @@ async def process_message_with_agent(
         f"Mensagem: '{message_content[:100]}...', ID: {message_id}"
     )
     
+    # Verificar se o lead está em pausa por "Não Interessado"
+    if await redis_client.is_not_interested_active(phone):
+        emoji_logger.system_info(f"Processamento bloqueado para {phone} - lead marcado como 'Não Interessado'.")
+        return
+    
+    # Verificar se o lead está em pausa por handoff
+    if await redis_client.is_human_handoff_active(phone):
+        emoji_logger.system_info(f"Processamento bloqueado para {phone} - handoff ativo.")
+        return
+    
     if not original_message or not isinstance(original_message, dict):
         emoji_logger.system_error(
             "process_message_with_agent",
@@ -1065,6 +1094,9 @@ async def process_message_with_agent(
         emoji_logger.webhook_process("AGENTIC SDR Stateless pronto para uso")
     except HandoffActiveException:
         emoji_logger.system_info(f"Processamento interrompido para {phone} devido a handoff ativo.")
+        return
+    except NotInterestedLeadException:
+        emoji_logger.system_info(f"Processamento interrompido para {phone} - lead não interessado.")
         return
     except Exception as e:
         emoji_logger.system_error(f"Agent Creation - Erro ao criar agente: {e}")

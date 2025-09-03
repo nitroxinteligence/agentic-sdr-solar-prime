@@ -78,3 +78,8 @@ class DataExtractionError(BaseSDRException):
 class HandoffActiveException(BaseSDRException):
     """Exception raised when an operation is attempted on a lead under human handoff."""
     pass
+
+
+class NotInterestedLeadException(BaseSDRException):
+    """Exception raised when an operation is attempted on a lead marked as not interested."""
+    pass

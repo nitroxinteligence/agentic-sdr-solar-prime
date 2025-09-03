@@ -4,7 +4,7 @@ from typing import Dict, Any
 from datetime import datetime, timedelta
 from app.utils.logger import emoji_logger
 from app.integrations.supabase_client import supabase_client
-from app.config import settings
+from app.config import settings, FOLLOW_UP_TYPES
 
 class FollowUpManagerService:
     """
@@ -32,7 +32,7 @@ class FollowUpManagerService:
         # Lógica para follow-up de 30 minutos
         if inactive_time > timedelta(minutes=30) and current_status != 'followup_30min_sent':
             await self._schedule_reengagement_followup(
-                lead_id, phone_number, 'IMMEDIATE_REENGAGEMENT', inactive_since.isoformat()
+                lead_id, phone_number, FOLLOW_UP_TYPES[0], inactive_since.isoformat()
             )
             # Atualizar status no Redis para evitar agendamentos duplicados
             # Isso será feito no ConversationMonitor, que chamará este serviço
@@ -40,9 +40,15 @@ class FollowUpManagerService:
         # Lógica para follow-up de 24 horas
         elif inactive_time > timedelta(hours=24) and current_status != 'followup_24h_sent':
             await self._schedule_reengagement_followup(
-                lead_id, phone_number, 'DAILY_NURTURING', inactive_since.isoformat()
+                lead_id, phone_number, FOLLOW_UP_TYPES[1], inactive_since.isoformat()
             )
             # Atualizar status no Redis
+
+        # Lógica para desqualificação automática após 48 horas
+        elif inactive_time > timedelta(hours=48) and current_status != 'followup_48h_sent':
+            await self._schedule_disqualification_followup(
+                lead_id, phone_number, inactive_since.isoformat()
+            )
 
     async def _schedule_reengagement_followup(
         self,
@@ -89,6 +95,52 @@ class FollowUpManagerService:
         except Exception as e:
             emoji_logger.system_error(
                 "FollowUpManagerService", f"Erro ao criar follow-up no DB: {e}"
+            )
+
+    async def _schedule_disqualification_followup(
+        self,
+        lead_id: str,
+        phone_number: str,
+        inactive_since: str
+    ):
+        """Agenda desqualificação automática após 48h sem resposta"""
+        try:
+            from app.services.followup_service_100_real import FollowUpServiceReal
+            
+            followup_service = FollowUpServiceReal()
+            
+            # Calcula o tempo restante até completar 48h desde a última interação
+            inactive_since_dt = datetime.fromisoformat(inactive_since)
+            hours_since_inactive = (datetime.now() - inactive_since_dt).total_seconds() / 3600
+            delay_hours = max(0, 48 - hours_since_inactive)
+            
+            # Agenda follow-up de desqualificação para o momento correto (48h após última interação)
+            await followup_service.schedule_followup(
+                phone_number=phone_number,
+                message="DISQUALIFY_LEAD",  # Mensagem especial para desqualificação
+                delay_hours=delay_hours,  # Tempo correto até 48h
+                followup_type=FOLLOW_UP_TYPES[5],
+                lead_id=lead_id,
+                context={
+                    "inactive_since": inactive_since,
+                    "reason": "48h_no_response",
+                    "action": "disqualify_to_nao_interessado"
+                }
+            )
+            
+            # Atualizar status no Redis
+            await self.redis_client.set(
+                f"conversation_status:{phone_number}",
+                'followup_48h_disqualified',
+                ex=86400 * 7  # 7 dias
+            )
+            
+            emoji_logger.system_warning(
+                f"🚫 Desqualificação automática agendada para {phone_number} após 48h sem resposta"
+            )
+        except Exception as e:
+            emoji_logger.service_error(
+                f"Erro ao agendar desqualificação automática: {e}"
             )
 
 # Instância singleton

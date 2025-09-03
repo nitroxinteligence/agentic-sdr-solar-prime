@@ -10,7 +10,9 @@ import aiohttp
 import pytz
 from app.utils.logger import emoji_logger
 from app.config import settings
+from app import config
 from app.integrations.supabase_client import SupabaseClient
+from app.enums import FollowUpStatus, FollowUpType, MeetingStatus
 
 
 class FollowUpServiceReal:
@@ -74,7 +76,7 @@ class FollowUpServiceReal:
         self, phone_number: str, message: str, delay_hours: int = 24,
         lead_info: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Agenda follow-up REAL via Evolution API"""
+        """Agenda um follow-up genérico para ser enviado após o delay especificado."""
         if not self.is_initialized:
             await self.initialize()
         try:
@@ -90,7 +92,7 @@ class FollowUpServiceReal:
             followup_data = {
                 "lead_id": supabase_lead_id, "phone_number": clean_phone,
                 "message": message, "scheduled_at": scheduled_time.isoformat(),
-                "status": "pending", "type": "reminder",
+                "status": FollowUpStatus.PENDING.value, "type": FollowUpType.REMINDER.value,
                 "created_at": datetime.now().isoformat()
             }
             result = await self.db.create_follow_up(followup_data)
@@ -114,6 +116,68 @@ class FollowUpServiceReal:
             return {
                 "success": False,
                 "message": f"Erro ao agendar follow-up: {e}"
+            }
+
+    async def create_meeting_followup(
+        self, phone_number: str, message: str, delay_hours: int = 24,
+        lead_info: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Cria um follow-up específico para lembretes de reunião."""
+        if not self.is_initialized:
+            await self.initialize()
+        try:
+            scheduled_time = datetime.now(pytz.utc) + timedelta(hours=delay_hours)
+            clean_phone = ''.join(filter(str.isdigit, phone_number))
+            if not clean_phone.startswith('55'):
+                clean_phone = '55' + clean_phone
+            supabase_lead_id = None
+            if lead_info:
+                supabase_lead_id = await self._get_or_create_supabase_lead_id(
+                    lead_info
+                )
+            
+            # Validar se a reunião ainda existe antes de criar o lembrete
+            if supabase_lead_id:
+                meeting_valid = await self._validate_meeting_exists(supabase_lead_id)
+                if not meeting_valid:
+                    emoji_logger.system_warning(
+                        f"⚠️ Reunião não encontrada ou cancelada para lead {supabase_lead_id}. "
+                        f"Lembrete não será criado."
+                    )
+                    return {
+                        "success": False,
+                        "message": "Reunião não encontrada ou foi cancelada",
+                        "cancelled": True
+                    }
+            
+            followup_data = {
+                "lead_id": supabase_lead_id, "phone_number": clean_phone,
+                "message": message, "scheduled_at": scheduled_time.isoformat(),
+                "status": FollowUpStatus.PENDING.value, "type": FollowUpType.MEETING_REMINDER.value,
+                "follow_up_type": config.FOLLOW_UP_TYPES[3],  # MEETING_REMINDER
+                "created_at": datetime.now().isoformat()
+            }
+            result = await self.db.create_follow_up(followup_data)
+            followup_id = result.get(
+                "id", f"followup_{datetime.now().timestamp()}"
+            )
+            emoji_logger.followup_event(
+                f"✅ Follow-up de reunião agendado para {clean_phone} em {delay_hours}h"
+            )
+            return {
+                "success": True, "followup_id": followup_id,
+                "scheduled_at": scheduled_time.isoformat(),
+                "message": (
+                    f"Follow-up de reunião agendado para "
+                    f"{scheduled_time.strftime('%d/%m %H:%M')}"
+                ),
+                "real": True
+            }
+        except Exception as e:
+            emoji_logger.service_error(f"Erro ao agendar follow-up de reunião: {e}")
+            return {
+                "success": False,
+                "message": f"Erro ao agendar follow-up de reunião: {e}"
             }
 
     async def send_message(
@@ -168,31 +232,44 @@ class FollowUpServiceReal:
         """Executa todos os follow-ups pendentes"""
         try:
             pending = await self.get_pending_followups()
-            executed, failed = 0, 0
+            executed, failed, skipped = 0, 0, 0
             for followup in pending:
                 scheduled_time = datetime.fromisoformat(
                     followup.get("scheduled_at", "")
                 )
                 if scheduled_time <= datetime.now():
+                    # Validar meeting reminders contra agenda real
+                    if followup.get("type") == FollowUpType.REMINDER.value:
+                        lead_id = followup.get("lead_id")
+                        if lead_id and not await self._validate_meeting_exists(lead_id):
+                            emoji_logger.followup_event(
+                                f"⏭️ Reminder pulado - reunião não existe mais para lead {lead_id}"
+                            )
+                            await self.db.update_follow_up_status(
+                                followup["id"], FollowUpStatus.SKIPPED.value
+                            )
+                            skipped += 1
+                            continue
+                    
                     result = await self.send_message(
                         followup.get("phone_number", ""), followup["message"]
                     )
                     if result["success"]:
                         await self.db.update_follow_up_status(
-                            followup["id"], "executed"
+                            followup["id"], FollowUpStatus.EXECUTED.value
                         )
                         executed += 1
                     else:
                         await self.db.update_follow_up_status(
-                            followup["id"], "failed"
+                            followup["id"], FollowUpStatus.FAILED.value
                         )
                         failed += 1
             emoji_logger.followup_event(
-                f"📤 Follow-ups executados: {executed} sucesso, {failed} falhas"
+                f"📤 Follow-ups executados: {executed} sucesso, {failed} falhas, {skipped} pulados"
             )
             return {
-                "success": True, "executed": executed, "failed": failed,
-                "message": f"{executed} follow-ups enviados", "real": True
+                "success": True, "executed": executed, "failed": failed, "skipped": skipped,
+                "message": f"{executed} follow-ups enviados, {skipped} pulados", "real": True
             }
         except Exception as e:
             emoji_logger.service_error(f"Erro ao executar follow-ups: {e}")
@@ -205,6 +282,41 @@ class FollowUpServiceReal:
         """Fecha conexões de forma segura"""
         pass
 
+    async def _validate_meeting_exists(self, lead_id: str) -> bool:
+        """
+        Valida se uma reunião ainda existe e está válida para o lead.
+        Verifica na tabela leads_qualifications se há uma reunião agendada
+        que não foi cancelada ou reagendada.
+        """
+        try:
+            # Buscar a qualificação mais recente do lead
+            qualification = await self.db.get_latest_qualification(lead_id)
+            
+            if not qualification:
+                emoji_logger.system_debug(
+                    f"Nenhuma qualificação encontrada para lead {lead_id}"
+                )
+                return False
+            
+            meeting_status = qualification.get('meeting_status')
+            google_event_id = qualification.get('google_event_id')
+            
+            # Verificar se a reunião está em status válido e tem event_id
+            if meeting_status in [MeetingStatus.CANCELLED.value, MeetingStatus.RESCHEDULED.value] or not google_event_id:
+                emoji_logger.system_debug(
+                    f"Reunião inválida para lead {lead_id}: "
+                    f"status={meeting_status}, event_id={bool(google_event_id)}"
+                )
+                return False
+            
+            return True
+            
+        except Exception as e:
+            emoji_logger.system_error(
+                f"Erro ao validar reunião para lead {lead_id}: {e}"
+            )
+            return False
+    
     async def _get_or_create_supabase_lead_id(
             self, lead_info: Dict[str, Any]
     ) -> str:

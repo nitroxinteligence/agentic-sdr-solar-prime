@@ -10,6 +10,7 @@ from uuid import uuid4
 from supabase import create_client, Client
 from loguru import logger
 from app.utils.logger import emoji_logger
+from app.utils.retry_decorator import supabase_retry, supabase_safe_operation
 
 from app.config import settings
 
@@ -35,66 +36,48 @@ class SupabaseClient:
 
     # ============= LEADS =============
 
+    @supabase_retry(max_attempts=3, delay=1.0, backoff_factor=2.0)
     async def create_lead(self, lead_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Cria um novo lead"""
-        try:
-            lead_data['created_at'] = datetime.now().isoformat()
-            lead_data['updated_at'] = datetime.now().isoformat()
+        """Cria um novo lead com retry automático"""
+        lead_data['created_at'] = datetime.now().isoformat()
+        lead_data['updated_at'] = datetime.now().isoformat()
 
-            result = self.client.table('leads').insert(lead_data).execute()
+        result = self.client.table('leads').insert(lead_data).execute()
 
-            if result.data:
-                return result.data[0]
+        if result.data:
+            return result.data[0]
 
-            raise Exception("Erro ao criar lead")
+        raise Exception("Erro ao criar lead")
 
-        except Exception as e:
-            emoji_logger.supabase_error(
-                f"Erro ao criar lead: {str(e)}", table="leads"
-            )
-            raise
-
+    @supabase_retry(max_attempts=3, delay=1.0, backoff_factor=2.0)
     async def get_lead_by_phone(
             self, phone: str
     ) -> Optional[Dict[str, Any]]:
-        """Busca lead por telefone"""
-        try:
-            result = self.client.table('leads').select("*").eq(
-                'phone_number', phone
-            ).execute()
+        """Busca lead por telefone com retry automático"""
+        result = self.client.table('leads').select("*").eq(
+            'phone_number', phone
+        ).execute()
 
-            if result.data:
-                return result.data[0]
+        if result.data:
+            return result.data[0]
 
-            return None
+        return None
 
-        except Exception as e:
-            emoji_logger.supabase_error(
-                f"Erro ao buscar lead: {str(e)}", table="leads"
-            )
-            return None
-
+    @supabase_retry(max_attempts=3, delay=1.0, backoff_factor=2.0)
     async def update_lead(
             self, lead_id: str, update_data: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Atualiza dados do lead"""
-        try:
-            update_data['updated_at'] = datetime.now().isoformat()
+        """Atualiza dados do lead com retry automático"""
+        update_data['updated_at'] = datetime.now().isoformat()
 
-            result = self.client.table('leads').update(update_data).eq(
-                'id', lead_id
-            ).execute()
+        result = self.client.table('leads').update(update_data).eq(
+            'id', lead_id
+        ).execute()
 
-            if result.data:
-                return result.data[0]
+        if result.data:
+            return result.data[0]
 
-            raise Exception("Erro ao atualizar lead")
-
-        except Exception as e:
-            emoji_logger.supabase_error(
-                f"Erro ao atualizar lead: {str(e)}", table="leads"
-            )
-            raise
+        raise Exception("Erro ao atualizar lead")
 
     async def get_qualified_leads(self) -> List[Dict[str, Any]]:
         """Retorna leads qualificados"""
@@ -148,67 +131,55 @@ class SupabaseClient:
             )
             raise
 
+    @supabase_retry(max_attempts=3, delay=1.0, backoff_factor=2.0)
     async def create_conversation(
             self, phone: str, lead_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Cria uma nova conversa"""
-        try:
-            session_id = f"session_{uuid4().hex}"
+        """Cria uma nova conversa com retry automático"""
+        session_id = f"session_{uuid4().hex}"
 
-            conversation_data = {
-                'phone_number': phone,
-                'lead_id': lead_id,
-                'session_id': session_id,
-                'status': 'ACTIVE',
-                'is_active': True,
-                'total_messages': 0,
-                'created_at': datetime.now().isoformat(),
-                'updated_at': datetime.now().isoformat()
-            }
+        conversation_data = {
+            'phone_number': phone,
+            'lead_id': lead_id,
+            'session_id': session_id,
+            'status': 'ACTIVE',
+            'is_active': True,
+            'total_messages': 0,
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        }
 
-            result = self.client.table('conversations').insert(
-                conversation_data
-            ).execute()
+        result = self.client.table('conversations').insert(
+            conversation_data
+        ).execute()
 
-            if result.data:
-                return result.data[0]
+        if result.data:
+            return result.data[0]
 
-            raise Exception("Erro ao criar conversa")
+        raise Exception("Erro ao criar conversa")
 
-        except Exception as e:
-            emoji_logger.supabase_error(
-                f"Erro ao criar conversa: {str(e)}", table="conversations"
-            )
-            raise
-
+    @supabase_safe_operation(default_return=None)
     async def get_conversation_by_phone(
             self, phone: str
     ) -> Optional[Dict[str, Any]]:
-        """Busca dados da conversa por número de telefone"""
-        try:
-            lead_result = self.client.table('leads').select('id').eq(
-                'phone_number', phone
-            ).execute()
+        """Busca dados da conversa por número de telefone com retry automático"""
+        lead_result = self.client.table('leads').select('id').eq(
+            'phone_number', phone
+        ).execute()
 
-            if not lead_result.data:
-                return None
-
-            lead_id = lead_result.data[0]['id']
-
-            conversation_result = self.client.table('conversations').select(
-                'id, emotional_state, current_stage, created_at, updated_at'
-            ).eq('lead_id', lead_id).execute()
-
-            if conversation_result.data:
-                return conversation_result.data[0]
-
+        if not lead_result.data:
             return None
 
-        except Exception as e:
-            logger.error(
-                f"Erro ao buscar conversa por telefone {phone}: {str(e)}"
-            )
-            return None
+        lead_id = lead_result.data[0]['id']
+
+        conversation_result = self.client.table('conversations').select(
+            'id, emotional_state, current_stage, created_at, updated_at'
+        ).eq('lead_id', lead_id).execute()
+
+        if conversation_result.data:
+            return conversation_result.data[0]
+
+        return None
 
     async def get_conversation_emotional_state(
             self, conversation_id: str
@@ -259,52 +230,84 @@ class SupabaseClient:
 
     # ============= MESSAGES =============
 
+    @supabase_retry(max_attempts=3, delay=1.0, backoff_factor=2.0)
     async def save_message(
             self, message_data: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Salva mensagem no banco"""
-        try:
-            message_data['created_at'] = datetime.now().isoformat()
+        """Salva mensagem no banco com retry automático"""
+        message_data['created_at'] = datetime.now().isoformat()
 
-            result = self.client.table('messages').insert(
-                message_data
-            ).execute()
+        result = self.client.table('messages').insert(
+            message_data
+        ).execute()
 
-            if result.data:
-                if message_data.get('conversation_id'):
-                    await self._increment_message_count(
-                        message_data['conversation_id']
-                    )
+        if result.data:
+            if message_data.get('conversation_id'):
+                await self._increment_message_count(
+                    message_data['conversation_id']
+                )
 
-                return result.data[0]
+            return result.data[0]
 
-            raise Exception("Erro ao salvar mensagem")
+        raise Exception("Erro ao salvar mensagem")
 
-        except Exception as e:
-            emoji_logger.supabase_error(
-                f"Erro ao salvar mensagem: {str(e)}", table="messages"
-            )
-            raise
-
+    @supabase_safe_operation(default_return=[])
     async def get_conversation_messages(
         self,
         conversation_id: str,
         limit: int = 200
     ) -> List[Dict[str, Any]]:
         """Retorna mensagens de uma conversa com contexto expandido"""
+        result = self.client.table('messages').select("*").eq(
+            'conversation_id', conversation_id
+        ).order('created_at', desc=True).limit(limit).execute()
+
+        if result.data:
+            result.data.reverse()
+
+        return result.data or []
+
+    @supabase_safe_operation(default_return=None)
+    async def get_last_message_by_phone(
+        self, phone: str
+    ) -> Optional[Dict[str, Any]]:
+        """Busca a última mensagem de um telefone específico"""
         try:
-            result = self.client.table('messages').select("*").eq(
-                'conversation_id', conversation_id
-            ).order('created_at', desc=True).limit(limit).execute()
-
-            if result.data:
-                result.data.reverse()
-
-            return result.data or []
-
+            # Primeiro buscar o lead pelo telefone
+            lead_result = self.client.table('leads').select('id').eq(
+                'phone_number', phone
+            ).execute()
+            
+            if not lead_result.data:
+                return None
+            
+            lead_id = lead_result.data[0]['id']
+            
+            # Buscar a conversa do lead
+            conversation_result = self.client.table('conversations').select(
+                'id'
+            ).eq('lead_id', lead_id).execute()
+            
+            if not conversation_result.data:
+                return None
+            
+            conversation_id = conversation_result.data[0]['id']
+            
+            # Buscar a última mensagem da conversa
+            message_result = self.client.table('messages').select(
+                "*"
+            ).eq('conversation_id', conversation_id).order(
+                'created_at', desc=True
+            ).limit(1).execute()
+            
+            if message_result.data:
+                return message_result.data[0]
+            
+            return None
+            
         except Exception as e:
-            logger.error(f"Erro ao buscar mensagens: {str(e)}")
-            return []
+            logger.error(f"Erro ao buscar última mensagem por telefone {phone}: {str(e)}")
+            return None
 
     async def _increment_message_count(self, conversation_id: str):
         """Incrementa contador de mensagens na conversa"""
@@ -326,27 +329,23 @@ class SupabaseClient:
 
     # ============= FOLLOW-UPS =============
 
+    @supabase_retry(max_attempts=3, delay=1.0, backoff_factor=2.0)
     async def create_follow_up(
             self, follow_up_data: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Cria um follow-up"""
-        try:
-            follow_up_data['created_at'] = datetime.now().isoformat()
-            follow_up_data['updated_at'] = datetime.now().isoformat()
+        """Cria um follow-up com retry automático"""
+        follow_up_data['created_at'] = datetime.now().isoformat()
+        follow_up_data['updated_at'] = datetime.now().isoformat()
 
-            result = self.client.table('follow_ups').insert(
-                follow_up_data
-            ).execute()
+        result = self.client.table('follow_ups').insert(
+            follow_up_data
+        ).execute()
 
-            if result.data:
-                logger.info(f"Follow-up criado: {result.data[0]['id']}")
-                return result.data[0]
+        if result.data:
+            logger.info(f"Follow-up criado: {result.data[0]['id']}")
+            return result.data[0]
 
-            raise Exception("Erro ao criar follow-up")
-
-        except Exception as e:
-            logger.error(f"Erro ao criar follow-up: {str(e)}")
-            raise
+        raise Exception("Erro ao criar follow-up")
 
     async def get_pending_follow_ups(self) -> List[Dict[str, Any]]:
         """Retorna follow-ups pendentes"""
@@ -392,6 +391,21 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Erro ao atualizar follow-up {follow_up_id} with data {update_data}: {str(e)}")
             raise
+
+    @supabase_retry(max_attempts=3, delay=1.0, backoff_factor=2.0)
+    async def get_follow_up_status(self, follow_up_id: str) -> Optional[str]:
+        """Obtém o status atual de um follow-up"""
+        try:
+            result = self.client.table('follow_ups').select('status').eq('id', follow_up_id).execute()
+            if result.data:
+                return result.data[0]['status']
+            return None
+        except Exception as e:
+            emoji_logger.supabase_error(
+                f"Erro ao obter status do follow-up {follow_up_id}: {str(e)}",
+                table="follow_ups"
+            )
+            return None
 
     # ============= KNOWLEDGE BASE =============
 
@@ -579,22 +593,18 @@ class SupabaseClient:
             logger.error(f"Erro ao obter qualificação: {e}")
             return None
 
+    @supabase_safe_operation(default_return=None)
     async def get_lead_by_id(
             self, lead_id: str
     ) -> Optional[Dict[str, Any]]:
-        """Busca lead por ID"""
-        try:
-            response = self.client.table("leads").select("*").eq(
-                "id", lead_id
-            ).execute()
+        """Busca lead por ID com tratamento de erro automático"""
+        response = self.client.table("leads").select("*").eq(
+            "id", lead_id
+        ).execute()
 
-            if response.data:
-                return response.data[0]
-            return None
-
-        except Exception as e:
-            logger.error(f"Erro ao buscar lead por ID: {e}")
-            return None
+        if response.data:
+            return response.data[0]
+        return None
 
     async def get_recent_followup_count(
             self, lead_id: str, since: datetime

@@ -140,14 +140,14 @@ class Settings(BaseSettings):
     environment: str = Field(default="production")
     log_level: str = Field(default="INFO")
     agno_model: str = Field(default="gemini-2.5-pro")
-    agno_fallback_model: str = Field(default="o1-mini")
+    agno_fallback_model: str = Field(default="o3-mini")
     agno_max_tokens: int = Field(default=4096)
     agno_temperature: float = Field(default=0.7)
     agno_reasoning_enabled: bool = Field(default=True)
     max_message_length: int = Field(default=4096)
     webhook_timeout: int = Field(default=30)
     typing_simulation_delay: float = Field(default=2.0)
-    max_follow_up_attempts: int = Field(default=3)
+    max_follow_up_attempts: int = Field(default=5)
     enable_qualification_agent: bool = Field(
         default=True, env="ENABLE_QUALIFICATION_AGENT"
     )
@@ -393,5 +393,5 @@ SOLUTION_TYPES = [
 ]
 FOLLOW_UP_TYPES = [
     "IMMEDIATE_REENGAGEMENT", "DAILY_NURTURING", "MEETING_CONFIRMATION",
-    "MEETING_REMINDER", "ABANDONMENT_CHECK", "CUSTOM"
+    "MEETING_REMINDER", "ABANDONMENT_CHECK", "DISQUALIFICATION", "CUSTOM"
 ]

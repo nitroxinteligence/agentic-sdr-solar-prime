@@ -43,15 +43,18 @@ class Gemini:
     async def achat(self, messages, system_prompt: Optional[str] = None):
         """Chamada REAL para Gemini API com suporte multimodal, criando um modelo com o system_prompt a cada chamada."""
         if not GEMINI_AVAILABLE:
-            return type('Response', (), {'content': 'Gemini não disponível. Configure GOOGLE_API_KEY.'})()
+            return type('Response', (), {'content': 'Gemini não disponível. Configure GOOGLE_API_KEY.'})() 
 
-        # Cria uma nova instância do modelo a cada chamada, garantindo que o system_prompt seja aplicado.
-        model = genai.GenerativeModel(
-            model_name=self.base_model_name,
-            system_instruction=system_prompt
-        )
+        # Cria uma nova instância do modelo a cada chamada
+        model = genai.GenerativeModel(model_name=self.base_model_name)
 
         gemini_history = []
+        
+        # Adiciona system prompt como primeira mensagem se fornecido
+        if system_prompt:
+            gemini_history.append({'role': 'user', 'parts': [system_prompt]})
+            gemini_history.append({'role': 'model', 'parts': ['Entendido. Como posso ajudar?']})
+        
         for msg in messages:
             role = 'user' if msg['role'] == 'user' else 'model'
             content = msg.get('content', '')

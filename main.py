@@ -19,6 +19,8 @@ from app.services.message_buffer import get_message_buffer
 from app.services.message_splitter import get_message_splitter
 from app.services.followup_manager import followup_manager_service
 from app.services.followup_service_100_real import FollowUpServiceReal
+from app.services.followup_executor_service import FollowUpSchedulerService
+from app.services.followup_worker import FollowUpWorker
 from app.services.conversation_monitor import get_conversation_monitor
 from app.agents.agentic_sdr_stateless import AgenticSDRStateless
 
@@ -27,14 +29,17 @@ from app.api.health import router as health_router
 from app.api.webhooks import router as webhooks_router
 from app.api.kommo_webhook import router as kommo_router
 from app.api.google_auth import router as google_auth_router
+from app.api.webhook_routes import router as webhook_routes_router
 
 # Variáveis globais para serviços
 agentic_sdr = None
+followup_scheduler = None
+followup_worker = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Gerencia o ciclo de vida da aplicação"""
-    global agentic_sdr
+    global agentic_sdr, followup_scheduler, followup_worker
     
     # Startup
     start_time = time.time()
@@ -89,20 +94,20 @@ async def lifespan(app: FastAPI):
         if redis_client.redis_client:
             try:
                 # Inicializar FollowUp Scheduler
-                from app.services.followup_executor_service import FollowUpSchedulerService
                 followup_scheduler = FollowUpSchedulerService()
                 await followup_scheduler.start()
-                emoji_logger.system_ready("FollowUp Scheduler", data={"interval": "15s"})
-                
+                emoji_logger.system_ready("FollowUp Scheduler", data={"interval": f"{followup_scheduler.check_interval}s"})
+            except Exception as e:
+                emoji_logger.system_error(f"Erro ao inicializar FollowUp Scheduler: {e}")
+                followup_scheduler = None
+            
+            try:
                 # Inicializar FollowUp Worker  
-                from app.services.followup_worker import FollowUpWorker
                 followup_worker = FollowUpWorker()
                 await followup_worker.start()
                 emoji_logger.system_ready("FollowUp Worker", data={"queue": "followup_tasks"})
-                
             except Exception as e:
-                emoji_logger.system_warning(f"Erro ao inicializar workers Redis: {e}")
-                followup_scheduler = None
+                emoji_logger.system_error(f"Erro ao inicializar FollowUp Worker: {e}")
                 followup_worker = None
         else:
             emoji_logger.system_warning("Workers Redis desabilitados - Redis não disponível")
@@ -115,11 +120,6 @@ async def lifespan(app: FastAPI):
         # FollowUp Services prontos
         redis_status = "✅ Com Redis Workers" if followup_scheduler else "⚠️ Sem Redis Workers"
         emoji_logger.system_ready("FollowUp Services", data={"redis_workers": redis_status})
-        
-        # Pré-aquecer o sistema
-        emoji_logger.system_info("🔥 Pré-aquecendo AgenticSDR (Stateless)...")
-        warmup_agent = AgenticSDRStateless()
-        await warmup_agent.initialize()
         
         # Sistema pronto
         startup_time = time.time() - start_time
@@ -144,11 +144,11 @@ async def lifespan(app: FastAPI):
             await conversation_monitor.shutdown()
             
         # Parar Workers Redis
-        if 'followup_scheduler' in locals() and followup_scheduler:
+        if followup_scheduler:
             await followup_scheduler.stop()
             emoji_logger.system_info("FollowUp Scheduler parado")
             
-        if 'followup_worker' in locals() and followup_worker:
+        if followup_worker:
             await followup_worker.stop()
             emoji_logger.system_info("FollowUp Worker parado")
             
@@ -184,6 +184,7 @@ app.include_router(health_router, tags=["health"])
 app.include_router(webhooks_router, tags=["webhooks"])
 app.include_router(kommo_router, tags=["kommo"])
 app.include_router(google_auth_router, tags=["auth"])
+app.include_router(webhook_routes_router, tags=["calendar-webhooks"])
 
 # Endpoint raiz
 @app.get("/")

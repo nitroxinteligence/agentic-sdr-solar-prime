@@ -20,6 +20,7 @@ from app.utils.logger import emoji_logger
 from app.core.response_formatter import response_formatter
 from app.utils.time_utils import get_period_of_day
 from app.config import settings
+from app.enums import MeetingStatus
 
 # Importar serviços diretamente
 from app.services.calendar_service_100_real import CalendarServiceReal
@@ -389,7 +390,7 @@ class AgenticSDRStateless:
             f"{meeting_date_time.strftime('%H:%M')} com o Leonardo. Aqui está o link da reunião: "
             f"{meet_link} Está tudo certo para você?"
         )
-        await self.followup_service.schedule_followup(
+        await self.followup_service.create_meeting_followup(
             phone_number=lead_info["phone_number"],
             message=message_24h,
             delay_hours=24,
@@ -402,7 +403,7 @@ class AgenticSDRStateless:
             f"{lead_name}, Sua reunião com o Leonardo é daqui a 2 horas! Te esperamos às "
             f"{meeting_date_time.strftime('%H:%M')}! Link: {meet_link}"
         )
-        await self.followup_service.schedule_followup(
+        await self.followup_service.create_meeting_followup(
             phone_number=lead_info["phone_number"],
             message=message_2h,
             delay_hours=2,
@@ -418,18 +419,23 @@ class AgenticSDRStateless:
             conversation_history: list
     ) -> dict:
         """
-        Parse e executa tool calls na resposta do agente.
+        Parse e executa tool calls na resposta do agente de forma robusta.
+        Extrai todas as chamadas de ferramenta, mesmo que misturadas com texto.
         """
         emoji_logger.system_debug(f"Raw LLM response before tool parsing: {response}")
-        tool_pattern = r'\[TOOL:\s*([^|\]]+?)\s*\|\s*([^\]]*)\]'
+        
+        # Regex corrigida: torna a parte de parâmetros (|) opcional.
+        # Isso captura [TOOL: name] e [TOOL: name | param=value]
+        tool_pattern = r'\[TOOL:\s*([^|\]]+?)(?:\s*\|\s*([^\]]*))?\]'
         tool_matches = []
         try:
+            # re.findall encontrará todas as ocorrências não sobrepostas
             tool_matches = re.findall(tool_pattern, response)
         except re.error as e:
             emoji_logger.system_error(
                 f"Tool parsing error - Erro de regex ao parsear tools: {e}. Resposta: {response[:200]}..."
             )
-            return {} # Retorna vazio se a regex falhar
+            return {}
 
         if not tool_matches:
             return {}
@@ -438,16 +444,20 @@ class AgenticSDRStateless:
 
         for match in tool_matches:
             service_method = match[0].strip()
-            params_str = match[1].strip() if len(
-                match) > 1 and match[1] else ""
+            params_str = match[1].strip() if len(match) > 1 and match[1] else ""
 
             params = {}
             if params_str:
-                param_pairs = params_str.split('|')
-                for pair in param_pairs:
-                    if '=' in pair:
-                        key, value = pair.split('=', 1)
-                        params[key.strip()] = value.strip()
+                # Parsing de parâmetros mais robusto
+                try:
+                    param_pairs = params_str.split('|')
+                    for pair in param_pairs:
+                        if '=' in pair:
+                            key, value = pair.split('=', 1)
+                            params[key.strip()] = value.strip()
+                except Exception as param_e:
+                    emoji_logger.system_warning(f"Não foi possível parsear parâmetros '{params_str}': {param_e}")
+                    continue # Pula para a próxima ferramenta em caso de erro de parsing
 
             try:
                 result = await self._execute_single_tool(
@@ -511,6 +521,7 @@ class AgenticSDRStateless:
                         qualification_data = {
                             "lead_id": lead_info["id"],
                             "qualification_status": "QUALIFIED",
+                            "meeting_status": MeetingStatus.SCHEDULED.value,
                             "google_event_id": event_id,
                             "meeting_scheduled_at": result.get("start_time"),
                             "notes": "Reunião agendada pelo agente de IA."
@@ -548,13 +559,57 @@ class AgenticSDRStateless:
                     raise ValueError(
                         "ID da reunião não encontrado para cancelamento."
                     )
-                return await self.calendar_service.cancel_meeting(meeting_id)
+                
+                # Cancela a reunião no Google Calendar
+                result = await self.calendar_service.cancel_meeting(meeting_id)
+                
+                # Se o cancelamento foi bem-sucedido, atualiza o meeting_status na qualificação
+                if result.get("success") and latest_qualification:
+                    try:
+                        await supabase_client.update_lead_qualification(
+                            latest_qualification["id"],
+                            {"meeting_status": MeetingStatus.CANCELLED.value}
+                        )
+                        emoji_logger.system_success(
+                            f"✅ Meeting status atualizado para CANCELLED para lead {lead_info['id']}"
+                        )
+                    except Exception as e:
+                        emoji_logger.system_error(
+                            f"❌ Erro ao atualizar meeting_status: {e}"
+                        )
+                        # Continua o fluxo mesmo se a atualização falhar
+                
+                return result
             elif method_name == "reschedule_meeting":
-                return await self.calendar_service.reschedule_meeting(
+                # Reagenda a reunião no Google Calendar
+                result = await self.calendar_service.reschedule_meeting(
                     date=params.get("date"),
                     time=params.get("time"),
                     lead_info=lead_info
                 )
+                
+                # Se o reagendamento foi bem-sucedido, atualiza o meeting_status na qualificação
+                if result.get("success"):
+                    try:
+                        latest_qualification = await supabase_client.get_latest_qualification(lead_info["id"])
+                        if latest_qualification:
+                            await supabase_client.update_lead_qualification(
+                                latest_qualification["id"],
+                                {
+                                    "meeting_status": MeetingStatus.RESCHEDULED.value,
+                                    "meeting_scheduled_at": result.get("start_time")
+                                }
+                            )
+                            emoji_logger.system_success(
+                                f"✅ Meeting status atualizado para RESCHEDULED para lead {lead_info['id']}"
+                            )
+                    except Exception as e:
+                        emoji_logger.system_error(
+                            f"❌ Erro ao atualizar meeting_status no reagendamento: {e}"
+                        )
+                        # Continua o fluxo mesmo se a atualização falhar
+                
+                return result
 
         elif service_name == "crm":
             if method_name == "update_stage":

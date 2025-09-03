@@ -375,6 +375,46 @@ class RedisClient:
             logger.error(f"Erro ao remover pausa handoff {phone}: {e}")
             return False
 
+    async def set_not_interested_pause(self, phone: str) -> bool:
+        """Define uma pausa permanente para leads não interessados."""
+        if not self.redis_client:
+            return False
+        try:
+            key = f"lead:not_interested:{phone}"
+            await self.redis_client.set(key, "1")
+            logger.info(
+                f"🚫 Lead não interessado bloqueado para {phone}."
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Erro ao definir pausa não interessado {phone}: {e}")
+            return False
+
+    async def is_not_interested_active(self, phone: str) -> bool:
+        """Verifica se há pausa ativa para lead não interessado"""
+        if not self.redis_client:
+            return False
+        try:
+            key = f"lead:not_interested:{phone}"
+            return await self.redis_client.exists(key) > 0
+        except Exception as e:
+            logger.error(f"Erro ao verificar pausa não interessado {phone}: {e}")
+            return False
+
+    async def clear_not_interested_pause(self, phone: str) -> bool:
+        """Remove pausa de lead não interessado"""
+        if not self.redis_client:
+            return False
+        try:
+            key = f"lead:not_interested:{phone}"
+            result = await self.redis_client.delete(key)
+            if result > 0:
+                logger.info(f"✅ Pausa não interessado removida para {phone}")
+            return result > 0
+        except Exception as e:
+            logger.error(f"Erro ao remover pausa não interessado {phone}: {e}")
+            return False
+
     async def increment_counter(
             self, counter_name: str, amount: int = 1
     ) -> int:

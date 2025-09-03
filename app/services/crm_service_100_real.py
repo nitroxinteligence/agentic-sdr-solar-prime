@@ -575,11 +575,16 @@ class CRMServiceReal:
                 if not stage_id:
                     raise ValueError(f"Estágio '{stage_name}' não encontrado no mapa: {list(self.stage_map.keys())}")
             
-            # PASSO 2 DA CORREÇÃO: Ativar pausa no Redis se for estágio de handoff
+            # PASSO 2 DA CORREÇÃO: Ativar pausa no Redis se for estágio de handoff ou não interessado
             human_handoff_stage_id = settings.kommo_human_handoff_stage_id
+            not_interested_stage_id = settings.kommo_not_interested_stage_id
+            
             if stage_id == human_handoff_stage_id and phone_number:
                 await redis_client.set_human_handoff_pause(phone_number)
                 emoji_logger.system_info(f"Pausa de handoff ativada para {phone_number} via CRM Service.")
+            elif stage_id == not_interested_stage_id and phone_number:
+                await redis_client.set_not_interested_pause(phone_number)
+                emoji_logger.system_info(f"Pausa não interessado ativada para {phone_number} via CRM Service.")
 
             payload = [{
                 "id": int(lead_id),

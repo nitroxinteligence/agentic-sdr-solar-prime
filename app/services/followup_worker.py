@@ -9,6 +9,7 @@ from app.integrations.redis_client import redis_client
 from app.integrations.supabase_client import SupabaseClient
 from app.agents.agentic_sdr_stateless import AgenticSDRStateless
 from app.utils.logger import emoji_logger
+from app.enums import FollowUpStatus, FollowUpType, MeetingStatus
 from loguru import logger
 
 
@@ -31,8 +32,15 @@ class FollowUpWorker:
 
         await self.agent.initialize()
         self.running = True
-        emoji_logger.system_ready("FollowUp Worker")
-        asyncio.create_task(self._consume_loop())
+        
+        # Verifica se Redis está disponível
+        redis_available = await self._check_redis_availability()
+        if redis_available:
+            emoji_logger.system_ready("FollowUp Worker (Redis Mode)")
+            asyncio.create_task(self._consume_loop())
+        else:
+            emoji_logger.system_ready("FollowUp Worker (Database Polling Mode)")
+            asyncio.create_task(self._database_polling_loop())
 
     async def stop(self):
         """Para o worker."""
@@ -53,6 +61,60 @@ class FollowUpWorker:
                     "FollowUp Worker", f"Erro no loop de consumo: {e}"
                 )
                 await asyncio.sleep(5)
+
+    async def _check_redis_availability(self) -> bool:
+        """Verifica se o Redis está disponível."""
+        try:
+            return await self.redis.ping()
+        except Exception:
+            return False
+
+    async def _database_polling_loop(self):
+        """Loop alternativo que busca follow-ups diretamente do banco de dados."""
+        from datetime import datetime, timezone
+        
+        while self.running:
+            try:
+                # Busca follow-ups pendentes que devem ser executados agora
+                now = datetime.now(timezone.utc)
+                pending_followups = await self.db.get_pending_follow_ups()
+                
+                if pending_followups:
+                    logger.info(f"📋 {len(pending_followups)} follow-ups pendentes encontrados (modo database).")
+                    
+                    for followup in pending_followups:
+                        if not self.running:
+                            break
+                            
+                        # Simula o payload que viria do Redis
+                        task_payload = {
+                            "data": {
+                                "followup_id": followup['id'],
+                                "lead_id": followup['lead_id'],
+                                "phone_number": followup['phone_number'],
+                                "followup_type": followup.get('follow_up_type', 'CUSTOM'),
+                                "message": followup.get('message', ''),
+                                "scheduled_at": followup.get('scheduled_at')
+                            }
+                        }
+                        
+                        # Marca como 'queued' antes de processar
+                        await self.db.update_follow_up_status(followup['id'], FollowUpStatus.QUEUED.value)
+                        
+                        # Processa o follow-up
+                        await self._process_task(task_payload)
+                        
+                        # Pequena pausa entre processamentos
+                        await asyncio.sleep(1)
+                
+                # Aguarda antes da próxima verificação
+                await asyncio.sleep(900)  # Verifica a cada 15 minutos
+                
+            except Exception as e:
+                emoji_logger.system_error(
+                    "FollowUp Worker", f"Erro no loop de polling do banco: {e}"
+                )
+                await asyncio.sleep(30)  # Aguarda mais tempo em caso de erro
 
     async def _process_task(self, task_payload: Dict[str, Any]):
         """
@@ -77,9 +139,23 @@ class FollowUpWorker:
                 f"🚀 Processando tarefa de follow-up: {followup_id}"
             )
 
+            followup_type = actual_task.get("followup_type", "CUSTOM")
+            
+            # Verifica se é um follow-up de desqualificação
+            if followup_type == config.FOLLOW_UP_TYPES[4]:  # DISQUALIFICATION
+                await self._process_disqualification_followup(actual_task, followup_id)
+                return
+
             message_content = await self._generate_intelligent_followup_message(
                 actual_task
             )
+            
+            # Se message_content é None, significa que a reunião foi cancelada/não existe mais
+            if message_content is None:
+                emoji_logger.system_info(
+                    f"📅 Follow-up {followup_id} cancelado - reunião não existe mais"
+                )
+                return  # Sai sem enviar mensagem, status já foi atualizado para 'cancelled'
 
             from app.integrations.evolution import evolution_client
             send_result = await evolution_client.send_text_message(
@@ -88,12 +164,12 @@ class FollowUpWorker:
             )
 
             if send_result and send_result.get("key", {}).get("id"):
-                await self.db.update_follow_up_status(followup_id, 'executed')
+                await self.db.update_follow_up_status(followup_id, FollowUpStatus.EXECUTED.value)
                 emoji_logger.system_success(
                     f"✅ Follow-up {followup_id} executado e enviado com sucesso."
                 )
             else:
-                await self.db.update_follow_up_status(followup_id, 'failed')
+                await self.db.update_follow_up_status(followup_id, FollowUpStatus.FAILED.value)
                 emoji_logger.system_error(
                     "FollowUp Worker",
                     f"Falha ao enviar mensagem para o follow-up {followup_id}."
@@ -107,6 +183,66 @@ class FollowUpWorker:
             await self.db.update_follow_up_status(followup_id, 'failed')
         finally:
             await self.redis.release_lock(lock_key)
+
+    async def _process_disqualification_followup(self, task_payload: Dict[str, Any], followup_id: str):
+        """
+        Processa follow-up de desqualificação automática após 48h sem resposta.
+        Atualiza o estágio do lead no CRM para 'desqualificado'.
+        """
+        try:
+            lead_id = task_payload.get("lead_id")
+            if not lead_id:
+                emoji_logger.system_error(
+                    "FollowUp Worker",
+                    f"Follow-up de desqualificação {followup_id} sem lead_id"
+                )
+                await self.db.update_follow_up_status(followup_id, 'failed')
+                return
+
+            # Importa o CRM service
+            from app.services.crm_service_100_real import CRMServiceReal
+            crm_service = CRMServiceReal()
+            await crm_service.initialize()
+
+            # Busca informações do lead
+            lead_info = await self.db.get_lead_by_id(lead_id)
+            if not lead_info:
+                emoji_logger.system_error(
+                    "FollowUp Worker",
+                    f"Lead {lead_id} não encontrado para desqualificação"
+                )
+                await self.db.update_follow_up_status(followup_id, 'failed')
+                return
+
+            phone_number = lead_info.get("phone_number")
+            if not phone_number:
+                emoji_logger.system_error(
+                    "FollowUp Worker",
+                    f"Lead {lead_id} sem número de telefone para desqualificação"
+                )
+                await self.db.update_follow_up_status(followup_id, 'failed')
+                return
+
+            # Atualiza o estágio do lead no CRM para não interessado
+            await crm_service.update_lead_stage(
+                phone_number=phone_number,
+                stage_name="NAO_INTERESSADO",
+                notes="Lead desqualificado automaticamente após 48h sem resposta"
+            )
+
+            # Marca o follow-up como executado
+            await self.db.update_follow_up_status(followup_id, 'executed')
+            
+            emoji_logger.system_success(
+                f"✅ Lead {lead_id} desqualificado automaticamente após 48h sem resposta"
+            )
+
+        except Exception as e:
+            emoji_logger.system_error(
+                "FollowUp Worker",
+                f"Erro ao processar desqualificação {followup_id}: {e}"
+            )
+            await self.db.update_follow_up_status(followup_id, 'failed')
 
     async def _generate_intelligent_followup_message(
             self, task_payload: Dict[str, Any]
@@ -180,7 +316,19 @@ class FollowUpWorker:
         """
         
         # Se houver uma mensagem pré-definida (para lembretes de reunião, por exemplo), use-a
-        if scheduled_message and followup_type == 'MEETING_REMINDER':
+        if scheduled_message and followup_type == config.FOLLOW_UP_TYPES[3]:  # MEETING_REMINDER
+            # Validar se a reunião ainda existe na agenda antes de enviar o reminder
+            meeting_still_valid = await self._validate_meeting_exists(lead_id)
+            if not meeting_still_valid:
+                emoji_logger.system_warning(
+                    f"🚫 Meeting reminder cancelado para lead {lead_id} - reunião não existe mais na agenda"
+                )
+                # Marca o follow-up como cancelado em vez de executado
+                followup_id = task_payload.get('followup_id')
+                if followup_id:
+                    await self.db.update_follow_up_status(followup_id, 'cancelled')
+                return None  # Não envia mensagem
+            
             emoji_logger.system_info(f"Usando mensagem pré-definida para MEETING_REMINDER: {scheduled_message}")
             return scheduled_message
 
@@ -202,6 +350,52 @@ class FollowUpWorker:
 
         from app.api.webhooks import extract_final_response
         return extract_final_response(response_text)
+
+    async def _validate_meeting_exists(self, lead_id: str) -> bool:
+        """
+        Valida se a reunião ainda existe na agenda consultando a tabela leads_qualifications.
+        Retorna False se a reunião foi cancelada ou não existe.
+        """
+        try:
+            # Busca a qualificação mais recente do lead
+            qualification = await self.db.get_latest_qualification(lead_id)
+            
+            if not qualification:
+                emoji_logger.system_warning(
+                    f"⚠️ Nenhuma qualificação encontrada para lead {lead_id}"
+                )
+                return False
+            
+            meeting_status = qualification.get('meeting_status')
+            
+            # Verifica se a reunião foi cancelada ou reagendada
+            if meeting_status in ['CANCELLED', 'RESCHEDULED']:
+                emoji_logger.system_info(
+                    f"📅 Reunião para lead {lead_id} tem status: {meeting_status}"
+                )
+                return False
+            
+            # Verifica se há um google_event_id válido
+            google_event_id = qualification.get('google_event_id')
+            if not google_event_id:
+                emoji_logger.system_warning(
+                    f"⚠️ Qualificação do lead {lead_id} não possui google_event_id"
+                )
+                return False
+            
+            # Se chegou até aqui, a reunião ainda é válida
+            emoji_logger.system_success(
+                f"✅ Reunião para lead {lead_id} ainda é válida (status: {meeting_status})"
+            )
+            return True
+            
+        except Exception as e:
+            emoji_logger.system_error(
+                "FollowUp Worker", 
+                f"Erro ao validar existência da reunião para lead {lead_id}: {e}"
+            )
+            # Em caso de erro, assume que a reunião é válida para não bloquear desnecessariamente
+            return True
 
 
 async def main():
