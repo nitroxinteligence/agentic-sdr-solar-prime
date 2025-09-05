@@ -135,6 +135,21 @@ class FollowUpWorker:
             return
 
         try:
+            phone_number = actual_task.get("phone_number")
+            if not phone_number:
+                logger.error(f"Task de follow-up {followup_id} sem phone_number, descartando.")
+                await self.db.update_follow_up_status(followup_id, FollowUpStatus.FAILED.value)
+                return
+
+            # Adiciona verificação de status do lead ANTES de processar
+            if await self.redis.is_human_handoff_active(phone_number) or \
+               await self.redis.is_not_interested_active(phone_number):
+                logger.warning(
+                    f"Follow-up {followup_id} para {phone_number} pulado devido ao status de pausa do lead."
+                )
+                await self.db.update_follow_up_status(followup_id, FollowUpStatus.SKIPPED.value)
+                return
+
             emoji_logger.followup_event(
                 f"🚀 Processando tarefa de follow-up: {followup_id}"
             )

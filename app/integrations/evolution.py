@@ -273,7 +273,7 @@ class EvolutionAPIClient:
                 )
                 await asyncio.sleep(typing_duration)
             payload = {
-                "number": phone,
+                "number": f"{phone}@s.whatsapp.net",
                 "text": message,
                 "delay": int(settings.delay_between_messages * 1000)
             }
