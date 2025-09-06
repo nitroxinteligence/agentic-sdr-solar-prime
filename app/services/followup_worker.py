@@ -11,6 +11,7 @@ from app.agents.agentic_sdr_stateless import AgenticSDRStateless
 from app.utils.logger import emoji_logger
 from app.enums import FollowUpStatus, FollowUpType, MeetingStatus
 from loguru import logger
+from app import config
 
 
 class FollowUpWorker:
