@@ -27,6 +27,12 @@ class FollowUpManagerService:
         Verifica a inatividade da conversa e agenda follow-ups de reengajamento
         se os limites permitirem. Retorna o novo status se uma ação for tomada.
         """
+        if not settings.is_business_hours():
+            emoji_logger.system_info(
+                f"Fora do horário comercial. Verificação de inatividade para {phone_number} pausada."
+            )
+            return None
+
         now = datetime.now()
         inactive_time = now - inactive_since
         new_status = None

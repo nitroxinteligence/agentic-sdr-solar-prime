@@ -158,7 +158,7 @@ class FollowUpWorker:
             followup_type = actual_task.get("followup_type", "CUSTOM")
             
             # Verifica se é um follow-up de desqualificação
-            if followup_type == config.FOLLOW_UP_TYPES[4]:  # DISQUALIFICATION
+            if followup_type == config.FOLLOW_UP_TYPES[5]:  # DISQUALIFICATION
                 await self._process_disqualification_followup(actual_task, followup_id)
                 return
 
@@ -384,26 +384,17 @@ class FollowUpWorker:
             
             meeting_status = qualification.get('meeting_status')
             
-            # Verifica se a reunião foi cancelada ou reagendada
-            if meeting_status in ['CANCELLED', 'RESCHEDULED']:
-                emoji_logger.system_info(
-                    f"📅 Reunião para lead {lead_id} tem status: {meeting_status}"
+            # A reunião é considerada válida apenas se o status for explicitamente SCHEDULED ou CONFIRMED.
+            if meeting_status in [MeetingStatus.SCHEDULED.value, MeetingStatus.CONFIRMED.value]:
+                emoji_logger.system_success(
+                    f"✅ Reunião para lead {lead_id} ainda é válida (status: {meeting_status})"
                 )
-                return False
-            
-            # Verifica se há um google_event_id válido
-            google_event_id = qualification.get('google_event_id')
-            if not google_event_id:
-                emoji_logger.system_warning(
-                    f"⚠️ Qualificação do lead {lead_id} não possui google_event_id"
-                )
-                return False
-            
-            # Se chegou até aqui, a reunião ainda é válida
-            emoji_logger.system_success(
-                f"✅ Reunião para lead {lead_id} ainda é válida (status: {meeting_status})"
+                return True
+
+            emoji_logger.system_info(
+                f"📅 Reunião para lead {lead_id} tem status inválido: {meeting_status}"
             )
-            return True
+            return False
             
         except Exception as e:
             emoji_logger.system_error(

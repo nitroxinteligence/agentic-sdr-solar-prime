@@ -379,37 +379,56 @@ class AgenticSDRStateless:
         )
 
         # Agendar lembretes de reunião
-        meeting_date_time = datetime.fromisoformat(schedule_result["start_time"])
-        lead_email = lead_info.get("email")
-        lead_name = lead_info.get("name", "")
-        meet_link = schedule_result.get("meet_link", "")
+        now = datetime.now(pytz.timezone(settings.timezone))
+        meeting_date_time_str = schedule_result.get("start_time")
+        if not meeting_date_time_str:
+            emoji_logger.system_error("Falha ao agendar lembretes: 'start_time' não encontrado no resultado.")
+            return
 
-        # Lembrete de 24 horas
-        message_24h = (
-            f"Oi {lead_name}! Tudo bem? Passando para confirmar sua reunião de amanhã às "
-            f"{meeting_date_time.strftime('%H:%M')} com o Leonardo. Aqui está o link da reunião: "
-            f"{meet_link} Está tudo certo para você?"
-        )
-        await self.followup_service.create_meeting_followup(
-            phone_number=lead_info["phone_number"],
-            message=message_24h,
-            delay_hours=24,
-            lead_info=lead_info
-        )
-        emoji_logger.followup_event(f"Lembrete de 24h agendado para {lead_name}.")
+        meeting_date_time = datetime.fromisoformat(meeting_date_time_str)
+        lead_name = lead_info.get("name", "Cliente")
+        meet_link = schedule_result.get("meet_link")
 
-        # Lembrete de 2 horas
-        message_2h = (
-            f"{lead_name}, Sua reunião com o Leonardo é daqui a 2 horas! Te esperamos às "
-            f"{meeting_date_time.strftime('%H:%M')}! Link: {meet_link}"
-        )
-        await self.followup_service.create_meeting_followup(
-            phone_number=lead_info["phone_number"],
-            message=message_2h,
-            delay_hours=2,
-            lead_info=lead_info
-        )
-        emoji_logger.followup_event(f"Lembrete de 2h agendado para {lead_name}.")
+        if not meet_link:
+            emoji_logger.system_error(f"Falha ao agendar lembretes para o lead {lead_info.get('id')}: 'meet_link' não foi gerado.")
+            return
+
+        time_until_meeting = meeting_date_time - now
+
+        # Lembrete de 24 horas (só agenda se a reunião for em mais de 24 horas)
+        if time_until_meeting > timedelta(hours=24):
+            delay_24h = time_until_meeting - timedelta(hours=24)
+            delay_hours_24h = delay_24h.total_seconds() / 3600
+            
+            message_24h = (
+                f"Oi {lead_name}! Tudo bem? Passando para confirmar sua reunião de amanhã às "
+                f"{meeting_date_time.strftime('%H:%M')} com o Leonardo. Aqui está o link da reunião: "
+                f"{meet_link} Está tudo certo para você?"
+            )
+            await self.followup_service.create_meeting_followup(
+                phone_number=lead_info["phone_number"],
+                message=message_24h,
+                delay_hours=delay_hours_24h,
+                lead_info=lead_info
+            )
+            emoji_logger.followup_event(f"Lembrete de 24h agendado para {lead_name} para ser enviado em {delay_hours_24h:.2f} horas.")
+
+        # Lembrete de 2 horas (só agenda se a reunião for em mais de 2 horas)
+        if time_until_meeting > timedelta(hours=2):
+            delay_2h = time_until_meeting - timedelta(hours=2)
+            delay_hours_2h = delay_2h.total_seconds() / 3600
+
+            message_2h = (
+                f"{lead_name}, Sua reunião com o Leonardo é daqui a 2 horas! Te esperamos às "
+                f"{meeting_date_time.strftime('%H:%M')}! Link: {meet_link}"
+            )
+            await self.followup_service.create_meeting_followup(
+                phone_number=lead_info["phone_number"],
+                message=message_2h,
+                delay_hours=delay_hours_2h,
+                lead_info=lead_info
+            )
+            emoji_logger.followup_event(f"Lembrete de 2h agendado para {lead_name} para ser enviado em {delay_hours_2h:.2f} horas.")
 
     async def _parse_and_execute_tools(
             self,

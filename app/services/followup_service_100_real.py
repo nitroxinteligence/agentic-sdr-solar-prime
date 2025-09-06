@@ -154,7 +154,7 @@ class FollowUpServiceReal:
                 "lead_id": supabase_lead_id, "phone_number": clean_phone,
                 "message": message, "scheduled_at": scheduled_time.isoformat(),
                 "status": FollowUpStatus.PENDING.value, "type": FollowUpType.MEETING_REMINDER.value,
-                "follow_up_type": config.FOLLOW_UP_TYPES[3],  # MEETING_REMINDER
+                "follow_up_type": "MEETING_REMINDER",
                 "created_at": datetime.now().isoformat()
             }
             result = await self.db.create_follow_up(followup_data)
@@ -299,17 +299,15 @@ class FollowUpServiceReal:
                 return False
             
             meeting_status = qualification.get('meeting_status')
-            google_event_id = qualification.get('google_event_id')
             
-            # Verificar se a reunião está em status válido e tem event_id
-            if meeting_status in [MeetingStatus.CANCELLED.value, MeetingStatus.RESCHEDULED.value] or not google_event_id:
-                emoji_logger.system_debug(
-                    f"Reunião inválida para lead {lead_id}: "
-                    f"status={meeting_status}, event_id={bool(google_event_id)}"
-                )
-                return False
+            # A reunião é considerada válida apenas se o status for explicitamente SCHEDULED ou CONFIRMED.
+            if meeting_status in [MeetingStatus.SCHEDULED.value, MeetingStatus.CONFIRMED.value]:
+                return True
             
-            return True
+            emoji_logger.system_debug(
+                f"Reunião inválida para lead {lead_id}: status='{meeting_status}'"
+            )
+            return False
             
         except Exception as e:
             emoji_logger.system_error(
