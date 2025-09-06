@@ -66,8 +66,16 @@ class FollowUpManagerService:
         inactive_since_iso: str
     ) -> None:
         """
-        Agenda um follow-up de reengajamento no banco de dados, respeitando o limite.
+        Agenda um follow-up de reengajamento no banco de dados, respeitando o limite e evitando duplicatas.
         """
+        # Etapa 1: Verificar se já existe um follow-up pendente para evitar duplicatas
+        if await self.db.check_existing_pending_followup(lead_id, followup_type):
+            emoji_logger.system_debug(
+                f"Follow-up do tipo '{followup_type}' já pendente para o lead {lead_id}. Agendamento ignorado."
+            )
+            return
+
+        # Etapa 2: Verificar o limite de tentativas de follow-up
         one_week_ago = datetime.now() - timedelta(days=7)
         count = await self.db.get_recent_followup_count(lead_id, one_week_ago)
 
@@ -75,9 +83,9 @@ class FollowUpManagerService:
             emoji_logger.system_warning(
                 f"🚫 Limite de follow-ups atingido para o lead {lead_id}. Tipo: {followup_type}"
             )
-            # Não agendar, mas registrar que o limite foi atingido
             return
 
+        # Etapa 3: Criar o novo registro de follow-up
         followup_data = {
             'lead_id': lead_id,
             'phone_number': phone_number,

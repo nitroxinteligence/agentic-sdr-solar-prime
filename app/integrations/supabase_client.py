@@ -407,6 +407,32 @@ class SupabaseClient:
             )
             return None
 
+    @supabase_safe_operation(default_return=True)
+    async def check_existing_pending_followup(self, lead_id: str, followup_type: str) -> bool:
+        """
+        Verifica se já existe um follow-up pendente ou na fila para um lead específico.
+        Retorna True se um follow-up pendente existir, False caso contrário.
+        """
+        try:
+            result = self.client.table('follow_ups').select(
+                'id', count='exact'
+            ).eq(
+                'lead_id', lead_id
+            ).eq(
+                'follow_up_type', followup_type
+            ).in_(
+                'status', ['pending', 'queued']
+            ).execute()
+
+            return result.count > 0
+        except Exception as e:
+            emoji_logger.supabase_error(
+                f"Erro ao verificar follow-up pendente para o lead {lead_id}: {str(e)}",
+                table="follow_ups"
+            )
+            # Em caso de erro, é mais seguro retornar True para evitar duplicação.
+            return True
+
     # ============= KNOWLEDGE BASE =============
 
     async def add_knowledge(

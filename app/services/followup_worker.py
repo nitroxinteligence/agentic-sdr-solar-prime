@@ -142,6 +142,14 @@ class FollowUpWorker:
                 await self.db.update_follow_up_status(followup_id, FollowUpStatus.FAILED.value)
                 return
 
+            # Adiciona verificação de horário comercial
+            if not config.settings.is_business_hours():
+                logger.warning(
+                    f"Follow-up {followup_id} para {phone_number} adiado por estar fora do horário comercial."
+                )
+                # Retorna sem processar. O lock será liberado e a tarefa será pega novamente no próximo ciclo.
+                return
+
             # Adiciona verificação de status do lead ANTES de processar
             if await self.redis.is_human_handoff_active(phone_number) or \
                await self.redis.is_not_interested_active(phone_number):
@@ -329,6 +337,7 @@ class FollowUpWorker:
         - NUNCA use emojis na mensagem.
         - NUNCA use markdown como negrito (*texto*) ou itálico (_texto_).
         - Apenas a mensagem final, sem tags de raciocínio ou ferramentas.
+        CRÍTICO: Sua resposta final DEVE estar exclusivamente dentro da tag <RESPOSTA_FINAL>.
         """
         
         # Se houver uma mensagem pré-definida (para lembretes de reunião, por exemplo), use-a
