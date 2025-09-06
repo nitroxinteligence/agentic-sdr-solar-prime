@@ -262,30 +262,20 @@ class ConversationMonitor:
                     # A chave tem um TTL e expirará naturalmente se o lead nunca for criado.
                     continue
 
-                # Delega a lógica de agendamento para o FollowUpManagerService
-                await followup_manager_service.handle_conversation_inactivity(
+                # Delega a lógica de agendamento para o FollowUpManagerService e recebe o novo status
+                new_status = await followup_manager_service.handle_conversation_inactivity(
                     lead_id=lead['id'],
                     phone_number=phone,
                     inactive_since=last_message_time,
                     current_status=current_status
                 )
 
-                # Atualiza o status no Redis com base na decisão do FollowUpManagerService
-                # A lógica de atualização do status no Redis é movida para cá
-                if inactive_time > timedelta(minutes=30) and current_status != 'followup_30min_sent':
-                    await self.redis.set(status_key, 'followup_30min_sent')
+                # Se o manager decidiu agendar algo, ele retorna o novo status.
+                # O monitor apenas atualiza o Redis com a decisão centralizada.
+                if new_status:
+                    await self.redis.set(status_key, new_status)
                     emoji_logger.system_info(
-                        f"⏰ Status Redis atualizado: followup_30min_sent para {phone[:8]}..."
-                    )
-                elif inactive_time > timedelta(hours=24) and current_status != 'followup_24h_sent':
-                    await self.redis.set(status_key, 'followup_24h_sent')
-                    emoji_logger.system_info(
-                        f"📅 Status Redis atualizado: followup_24h_sent para {phone[:8]}..."
-                    )
-                elif inactive_time > timedelta(hours=48) and current_status != 'followup_48h_sent':
-                    await self.redis.set(status_key, 'followup_48h_sent')
-                    emoji_logger.system_info(
-                        f"🚫 Status Redis atualizado: followup_48h_sent para {phone[:8]}... (desqualificação)"
+                        f"🔄 Status da conversa para {phone[:8]}... atualizado para: {new_status}"
                     )
 
         except Exception as e:

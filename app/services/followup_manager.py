@@ -1,10 +1,11 @@
 # app/services/followup_manager.py
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 from app.utils.logger import emoji_logger
 from app.integrations.supabase_client import supabase_client
 from app.config import settings, FOLLOW_UP_TYPES
+from app.integrations.redis_client import redis_client
 
 class FollowUpManagerService:
     """
@@ -21,34 +22,35 @@ class FollowUpManagerService:
         phone_number: str,
         inactive_since: datetime,
         current_status: str
-    ) -> None:
+    ) -> Optional[str]:
         """
         Verifica a inatividade da conversa e agenda follow-ups de reengajamento
-        se os limites permitirem.
+        se os limites permitirem. Retorna o novo status se uma ação for tomada.
         """
         now = datetime.now()
         inactive_time = now - inactive_since
+        new_status = None
 
-        # Lógica para follow-up de 30 minutos
-        if inactive_time > timedelta(minutes=30) and current_status != 'followup_30min_sent':
-            await self._schedule_reengagement_followup(
-                lead_id, phone_number, FOLLOW_UP_TYPES[0], inactive_since.isoformat()
-            )
-            # Atualizar status no Redis para evitar agendamentos duplicados
-            # Isso será feito no ConversationMonitor, que chamará este serviço
-
-        # Lógica para follow-up de 24 horas
-        elif inactive_time > timedelta(hours=24) and current_status != 'followup_24h_sent':
-            await self._schedule_reengagement_followup(
-                lead_id, phone_number, FOLLOW_UP_TYPES[1], inactive_since.isoformat()
-            )
-            # Atualizar status no Redis
-
-        # Lógica para desqualificação automática após 48 horas
-        elif inactive_time > timedelta(hours=48) and current_status != 'followup_48h_sent':
+        # Lógica hierárquica: do mais longo para o mais curto
+        if inactive_time > timedelta(hours=48) and current_status not in ['followup_48h_sent', 'disqualified']:
             await self._schedule_disqualification_followup(
                 lead_id, phone_number, inactive_since.isoformat()
             )
+            new_status = 'followup_48h_sent'
+
+        elif inactive_time > timedelta(hours=24) and current_status not in ['followup_24h_sent', 'followup_48h_sent']:
+            await self._schedule_reengagement_followup(
+                lead_id, phone_number, FOLLOW_UP_TYPES[1], inactive_since.isoformat()
+            )
+            new_status = 'followup_24h_sent'
+
+        elif inactive_time > timedelta(minutes=30) and current_status not in ['followup_30min_sent', 'followup_24h_sent', 'followup_48h_sent']:
+            await self._schedule_reengagement_followup(
+                lead_id, phone_number, FOLLOW_UP_TYPES[0], inactive_since.isoformat()
+            )
+            new_status = 'followup_30min_sent'
+            
+        return new_status
 
     async def _schedule_reengagement_followup(
         self,
@@ -129,7 +131,7 @@ class FollowUpManagerService:
             )
             
             # Atualizar status no Redis
-            await self.redis_client.set(
+            await redis_client.set(
                 f"conversation_status:{phone_number}",
                 'followup_48h_disqualified',
                 ex=86400 * 7  # 7 dias
