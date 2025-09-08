@@ -766,7 +766,9 @@ async def whatsapp_dynamic_webhook(
         )
 
         if event == "MESSAGES_UPSERT":
+            logger.info(f"🔵 MESSAGES_UPSERT recebido - Data: {data}")
             actual_data = data.get("data", data)
+            logger.info(f"🔵 MESSAGES_UPSERT processando - Actual Data: {actual_data}")
             background_tasks.add_task(process_new_message, actual_data)
         elif event == "CONNECTION_UPDATE":
             await process_connection_update(data)
