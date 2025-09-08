@@ -359,3 +359,62 @@ async def debug_check_pauses():
         error_msg = f"Erro ao verificar pausas: {e}"
         logger.error(error_msg)
         return {"error": error_msg, "status": "failed"}
+
+
+@router.get("/debug-test-followup")
+async def debug_test_followup():
+    """TEMPORÁRIO: Testa valores válidos para follow_up type"""
+    try:
+        from app.config import FOLLOW_UP_TYPES
+        from app.integrations.supabase_client import supabase_client
+        
+        # Testar inserção com cada tipo
+        test_results = {}
+        
+        for follow_type in FOLLOW_UP_TYPES:
+            try:
+                # Dados mínimos para teste
+                test_data = {
+                    "lead_id": "00000000-0000-0000-0000-000000000000",  # UUID fake
+                    "phone_number": "5581999999999",
+                    "message": f"Teste {follow_type}",
+                    "scheduled_at": "2025-01-01T12:00:00Z",
+                    "status": "pending",
+                    "type": follow_type,
+                    "follow_up_type": "CUSTOM",
+                    "created_at": "2025-01-01T12:00:00Z",
+                    "updated_at": "2025-01-01T12:00:00Z",
+                    "priority": "medium",
+                    "attempts": 0
+                }
+                
+                # Tentar inserir (vai falhar mas mostra o erro)
+                result = await supabase_client.create_follow_up(test_data)
+                test_results[follow_type] = {"status": "success", "result": "OK"}
+                
+            except Exception as e:
+                error_msg = str(e)
+                if "follow_ups_type_check" in error_msg:
+                    test_results[follow_type] = {
+                        "status": "constraint_error", 
+                        "error": "Valor não aceito pela constraint"
+                    }
+                else:
+                    test_results[follow_type] = {
+                        "status": "other_error", 
+                        "error": error_msg[:100]
+                    }
+        
+        return {
+            "status": "test_completed",
+            "follow_up_types_config": FOLLOW_UP_TYPES,
+            "test_results": test_results,
+            "summary": {
+                "total_types": len(FOLLOW_UP_TYPES),
+                "constraint_errors": len([r for r in test_results.values() if r["status"] == "constraint_error"]),
+                "valid_types": len([r for r in test_results.values() if r["status"] == "success"])
+            }
+        }
+        
+    except Exception as e:
+        return {"error": f"Erro no teste: {e}", "status": "failed"}

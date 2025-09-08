@@ -92,7 +92,7 @@ class FollowUpServiceReal:
             followup_data = {
                 "lead_id": supabase_lead_id, "phone_number": clean_phone,
                 "message": message, "scheduled_at": scheduled_time.isoformat(),
-                "status": FollowUpStatus.PENDING.value, "type": FollowUpType.GENERAL.value,
+                "status": FollowUpStatus.PENDING.value, "type": "CUSTOM",
                 "created_at": datetime.now().isoformat()
             }
             result = await self.db.create_follow_up(followup_data)
@@ -153,7 +153,7 @@ class FollowUpServiceReal:
             followup_data = {
                 "lead_id": supabase_lead_id, "phone_number": clean_phone,
                 "message": message, "scheduled_at": scheduled_time.isoformat(),
-                "status": FollowUpStatus.PENDING.value, "type": FollowUpType.MEETING_REMINDER.value,
+                "status": FollowUpStatus.PENDING.value, "type": "MEETING_REMINDER",
                 "follow_up_type": "MEETING_REMINDER",
                 "created_at": datetime.now().isoformat()
             }
@@ -239,7 +239,7 @@ class FollowUpServiceReal:
                 )
                 if scheduled_time <= datetime.now():
                     # Validar meeting reminders contra agenda real
-                    if followup.get("type") == FollowUpType.MEETING_REMINDER.value:
+                    if followup.get("type") == "MEETING_REMINDER":
                         lead_id = followup.get("lead_id")
                         if lead_id and not await self._validate_meeting_exists(lead_id):
                             emoji_logger.followup_event(
