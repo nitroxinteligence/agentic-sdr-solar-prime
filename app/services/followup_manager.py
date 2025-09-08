@@ -150,7 +150,7 @@ class FollowUpManagerService:
             await redis_client.set(
                 f"conversation_status:{phone_number}",
                 'followup_48h_disqualified',
-                ex=86400 * 7  # 7 dias
+                ttl=86400 * 7  # 7 dias
             )
             
             emoji_logger.system_warning(

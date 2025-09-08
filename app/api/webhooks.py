@@ -890,7 +890,7 @@ async def process_new_message(data: Any):
                         await redis_client.set(
                             f"pushname_phone:{push_name}", 
                             phone, 
-                            ex=300  # 5 minutos
+                            ttl=300  # 5 minutos
                         )
                         emoji_logger.system_debug(f"Cache Redis pushName->telefone: '{push_name}' -> '{phone}'")
                     except Exception:
