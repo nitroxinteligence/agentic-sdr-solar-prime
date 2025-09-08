@@ -1157,3 +1157,127 @@ async def process_message_with_agent(
         f"✅ PROCESSAMENTO PRINCIPAL CONCLUÍDO - {phone}: "
         f"'{message_content[:50]}...' -> '{final_response[:50]}...'"
     )
+
+
+# ============================================================================
+# ENDPOINTS TEMPORÁRIOS PARA DEBUG - REMOVER APÓS CORREÇÃO
+# ============================================================================
+
+@router.post("/debug/clear-pauses")
+async def clear_all_pauses():
+    """ENDPOINT TEMPORÁRIO: Limpa pausas ativas que estão bloqueando o agente"""
+    try:
+        if not redis_client.redis_client:
+            await redis_client.connect()
+        
+        if not redis_client.redis_client:
+            return {"error": "Redis não disponível", "status": "failed"}
+        
+        # Buscar todas as pausas ativas
+        handoff_keys = await redis_client.redis_client.keys("lead:pause:*")
+        not_interested_keys = await redis_client.redis_client.keys("lead:not_interested:*")
+        
+        cleared_handoff = 0
+        cleared_not_interested = 0
+        
+        # Limpar pausas handoff
+        for key in handoff_keys:
+            phone = key.replace("lead:pause:", "")
+            if await redis_client.clear_human_handoff_pause(phone):
+                cleared_handoff += 1
+        
+        # Limpar pausas not_interested  
+        for key in not_interested_keys:
+            phone = key.replace("lead:not_interested:", "")
+            if await redis_client.clear_not_interested_pause(phone):
+                cleared_not_interested += 1
+        
+        result = {
+            "status": "success",
+            "message": "Pausas removidas com sucesso",
+            "cleared": {
+                "handoff_pauses": cleared_handoff,
+                "not_interested_pauses": cleared_not_interested,
+                "total": cleared_handoff + cleared_not_interested
+            }
+        }
+        
+        logger.info(f"🧹 LIMPEZA DE PAUSAS: {result}")
+        return result
+        
+    except Exception as e:
+        error_msg = f"Erro ao limpar pausas: {e}"
+        logger.error(error_msg)
+        return {"error": error_msg, "status": "failed"}
+
+
+@router.get("/debug/check-pauses")
+async def check_active_pauses():
+    """ENDPOINT TEMPORÁRIO: Verifica pausas ativas"""
+    try:
+        if not redis_client.redis_client:
+            await redis_client.connect()
+        
+        if not redis_client.redis_client:
+            return {"error": "Redis não disponível", "status": "failed"}
+        
+        # Buscar pausas ativas
+        handoff_keys = await redis_client.redis_client.keys("lead:pause:*")
+        not_interested_keys = await redis_client.redis_client.keys("lead:not_interested:*")
+        
+        handoff_phones = [key.replace("lead:pause:", "") for key in handoff_keys]
+        not_interested_phones = [key.replace("lead:not_interested:", "") for key in not_interested_keys]
+        
+        result = {
+            "status": "success",
+            "active_pauses": {
+                "handoff": {
+                    "count": len(handoff_phones),
+                    "phones": handoff_phones[:10]  # Mostrar apenas primeiros 10
+                },
+                "not_interested": {
+                    "count": len(not_interested_phones),
+                    "phones": not_interested_phones[:10]  # Mostrar apenas primeiros 10
+                },
+                "total": len(handoff_keys) + len(not_interested_keys)
+            }
+        }
+        
+        return result
+        
+    except Exception as e:
+        error_msg = f"Erro ao verificar pausas: {e}"
+        logger.error(error_msg)
+        return {"error": error_msg, "status": "failed"}
+
+
+@router.post("/debug/test-message")
+async def test_message_processing():
+    """ENDPOINT TEMPORÁRIO: Testa processamento de mensagem"""
+    try:
+        # Simular mensagem de teste
+        test_message = {
+            "key": {
+                "remoteJid": "558182556406@s.whatsapp.net",
+                "fromMe": False,
+                "id": "test_debug_endpoint"
+            },
+            "message": {
+                "conversation": "Teste do endpoint - quero energia solar"
+            },
+            "messageTimestamp": "1691234567",
+            "pushName": "Teste Debug"
+        }
+        
+        logger.info("🧪 Testando processamento via endpoint debug")
+        await process_new_message(test_message)
+        
+        return {
+            "status": "success", 
+            "message": "Teste de processamento executado - verifique os logs"
+        }
+        
+    except Exception as e:
+        error_msg = f"Erro no teste: {e}"
+        logger.error(error_msg)
+        return {"error": error_msg, "status": "failed"}
