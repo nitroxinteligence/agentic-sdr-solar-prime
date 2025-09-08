@@ -256,3 +256,106 @@ async def service_info():
             "timezone": settings.TIMEZONE
         }
     }
+
+
+# ============================================================================
+# ENDPOINTS TEMPORÁRIOS PARA CORREÇÃO DO AGENTE
+# ============================================================================
+
+@router.get("/debug-clear-pauses")
+async def debug_clear_pauses():
+    """TEMPORÁRIO: Limpa pausas via GET para facilitar teste no navegador"""
+    try:
+        if not redis_client.redis_client:
+            await redis_client.connect()
+        
+        if not redis_client.redis_client:
+            return {"error": "Redis não disponível", "status": "failed"}
+        
+        # Buscar todas as pausas ativas
+        handoff_keys = await redis_client.redis_client.keys("lead:pause:*")
+        not_interested_keys = await redis_client.redis_client.keys("lead:not_interested:*")
+        
+        cleared_handoff = 0
+        cleared_not_interested = 0
+        
+        # Limpar pausas handoff
+        for key in handoff_keys:
+            phone = key.replace("lead:pause:", "")
+            if await redis_client.clear_human_handoff_pause(phone):
+                cleared_handoff += 1
+        
+        # Limpar pausas not_interested  
+        for key in not_interested_keys:
+            phone = key.replace("lead:not_interested:", "")
+            if await redis_client.clear_not_interested_pause(phone):
+                cleared_not_interested += 1
+        
+        result = {
+            "status": "success",
+            "message": "🧹 PAUSAS REMOVIDAS COM SUCESSO!",
+            "cleared": {
+                "handoff_pauses": cleared_handoff,
+                "not_interested_pauses": cleared_not_interested,
+                "total": cleared_handoff + cleared_not_interested
+            },
+            "next_steps": [
+                "1. Envie uma mensagem real no WhatsApp",
+                "2. Verifique se o agente responde normalmente",
+                "3. Monitore os logs para confirmar funcionamento"
+            ]
+        }
+        
+        logger.info(f"🧹 CORREÇÃO APLICADA: {result}")
+        return result
+        
+    except Exception as e:
+        error_msg = f"Erro ao limpar pausas: {e}"
+        logger.error(error_msg)
+        return {"error": error_msg, "status": "failed"}
+
+
+@router.get("/debug-check-pauses")
+async def debug_check_pauses():
+    """TEMPORÁRIO: Verifica pausas ativas via GET"""
+    try:
+        if not redis_client.redis_client:
+            await redis_client.connect()
+        
+        if not redis_client.redis_client:
+            return {"error": "Redis não disponível", "status": "failed"}
+        
+        # Buscar pausas ativas
+        handoff_keys = await redis_client.redis_client.keys("lead:pause:*")
+        not_interested_keys = await redis_client.redis_client.keys("lead:not_interested:*")
+        
+        handoff_phones = [key.replace("lead:pause:", "") for key in handoff_keys]
+        not_interested_phones = [key.replace("lead:not_interested:", "") for key in not_interested_keys]
+        
+        total = len(handoff_keys) + len(not_interested_keys)
+        
+        result = {
+            "status": "success",
+            "active_pauses": {
+                "handoff": {
+                    "count": len(handoff_phones),
+                    "phones": handoff_phones[:10]  # Mostrar apenas primeiros 10
+                },
+                "not_interested": {
+                    "count": len(not_interested_phones),
+                    "phones": not_interested_phones[:10]  # Mostrar apenas primeiros 10
+                },
+                "total": total
+            },
+            "message": f"📊 {total} pausas ativas encontradas" if total > 0 else "✅ Nenhuma pausa ativa",
+            "blocked_phones": {
+                "558182556406": "Verifique se este número específico está pausado"
+            }
+        }
+        
+        return result
+        
+    except Exception as e:
+        error_msg = f"Erro ao verificar pausas: {e}"
+        logger.error(error_msg)
+        return {"error": error_msg, "status": "failed"}
