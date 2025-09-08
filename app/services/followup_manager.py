@@ -131,17 +131,19 @@ class FollowUpManagerService:
             delay_hours = max(0, 48 - hours_since_inactive)
             
             # Agenda follow-up de desqualificação para o momento correto (48h após última interação)
+            lead_info = {
+                "id": lead_id,
+                "phone": phone_number,
+                "followup_type": FOLLOW_UP_TYPES[5],
+                "inactive_since": inactive_since,
+                "reason": "48h_no_response",
+                "action": "disqualify_to_nao_interessado"
+            }
             await followup_service.schedule_followup(
                 phone_number=phone_number,
                 message="DISQUALIFY_LEAD",  # Mensagem especial para desqualificação
                 delay_hours=delay_hours,  # Tempo correto até 48h
-                followup_type=FOLLOW_UP_TYPES[5],
-                lead_id=lead_id,
-                context={
-                    "inactive_since": inactive_since,
-                    "reason": "48h_no_response",
-                    "action": "disqualify_to_nao_interessado"
-                }
+                lead_info=lead_info
             )
             
             # Atualizar status no Redis
