@@ -780,6 +780,11 @@ async def whatsapp_dynamic_webhook(
             await process_presence_update(data)
         elif event == "CHATS_UPDATE":
             logger.info(f"{event} update recebido: {data}")
+        elif event == "CHATS_UPSERT":
+            # CHATS_UPSERT pode conter mensagens - processar como MESSAGES_UPSERT
+            logger.info(f"🔵 CHATS_UPSERT recebido - processando como mensagem: {data}")
+            actual_data = data.get("data", data)
+            background_tasks.add_task(process_new_message, actual_data)
         elif event == "CONTACTS_UPDATE":
             await process_contacts_update(data)
         else:
@@ -818,6 +823,11 @@ async def evolution_webhook(
             await process_message_update(data.get("data", {}))
         elif event == "PRESENCE_UPDATE":
             await process_presence_update(data.get("data", {}))
+        elif event == "CHATS_UPSERT":
+            # CHATS_UPSERT pode conter mensagens - processar como MESSAGES_UPSERT
+            logger.info(f"🔵 CHATS_UPSERT recebido no webhook principal - processando como mensagem")
+            actual_data = data.get("data", data)
+            background_tasks.add_task(process_new_message, actual_data)
         elif event == "CONTACTS_UPDATE":
             await process_contacts_update(data.get("data", {}))
 
